@@ -16,7 +16,7 @@ from neozen.core.oauth.models import (
     OAuthGrantModel,
 )
 from neozen.core.oauth.types import CodeChallengeMethod
-from neozen.storage import DoesNotExist, StorageProtocol
+from neozen.core.repository import DoesNotExist, RepositoryProtocol
 from neozen.core.subject import Subject
 
 
@@ -152,9 +152,9 @@ class AuthorizationCodeGrant[
 
     def __init__(
         self,
-        oauth_client_storage: StorageProtocol[OC],
-        oauth_grant_storage: StorageProtocol[OG],
-        oauth_authorization_code_storage: StorageProtocol[OAC],
+        oauth_client_storage: RepositoryProtocol[OC],
+        oauth_grant_storage: RepositoryProtocol[OG],
+        oauth_authorization_code_storage: RepositoryProtocol[OAC],
         code_hash_key: str,
         code_prefix: str = _DEFAULT_CODE_PREFIX,
     ) -> None:
@@ -260,9 +260,9 @@ class AuthorizationCodeGrantProvider(dishka.Provider):
         OAC: OAuthAuthorizationCodeModel,
     ](
         self,
-        oauth_client_storage: StorageProtocol[OC],
-        oauth_grant_storage: StorageProtocol[OG],
-        oauth_authorization_code_storage: StorageProtocol[OAC],
+        oauth_client_storage: RepositoryProtocol[OC],
+        oauth_grant_storage: RepositoryProtocol[OG],
+        oauth_authorization_code_storage: RepositoryProtocol[OAC],
     ) -> AuthorizationCodeGrant[OC, OG, OAC]:
         return AuthorizationCodeGrant(
             oauth_client_storage=oauth_client_storage,

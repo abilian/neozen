@@ -13,7 +13,7 @@ from neozen.core.identifiers.base import (
     IdentifierVerificationError,
     InvalidIdentifierFormat,
 )
-from neozen.storage import StorageProtocol
+from neozen.core.repository import RepositoryProtocol
 from neozen.core.subject import Subject
 
 # Default reserved usernames that cannot be registered
@@ -66,7 +66,7 @@ class UsernameIdentifier[S: UsernameSubjectModel](IdentifierProtocol[S]):
 
     def __init__(
         self,
-        username_storage: StorageProtocol[S],
+        username_storage: RepositoryProtocol[S],
         reserved_usernames: frozenset[str] | None = None,
     ) -> None:
         self.username_storage = username_storage
@@ -119,7 +119,7 @@ class UsernameIdentifierProvider[S: UsernameSubjectModel](IdentifierProvider[S])
 
     @dishka.provide(scope=dishka.Scope.REQUEST)
     def identifier[_S: UsernameSubjectModel](
-        self, subject: type[_S], username_storage: StorageProtocol[_S]
+        self, subject: type[_S], username_storage: RepositoryProtocol[_S]
     ) -> IdentifierProtocol[_S]:
         return UsernameIdentifier[_S](
             username_storage, reserved_usernames=self.reserved_usernames

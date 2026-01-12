@@ -18,7 +18,7 @@ from neozen.core.oauth.models import (
     OAuthRefreshTokenModel,
 )
 from neozen.core.oauth.types import CodeChallengeMethod
-from neozen.storage import DoesNotExist, StorageProtocol
+from neozen.core.repository import DoesNotExist, RepositoryProtocol
 
 
 class TokenEndpointError(Exception):
@@ -154,10 +154,10 @@ class TokenEndpoint[
 
     def __init__(
         self,
-        client_storage: StorageProtocol[OC],
-        authorization_code_storage: StorageProtocol[OAC],
-        access_token_storage: StorageProtocol[OAT],
-        refresh_token_storage: StorageProtocol[ORT],
+        client_storage: RepositoryProtocol[OC],
+        authorization_code_storage: RepositoryProtocol[OAC],
+        access_token_storage: RepositoryProtocol[OAT],
+        refresh_token_storage: RepositoryProtocol[ORT],
         token_hash_key: str,
         *,
         access_token_prefix: str = "nz_at_",

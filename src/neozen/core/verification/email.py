@@ -6,7 +6,7 @@ import typing
 from datetime import UTC, datetime, timedelta
 
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
-from neozen.storage import DoesNotExist, StorageProtocol
+from neozen.core.repository import DoesNotExist, RepositoryProtocol
 
 
 class EmailVerificationTokenModel(typing.Protocol):
@@ -91,7 +91,7 @@ class EmailVerificationService[T: EmailVerificationTokenModel]:
 
     def __init__(
         self,
-        storage: StorageProtocol[T],
+        storage: RepositoryProtocol[T],
         hash_key: str,
         *,
         token_prefix: str = "nz_ev_",

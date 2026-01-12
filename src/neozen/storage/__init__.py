@@ -1,7 +1,7 @@
 """Storage abstraction for NeoZen.
 
 This package provides storage backends for NeoZen models.
-The base module defines the RepositoryProtocol that all repositories implement.
+The base module re-exports RepositoryProtocol from neozen.core.repository.
 
 Available backends:
 - sqlalchemy: SQLAlchemy 2.0 with async support via Advanced-Alchemy
@@ -9,16 +9,10 @@ Available backends:
 
 from __future__ import annotations
 
-from neozen.storage.base import (
-    DoesNotExist,
-    RepositoryProtocol,
-    StorageError,
-    StorageProtocol,
-)
+from neozen.storage.base import DoesNotExist, RepositoryError, RepositoryProtocol
 
 __all__ = [
     "DoesNotExist",
+    "RepositoryError",
     "RepositoryProtocol",
-    "StorageError",
-    "StorageProtocol",
 ]

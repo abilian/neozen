@@ -24,7 +24,7 @@ async def _create_subject(
     from pwdlib import PasswordHash
 
     from neozen.storage import DoesNotExist
-    from neozen.storage.sqlalchemy import Subject, SubjectRepository
+    from neozen.storage.sqlalchemy import SubjectRepository
 
     storage = SubjectRepository(session=session)
 

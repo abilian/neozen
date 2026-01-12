@@ -13,7 +13,7 @@ from neozen.core.identifiers.base import (
     IdentifierVerificationError,
     InvalidIdentifierFormat,
 )
-from neozen.storage import StorageProtocol
+from neozen.core.repository import RepositoryProtocol
 from neozen.core.subject import Subject
 
 
@@ -34,7 +34,7 @@ class PhoneIdentifier[S: PhoneSubjectModel](IdentifierProtocol[S]):
 
     def __init__(
         self,
-        phone_storage: StorageProtocol[S],
+        phone_storage: RepositoryProtocol[S],
         default_region: str | None = None,
         allowed_regions: frozenset[str] | None = None,
     ) -> None:
@@ -98,7 +98,7 @@ class PhoneIdentifierProvider[S: PhoneSubjectModel](IdentifierProvider[S]):
 
     @dishka.provide(scope=dishka.Scope.REQUEST)
     def identifier[_S: PhoneSubjectModel](
-        self, subject: type[_S], phone_storage: StorageProtocol[_S]
+        self, subject: type[_S], phone_storage: RepositoryProtocol[_S]
     ) -> IdentifierProtocol[_S]:
         return PhoneIdentifier[_S](
             phone_storage,

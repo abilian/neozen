@@ -13,7 +13,7 @@ from neozen.core.identifiers.base import (
     IdentifierVerificationError,
     InvalidIdentifierFormat,
 )
-from neozen.storage import StorageProtocol
+from neozen.core.repository import RepositoryProtocol
 from neozen.core.subject import Subject
 
 
@@ -26,7 +26,7 @@ class EmailSubjectModel(Subject):
 class EmailIdentifier[S: EmailSubjectModel](IdentifierProtocol[S]):
     """Email-based identifier implementation."""
 
-    def __init__(self, email_storage: StorageProtocol[S]) -> None:
+    def __init__(self, email_storage: RepositoryProtocol[S]) -> None:
         self.email_storage = email_storage
 
     async def get_by_identifier(self, identifier: str) -> S:
@@ -53,7 +53,7 @@ class EmailIdentifierProvider[S: EmailSubjectModel](IdentifierProvider[S]):
 
     @dishka.provide(scope=dishka.Scope.REQUEST)
     def identifier[_S: EmailSubjectModel](
-        self, subject: type[_S], email_storage: StorageProtocol[_S]
+        self, subject: type[_S], email_storage: RepositoryProtocol[_S]
     ) -> IdentifierProtocol[_S]:
         return EmailIdentifier[_S](email_storage)
 

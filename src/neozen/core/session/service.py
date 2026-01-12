@@ -6,8 +6,8 @@ import typing
 from datetime import UTC, datetime, timedelta
 
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
+from neozen.core.repository import DoesNotExist, RepositoryProtocol
 from neozen.core.session.models import SessionModel
-from neozen.storage import DoesNotExist, StorageProtocol
 
 
 class SessionError(Exception):
@@ -80,7 +80,7 @@ class SessionService[S: SessionModel]:
 
     def __init__(
         self,
-        storage: StorageProtocol[S],
+        storage: RepositoryProtocol[S],
         hash_key: str,
         *,
         token_prefix: str = "nz_session_",

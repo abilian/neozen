@@ -8,7 +8,7 @@ from pydantic import BaseModel, ValidationError
 
 from neozen.core.exceptions import InvalidRequestError, NeoZenException
 from neozen.core.identifiers.base import IdentifierProtocol, InvalidIdentifierFormat
-from neozen.storage import DoesNotExist, StorageProtocol
+from neozen.core.repository import DoesNotExist, RepositoryProtocol
 from neozen.core.subject import Subject
 
 
@@ -73,7 +73,7 @@ class PasswordFactor[S: PasswordSubjectModel]:
     def __init__(
         self,
         identifier: IdentifierProtocol[S],
-        subject_storage: StorageProtocol[S],
+        subject_storage: RepositoryProtocol[S],
         hasher: PasswordHasherProtocol,
     ) -> None:
         self.identifier = identifier

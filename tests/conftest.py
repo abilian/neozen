@@ -42,7 +42,7 @@ def pytest_collection_modifyitems(config, items):
 import dataclasses
 import typing
 
-from neozen.storage import DoesNotExist, StorageProtocol
+from neozen.core.repository import DoesNotExist, RepositoryProtocol
 
 
 @dataclasses.dataclass
@@ -52,7 +52,7 @@ class MockModel:
     id: str
 
 
-class MockStorage[Model](StorageProtocol[Model]):
+class MockStorage[Model](RepositoryProtocol[Model]):
     """In-memory mock storage for testing."""
 
     def __init__(self, model: type[Model], data: list[Model] | None = None) -> None:
