@@ -102,16 +102,14 @@ class PasswordFactor[S: PasswordSubjectModel]:
         try:
             identifier = await self.identifier.parse_identifier(request.identifier)
         except InvalidIdentifierFormat as e:
-            raise InvalidRequestError(
-                [
-                    {
-                        "type": "value_error",
-                        "loc": ("identifier",),
-                        "msg": e.message,
-                        "input": request.identifier,
-                    }
-                ]
-            ) from e
+            raise InvalidRequestError([
+                {
+                    "type": "value_error",
+                    "loc": ("identifier",),
+                    "msg": e.message,
+                    "input": request.identifier,
+                }
+            ]) from e
 
         try:
             subject = await self.identifier.get_by_identifier(identifier)

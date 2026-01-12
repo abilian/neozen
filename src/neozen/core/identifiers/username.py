@@ -17,30 +17,28 @@ from neozen.core.repository import RepositoryProtocol
 from neozen.core.subject import Subject
 
 # Default reserved usernames that cannot be registered
-DEFAULT_RESERVED_USERNAMES = frozenset(
-    {
-        "admin",
-        "administrator",
-        "api",
-        "auth",
-        "contact",
-        "help",
-        "info",
-        "login",
-        "logout",
-        "neozen",
-        "null",
-        "oauth",
-        "register",
-        "root",
-        "signup",
-        "support",
-        "system",
-        "undefined",
-        "user",
-        "www",
-    }
-)
+DEFAULT_RESERVED_USERNAMES = frozenset({
+    "admin",
+    "administrator",
+    "api",
+    "auth",
+    "contact",
+    "help",
+    "info",
+    "login",
+    "logout",
+    "neozen",
+    "null",
+    "oauth",
+    "register",
+    "root",
+    "signup",
+    "support",
+    "system",
+    "undefined",
+    "user",
+    "www",
+})
 
 # Username validation pattern: alphanumeric, underscore, hyphen
 # Must start with alphanumeric, 3-32 characters

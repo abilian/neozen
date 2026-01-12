@@ -14,7 +14,6 @@ import secrets
 import typing
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import urlencode
 
 from jinja2 import Environment, FileSystemLoader
 from pwdlib import PasswordHash
@@ -37,6 +36,7 @@ from neozen.core.identifiers.base import (
     InvalidIdentifierFormat,
 )
 from neozen.core.session import SessionService
+from neozen.core.verification.email import EmailVerificationService
 from neozen.storage import DoesNotExist
 from neozen.storage.sqlalchemy import (
     EmailVerificationToken,
@@ -46,7 +46,6 @@ from neozen.storage.sqlalchemy import (
     Subject,
     SubjectRepository,
 )
-from neozen.core.verification.email import EmailVerificationService
 
 # Configuration
 SECRET_KEY = "demo-secret-key-change-in-production"

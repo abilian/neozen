@@ -1,4 +1,5 @@
 target-version = "py312"
+preview = true
 
 lint.select = [
     "ALL",
@@ -63,6 +64,7 @@ lint.extend-ignore = [
     "EM101", # 	raw-string-in-exception
     "S105", #  	hardcoded-password-string
     "UP047", # 	non-pep695-generic-function
+    "FURB113",
 ]
 
 [lint.extend-per-file-ignores]

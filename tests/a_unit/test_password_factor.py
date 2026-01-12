@@ -81,17 +81,19 @@ class TestAuthenticate:
         self, password_factor: PasswordFactor[MockPasswordSubject]
     ) -> None:
         with pytest.raises(InvalidRequestError):
-            await password_factor.authenticate(
-                {"identifier": 123, "password": "secret"}
-            )
+            await password_factor.authenticate({
+                "identifier": 123,
+                "password": "secret",
+            })
 
     async def test_not_existing_identifier(
         self, password_factor: PasswordFactor[MockPasswordSubject]
     ) -> None:
         with pytest.raises(InvalidCredentialsError):
-            await password_factor.authenticate(
-                {"identifier": "john", "password": "secret"}
-            )
+            await password_factor.authenticate({
+                "identifier": "john",
+                "password": "secret",
+            })
 
     async def test_not_set_hashed_password(
         self,
@@ -101,9 +103,10 @@ class TestAuthenticate:
         await storage.create(id="1", username="john", hashed_password=None)
 
         with pytest.raises(InvalidCredentialsError):
-            await password_factor.authenticate(
-                {"identifier": "john", "password": "secret"}
-            )
+            await password_factor.authenticate({
+                "identifier": "john",
+                "password": "secret",
+            })
 
     async def test_invalid_password(
         self,
@@ -114,9 +117,10 @@ class TestAuthenticate:
         await storage.create(id="1", username="john", hashed_password=hashed_password)
 
         with pytest.raises(InvalidCredentialsError):
-            await password_factor.authenticate(
-                {"identifier": "john", "password": "wrong_password"}
-            )
+            await password_factor.authenticate({
+                "identifier": "john",
+                "password": "wrong_password",
+            })
 
     async def test_valid(
         self,
@@ -126,9 +130,10 @@ class TestAuthenticate:
         hashed_password = password_factor.hasher.hash("password")
         await storage.create(id="1", username="john", hashed_password=hashed_password)
 
-        subject = await password_factor.authenticate(
-            {"identifier": "john", "password": "password"}
-        )
+        subject = await password_factor.authenticate({
+            "identifier": "john",
+            "password": "password",
+        })
 
         assert subject.id == "1"
         assert subject.hashed_password == hashed_password
@@ -142,9 +147,10 @@ class TestAuthenticate:
         hashed_password = Argon2Hasher(time_cost=1).hash("password")
         await storage.create(id="1", username="john", hashed_password=hashed_password)
 
-        subject = await password_factor.authenticate(
-            {"identifier": "john", "password": "password"}
-        )
+        subject = await password_factor.authenticate({
+            "identifier": "john",
+            "password": "password",
+        })
 
         assert subject.id == "1"
         # Hash should be upgraded

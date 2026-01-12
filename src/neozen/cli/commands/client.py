@@ -49,12 +49,10 @@ def list_clients(args: argparse.Namespace) -> int:
 
     if output_format == "json":
         print(
-            json.dumps(
-                {
-                    "clients": [],
-                    "message": "Demo mode - no database configured",
-                }
-            )
+            json.dumps({
+                "clients": [],
+                "message": "Demo mode - no database configured",
+            })
         )
     else:
         print("OAuth Clients")
