@@ -5,16 +5,16 @@ all: test lint
 check: lint
 
 lint:
-	uv run ruff check src tests
-	uv run ruff format . --check
+	uv run ruff check
+	uv run ruff format --check
 	uv run ty check src
-	uv run pyrefly check src
 	uv run mypy src
+	uv run pyrefly check src
 
 format:
-	uv run ruff format src tests
-	uv run ruff check src tests --fix
-	uv run ruff format src tests
+	uv run ruff format
+	uv run ruff check --fix
+	uv run ruff format
 
 test:
 	uv run pytest
