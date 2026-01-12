@@ -10,7 +10,7 @@ import os
 from collections.abc import Callable, Coroutine
 from functools import wraps
 from pathlib import Path
-from typing import Any, ParamSpec, TypeVar
+from typing import Any, Concatenate, ParamSpec, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
@@ -124,7 +124,7 @@ class DatabaseContext:
 
 
 def with_database(
-    func: Callable[P, Coroutine[Any, Any, R]],
+    func: Callable[Concatenate[AsyncSession, P], Coroutine[Any, Any, R]],
 ) -> Callable[P, R]:
     """Decorator to run async function with database context.
 

@@ -7,7 +7,7 @@ import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-import anyio
+from anyio import to_thread
 
 from neozen.core.email.base import EmailMessage, EmailSendError
 
@@ -83,7 +83,7 @@ class SMTPEmailSender:
 
         """
         # Run SMTP operations in a thread to avoid blocking
-        await anyio.to_thread.run_sync(self._send_sync, message)
+        await to_thread.run_sync(self._send_sync, message)
 
     def _send_sync(self, message: EmailMessage) -> None:
         """Synchronous SMTP send operation.

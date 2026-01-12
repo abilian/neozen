@@ -116,12 +116,13 @@ class PasswordFactor[S: PasswordSubjectModel]:
         except DoesNotExist:
             self._raise_invalid_credentials_timing_safe(request.password)
 
-        if subject.hashed_password is None:
+        hashed_password = subject.hashed_password
+        if hashed_password is None:
             self._raise_invalid_credentials_timing_safe(request.password)
 
-        # Verify the password
+        # Verify the password (cast needed for ty type checker)
         is_valid, updated_hash = self.hasher.verify_and_update(
-            request.password, subject.hashed_password
+            request.password, typing.cast(str, hashed_password)
         )
 
         if not is_valid:

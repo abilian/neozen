@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typing
 
+from advanced_alchemy.base import ModelProtocol
 from advanced_alchemy.exceptions import NotFoundError
 from advanced_alchemy.repository import SQLAlchemyAsyncRepository
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +17,7 @@ from neozen.storage.sqlalchemy.models import (
 )
 
 
-class NeoZenRepository[Model](SQLAlchemyAsyncRepository[Model]):
+class NeoZenRepository[Model: ModelProtocol](SQLAlchemyAsyncRepository[Model]):
     """Base repository for NeoZen with our expected interface.
 
     Wraps Advanced-Alchemy's repository and provides the interface
