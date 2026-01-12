@@ -1,0 +1,72 @@
+target-version = "py312"
+
+lint.select = [
+    "ALL",
+]
+
+lint.extend-ignore = [
+    # Later (or never)
+    "CPY",
+    "TC",
+    "D",
+    "DOC",
+    "FBT",
+    "PLR",
+    "TRY",
+    "ANN",
+    "RET",
+    "TD",
+    "PERF",
+    "RUF",
+    "PLC",
+    "A",
+    "ERA",
+
+    # False positive
+    "S101", # Use of `assert` detected
+    "D203", # one-blank-line-before-class
+    "D213", # multi-line-summary-second-line
+    "COM812", # ...
+    "T201", # Print...
+
+    # Fix later (or not)
+    "FBT001", # Boolean positional arg - common in widget/Textual APIs
+    "FBT002", # Boolean default arg - common in widget/Textual APIs
+    "FBT003", # Boolean positional value - common with reactive()
+    "ARG002", # Unused argument - common in watch methods/event handlers
+    "PLR0913", # Too many arguments - export functions need them
+    "S603", # subprocess call - intentional for $EDITOR
+    "BLE001", # Blind exception - acceptable for user-facing error handling
+    "SLF001", # Private member access - accessing own class's private attrs
+    "PLW2901", # Loop variable overwritten - common strip() pattern
+    "ANN003", # Missing **kwargs annotation - common in widget subclasses
+    "ANN001", # Missing arg annotation - event handlers
+    "PTH108", # os.unlink -> Path.unlink - contextlib.suppress pattern
+    "PTH123", # open() -> Path.open() - binary file writing
+    "S110", # try-except-pass - acceptable for config loading with defaults
+    "PLW0603", # global statement - used for singleton config/state
+    "TRY300", # return in try block - cleaner for import checks
+    # "TC001", # type-checking import - used at runtime
+    # "TC003", # type-checking import - not needed for protocol definitions
+    # "TC002", # type-checking import - Textual uses these at runtime
+    "PERF401", # list comprehension - explicit append loop is clearer
+]
+
+[lint.extend-per-file-ignores]
+"tests/**/*.py" = [
+    "BLE001", #  blind-except
+    "D",
+    "DOC",
+    "ANN",
+    "PLR2004",
+    "INP001",
+    "PLC0415", # runtime imports for optional dependencies
+    "E501", # line too long in test assertions
+    "N802", # naming
+    "S", # security
+]
+
+[lint.isort]
+combine-as-imports = true
+required-imports = ["from __future__ import annotations"]
+known-first-party = ["neozen"]
