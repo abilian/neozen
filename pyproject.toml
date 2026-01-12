@@ -74,7 +74,11 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"
+markers = [
+    "unit: Unit tests (fast, isolated, no I/O)",
+    "integration: Integration tests (component interactions)",
+    "e2e: End-to-end tests (full app/CLI workflows)",
+]
 
 [tool.mypy]
 warn_redundant_casts = true

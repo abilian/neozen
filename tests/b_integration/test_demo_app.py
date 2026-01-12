@@ -178,9 +178,9 @@ class TestProtectedAPI:
             "/api/login",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
-        # Use the session cookie
-        cookies = {"neozen_session": login_response.cookies["neozen_session"]}
-        response = await client.get("/api/me", cookies=cookies)
+        # Set the session cookie on client
+        client.cookies.set("neozen_session", login_response.cookies["neozen_session"])
+        response = await client.get("/api/me")
         assert response.status_code == 200
         data = response.json()
         assert data["email"] == "test@example.com"
@@ -200,10 +200,10 @@ class TestLogoutAPI:
             "/api/login",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
-        cookies = {"neozen_session": login_response.cookies["neozen_session"]}
+        client.cookies.set("neozen_session", login_response.cookies["neozen_session"])
 
         # Logout
-        response = await client.post("/api/logout", cookies=cookies)
+        response = await client.post("/api/logout")
         assert response.status_code == 200
         data = response.json()
         assert "Logged out" in data["message"]
@@ -218,13 +218,15 @@ class TestLogoutAPI:
             "/api/login",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
-        cookies = {"neozen_session": login_response.cookies["neozen_session"]}
+        session_token = login_response.cookies["neozen_session"]
+        client.cookies.set("neozen_session", session_token)
 
         # Logout
-        await client.post("/api/logout", cookies=cookies)
+        await client.post("/api/logout")
 
-        # Try to access protected route with old session
-        response = await client.get("/api/me", cookies=cookies)
+        # Try to access protected route with old session (re-set the cookie since logout clears it)
+        client.cookies.set("neozen_session", session_token)
+        response = await client.get("/api/me")
         assert response.status_code == 401
 
 
@@ -271,17 +273,19 @@ class TestFullFlowAPI:
             json={"email": "flow@example.com", "password": "testpassword123"},
         )
         assert login_response.status_code == 200
-        cookies = {"neozen_session": login_response.cookies["neozen_session"]}
+        session_token = login_response.cookies["neozen_session"]
+        client.cookies.set("neozen_session", session_token)
 
         # 3. Access protected resource
-        me_response = await client.get("/api/me", cookies=cookies)
+        me_response = await client.get("/api/me")
         assert me_response.status_code == 200
         assert me_response.json()["id"] == user_id
 
         # 4. Logout
-        logout_response = await client.post("/api/logout", cookies=cookies)
+        logout_response = await client.post("/api/logout")
         assert logout_response.status_code == 200
 
-        # 5. Verify session is invalidated
-        me_response = await client.get("/api/me", cookies=cookies)
+        # 5. Verify session is invalidated (re-set cookie since logout clears it)
+        client.cookies.set("neozen_session", session_token)
+        me_response = await client.get("/api/me")
         assert me_response.status_code == 401

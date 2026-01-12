@@ -1,17 +1,40 @@
-"""OAuth 2.1 server implementation for NeoZen."""
+"""OAuth 2.1 server implementation for NeoZen.
+
+Core business logic for OAuth. HTTP adapters are in neozen.web.oauth.
+"""
 
 from __future__ import annotations
 
 from neozen.core.oauth.authorization_code import (
     AuthorizationCodeGrant,
     AuthorizationCodeGrantConsentResponse,
-    AuthorizationCodeGrantError,
     AuthorizationCodeGrantGrantedResponse,
     AuthorizationCodeGrantProvider,
     AuthorizationCodeGrantRedirectionError,
     AuthorizationCodeGrantRequest,
     MissingOrInvalidClientIDError,
-    OAuthClientError,
+)
+from neozen.core.oauth.exceptions import (
+    AuthorizationCodeExpiredError,
+    AuthorizationCodeNotFoundError,
+    AuthorizationError,
+    AuthorizationRedirectError,
+    ClientMismatchError,
+    InvalidClientError,
+    OAuthError,
+    PKCEVerificationFailedError,
+    RedirectUriMismatchError,
+    RefreshTokenExpiredError,
+    RefreshTokenNotFoundError,
+    RefreshTokenRevokedError,
+    ScopeExceedsGrantError,
+    TokenError,
+    TokenInvalidClientError,
+    TokenInvalidGrantError,
+    TokenInvalidRequestError,
+    TokenInvalidScopeError,
+    TokenUnauthorizedClientError,
+    TokenUnsupportedGrantTypeError,
     UnauthenticatedSubjectError,
 )
 from neozen.core.oauth.models import (
@@ -21,18 +44,11 @@ from neozen.core.oauth.models import (
     OAuthGrantModel,
     OAuthRefreshTokenModel,
 )
-from neozen.core.oauth.token_endpoint import (
-    AuthorizationCodeTokenRequest,
-    InvalidClientError,
-    InvalidGrantError,
-    InvalidRequestError,
-    InvalidScopeError,
-    RefreshTokenRequest,
-    TokenEndpoint,
-    TokenEndpointError,
-    TokenResponse,
-    UnauthorizedClientError,
-    UnsupportedGrantTypeError,
+from neozen.core.oauth.pkce import compute_s256_challenge, verify_pkce
+from neozen.core.oauth.services import (
+    AccessTokenResult,
+    OAuthTokenService,
+    TokenPair,
 )
 from neozen.core.oauth.types import CodeChallengeMethod
 
@@ -45,27 +61,44 @@ __all__ = [
     "OAuthClientModel",
     "OAuthGrantModel",
     "OAuthRefreshTokenModel",
+    # Services
+    "AccessTokenResult",
+    "OAuthTokenService",
+    "TokenPair",
+    # PKCE
+    "compute_s256_challenge",
+    "verify_pkce",
     # Authorization Code Grant
     "AuthorizationCodeGrant",
     "AuthorizationCodeGrantConsentResponse",
-    "AuthorizationCodeGrantError",
     "AuthorizationCodeGrantGrantedResponse",
     "AuthorizationCodeGrantProvider",
     "AuthorizationCodeGrantRedirectionError",
     "AuthorizationCodeGrantRequest",
     "MissingOrInvalidClientIDError",
-    "OAuthClientError",
-    "UnauthenticatedSubjectError",
-    # Token Endpoint
-    "AuthorizationCodeTokenRequest",
+    # Exceptions - Base
+    "OAuthError",
+    # Exceptions - Authorization
+    "AuthorizationError",
+    "AuthorizationRedirectError",
     "InvalidClientError",
-    "InvalidGrantError",
-    "InvalidRequestError",
-    "InvalidScopeError",
-    "RefreshTokenRequest",
-    "TokenEndpoint",
-    "TokenEndpointError",
-    "TokenResponse",
-    "UnauthorizedClientError",
-    "UnsupportedGrantTypeError",
+    "UnauthenticatedSubjectError",
+    # Exceptions - Token
+    "TokenError",
+    "TokenInvalidClientError",
+    "TokenInvalidGrantError",
+    "TokenInvalidRequestError",
+    "TokenInvalidScopeError",
+    "TokenUnauthorizedClientError",
+    "TokenUnsupportedGrantTypeError",
+    # Exceptions - Business Logic
+    "AuthorizationCodeExpiredError",
+    "AuthorizationCodeNotFoundError",
+    "ClientMismatchError",
+    "PKCEVerificationFailedError",
+    "RedirectUriMismatchError",
+    "RefreshTokenExpiredError",
+    "RefreshTokenNotFoundError",
+    "RefreshTokenRevokedError",
+    "ScopeExceedsGrantError",
 ]

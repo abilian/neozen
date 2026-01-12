@@ -650,7 +650,11 @@ def create_app() -> Starlette:
     # Static files (if needed in the future)
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():
-        routes = html_routes + api_routes + [Mount("/static", StaticFiles(directory=str(static_dir)), name="static")]
+        routes = (
+            html_routes
+            + api_routes
+            + [Mount("/static", StaticFiles(directory=str(static_dir)), name="static")]
+        )
     else:
         routes = html_routes + api_routes
 

@@ -9,7 +9,12 @@ import dishka
 from pydantic import AnyUrl, BaseModel, Field, HttpUrl, ValidationError
 
 from neozen.core.crypto import generate_token_hash_pair
-from neozen.core.exceptions import NeoZenException
+from neozen.core.oauth.exceptions import (
+    AuthorizationErrorCode,
+    AuthorizationRedirectError,
+    InvalidClientError,
+    UnauthenticatedSubjectError,
+)
 from neozen.core.oauth.models import (
     OAuthAuthorizationCodeModel,
     OAuthClientModel,
@@ -20,58 +25,29 @@ from neozen.core.repository import DoesNotExist, RepositoryProtocol
 from neozen.core.subject import Subject
 
 
-class OAuthClientError(NeoZenException):
-    """Base exception for all OAuth client-related errors."""
-
-
-AuthorizationCodeGrantErrorCode = typing.Literal[
-    "invalid_request",
-    "unauthorized_client",
-    "access_denied",
-    "unsupported_response_type",
-    "invalid_scope",
-    "server_error",
-    "temporarily_unavailable",
-]
-
-
-class AuthorizationCodeGrantError(OAuthClientError):
-    """Base exception for all Authorization Code Grant errors."""
-
-
-class UnauthenticatedSubjectError(AuthorizationCodeGrantError):
-    """Error raised when the subject is not authenticated."""
-
-    def __init__(self) -> None:
-        message = "The subject is not authenticated."
-        super().__init__(message)
-
-
-class MissingOrInvalidClientIDError(AuthorizationCodeGrantError):
+class MissingOrInvalidClientIDError(InvalidClientError):
     """Error raised when the client_id is missing or invalid in the request."""
 
     def __init__(self) -> None:
-        message = "The 'client_id' parameter is missing or invalid."
-        super().__init__(message)
+        super().__init__("The 'client_id' parameter is missing or invalid.")
 
 
-class AuthorizationCodeGrantRedirectionError(AuthorizationCodeGrantError):
-    """Error that's meant to be redirected to the client application."""
+class AuthorizationCodeGrantRedirectionError(AuthorizationRedirectError):
+    """Error that should be redirected to the client application.
 
-    error: AuthorizationCodeGrantErrorCode
-    error_description: str | None = None
-    error_uri: HttpUrl | None = None
+    Extends AuthorizationRedirectError with error_uri for HTTP redirects.
+    """
+
+    error_uri: HttpUrl | None
 
     def __init__(
         self,
-        error: AuthorizationCodeGrantErrorCode,
+        error: AuthorizationErrorCode,
         error_description: str | None = None,
         error_uri: HttpUrl | None = None,
     ) -> None:
-        self.error = error
-        self.error_description = error_description
         self.error_uri = error_uri
-        super().__init__(error)
+        super().__init__(error, error_description)
 
 
 class AuthorizationCodeGrantRequest(BaseModel):
@@ -276,13 +252,9 @@ class AuthorizationCodeGrantProvider(dishka.Provider):
 __all__ = [
     "AuthorizationCodeGrant",
     "AuthorizationCodeGrantConsentResponse",
-    "AuthorizationCodeGrantError",
-    "AuthorizationCodeGrantErrorCode",
     "AuthorizationCodeGrantGrantedResponse",
     "AuthorizationCodeGrantProvider",
     "AuthorizationCodeGrantRedirectionError",
     "AuthorizationCodeGrantRequest",
     "MissingOrInvalidClientIDError",
-    "OAuthClientError",
-    "UnauthenticatedSubjectError",
 ]
