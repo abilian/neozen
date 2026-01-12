@@ -189,7 +189,11 @@ class EmailVerificationService[T: EmailVerificationTokenModel]:
 
         # Check expiration
         now = datetime.now(UTC)
-        if verification.expires_at < now:
+        expires_at = verification.expires_at
+        # Handle offset-naive datetimes from database
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at < now:
             raise EmailVerificationTokenExpiredError
 
         # Mark as used

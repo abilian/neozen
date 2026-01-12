@@ -266,7 +266,11 @@ class TokenEndpoint[
 
         # Check expiration
         now = datetime.now(UTC)
-        if auth_code.expires_at < now:
+        expires_at = auth_code.expires_at
+        # Handle offset-naive datetimes from database
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at < now:
             msg = "Authorization code has expired."
             raise InvalidGrantError(msg)
 
@@ -365,9 +369,14 @@ class TokenEndpoint[
 
         # Check expiration
         now = datetime.now(UTC)
-        if stored_refresh.expires_at and stored_refresh.expires_at < now:
-            msg = "Refresh token has expired."
-            raise InvalidGrantError(msg)
+        if stored_refresh.expires_at:
+            expires_at = stored_refresh.expires_at
+            # Handle offset-naive datetimes from database
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at < now:
+                msg = "Refresh token has expired."
+                raise InvalidGrantError(msg)
 
         # Verify client
         client_id = request.client_id or auth_client_id or stored_refresh.client_id

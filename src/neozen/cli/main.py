@@ -47,7 +47,14 @@ Examples:
     serve_parser = subparsers.add_parser(
         "serve",
         help="Run the NeoZen demo application",
-        description="Start the demo Starlette application with uvicorn.",
+        description="Start a demo application with uvicorn.",
+    )
+    serve_parser.add_argument(
+        "--demo",
+        "-d",
+        choices=["starlette"],
+        default="starlette",
+        help="Demo to run (default: starlette)",
     )
     serve_parser.add_argument(
         "--host",

@@ -1,14 +1,25 @@
-"""Integration tests for the NeoZen demo application."""
+"""Integration tests for the NeoZen demo application.
+
+Tests both the web UI endpoints and JSON API endpoints.
+"""
 
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from neozen.cli.database import init_database
-from neozen.demo.app import AppState, create_app
+
+# Add project root to path for demos package
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from demos.starlette.app import AppState, create_app
 
 
 @pytest.fixture
@@ -47,23 +58,22 @@ async def client(app):
 
 @pytest.mark.anyio
 class TestIndex:
-    """Tests for the index endpoint."""
+    """Tests for the index (home page) endpoint."""
 
-    async def test_index_returns_api_info(self, client: AsyncClient) -> None:
+    async def test_index_returns_html(self, client: AsyncClient) -> None:
         response = await client.get("/")
         assert response.status_code == 200
-        data = response.json()
-        assert data["name"] == "NeoZen Demo API"
-        assert "endpoints" in data
+        assert "text/html" in response.headers["content-type"]
+        assert "NeoZen" in response.text
 
 
 @pytest.mark.anyio
-class TestRegistration:
-    """Tests for the registration endpoint."""
+class TestRegistrationAPI:
+    """Tests for the registration JSON API endpoint."""
 
     async def test_register_success(self, client: AsyncClient) -> None:
         response = await client.post(
-            "/register",
+            "/api/register",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
         assert response.status_code == 201
@@ -74,7 +84,7 @@ class TestRegistration:
 
     async def test_register_invalid_email(self, client: AsyncClient) -> None:
         response = await client.post(
-            "/register",
+            "/api/register",
             json={"email": "invalid-email", "password": "securepassword123"},
         )
         assert response.status_code == 400
@@ -82,7 +92,9 @@ class TestRegistration:
         assert "error" in data
 
     async def test_register_missing_fields(self, client: AsyncClient) -> None:
-        response = await client.post("/register", json={"email": "test@example.com"})
+        response = await client.post(
+            "/api/register", json={"email": "test@example.com"}
+        )
         assert response.status_code == 400
         data = response.json()
         assert "required" in data["error"]
@@ -90,12 +102,12 @@ class TestRegistration:
     async def test_register_duplicate_email(self, client: AsyncClient) -> None:
         # First registration
         await client.post(
-            "/register",
+            "/api/register",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
         # Second registration with same email
         response = await client.post(
-            "/register",
+            "/api/register",
             json={"email": "test@example.com", "password": "differentpassword"},
         )
         assert response.status_code == 409
@@ -104,18 +116,18 @@ class TestRegistration:
 
 
 @pytest.mark.anyio
-class TestLogin:
-    """Tests for the login endpoint."""
+class TestLoginAPI:
+    """Tests for the login JSON API endpoint."""
 
     async def test_login_success(self, client: AsyncClient) -> None:
         # Register first
         await client.post(
-            "/register",
+            "/api/register",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
         # Login
         response = await client.post(
-            "/login",
+            "/api/login",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
         assert response.status_code == 200
@@ -126,12 +138,12 @@ class TestLogin:
     async def test_login_invalid_password(self, client: AsyncClient) -> None:
         # Register first
         await client.post(
-            "/register",
+            "/api/register",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
         # Login with wrong password
         response = await client.post(
-            "/login",
+            "/api/login",
             json={"email": "test@example.com", "password": "wrongpassword"},
         )
         assert response.status_code == 401
@@ -140,18 +152,18 @@ class TestLogin:
 
     async def test_login_nonexistent_user(self, client: AsyncClient) -> None:
         response = await client.post(
-            "/login",
+            "/api/login",
             json={"email": "nonexistent@example.com", "password": "password"},
         )
         assert response.status_code == 401
 
 
 @pytest.mark.anyio
-class TestProtectedRoutes:
-    """Tests for protected routes."""
+class TestProtectedAPI:
+    """Tests for protected JSON API routes."""
 
     async def test_me_without_auth(self, client: AsyncClient) -> None:
-        response = await client.get("/me")
+        response = await client.get("/api/me")
         assert response.status_code == 401
         data = response.json()
         assert "Not authenticated" in data["error"]
@@ -159,60 +171,39 @@ class TestProtectedRoutes:
     async def test_me_with_auth(self, client: AsyncClient) -> None:
         # Register and login
         await client.post(
-            "/register",
+            "/api/register",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
         login_response = await client.post(
-            "/login",
+            "/api/login",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
         # Use the session cookie
         cookies = {"neozen_session": login_response.cookies["neozen_session"]}
-        response = await client.get("/me", cookies=cookies)
+        response = await client.get("/api/me", cookies=cookies)
         assert response.status_code == 200
         data = response.json()
         assert data["email"] == "test@example.com"
 
-    async def test_protected_without_auth(self, client: AsyncClient) -> None:
-        response = await client.get("/protected")
-        assert response.status_code == 401
-
-    async def test_protected_with_auth(self, client: AsyncClient) -> None:
-        # Register and login
-        await client.post(
-            "/register",
-            json={"email": "test@example.com", "password": "securepassword123"},
-        )
-        login_response = await client.post(
-            "/login",
-            json={"email": "test@example.com", "password": "securepassword123"},
-        )
-        # Use the session cookie
-        cookies = {"neozen_session": login_response.cookies["neozen_session"]}
-        response = await client.get("/protected", cookies=cookies)
-        assert response.status_code == 200
-        data = response.json()
-        assert "access" in data["message"]
-
 
 @pytest.mark.anyio
-class TestLogout:
-    """Tests for the logout endpoint."""
+class TestLogoutAPI:
+    """Tests for the logout JSON API endpoint."""
 
     async def test_logout_success(self, client: AsyncClient) -> None:
         # Register and login
         await client.post(
-            "/register",
+            "/api/register",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
         login_response = await client.post(
-            "/login",
+            "/api/login",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
         cookies = {"neozen_session": login_response.cookies["neozen_session"]}
 
         # Logout
-        response = await client.post("/logout", cookies=cookies)
+        response = await client.post("/api/logout", cookies=cookies)
         assert response.status_code == 200
         data = response.json()
         assert "Logged out" in data["message"]
@@ -220,31 +211,55 @@ class TestLogout:
     async def test_logout_invalidates_session(self, client: AsyncClient) -> None:
         # Register and login
         await client.post(
-            "/register",
+            "/api/register",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
         login_response = await client.post(
-            "/login",
+            "/api/login",
             json={"email": "test@example.com", "password": "securepassword123"},
         )
         cookies = {"neozen_session": login_response.cookies["neozen_session"]}
 
         # Logout
-        await client.post("/logout", cookies=cookies)
+        await client.post("/api/logout", cookies=cookies)
 
         # Try to access protected route with old session
-        response = await client.get("/me", cookies=cookies)
+        response = await client.get("/api/me", cookies=cookies)
         assert response.status_code == 401
 
 
 @pytest.mark.anyio
-class TestFullFlow:
-    """End-to-end flow tests."""
+class TestWebUI:
+    """Tests for web UI endpoints."""
+
+    async def test_login_page_returns_html(self, client: AsyncClient) -> None:
+        response = await client.get("/login")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Login" in response.text
+
+    async def test_register_page_returns_html(self, client: AsyncClient) -> None:
+        response = await client.get("/register")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Register" in response.text
+
+    async def test_dashboard_redirects_when_not_logged_in(
+        self, client: AsyncClient
+    ) -> None:
+        response = await client.get("/dashboard", follow_redirects=False)
+        assert response.status_code == 303
+        assert "/login" in response.headers["location"]
+
+
+@pytest.mark.anyio
+class TestFullFlowAPI:
+    """End-to-end flow tests using JSON API."""
 
     async def test_full_auth_flow(self, client: AsyncClient) -> None:
         # 1. Register
         reg_response = await client.post(
-            "/register",
+            "/api/register",
             json={"email": "flow@example.com", "password": "testpassword123"},
         )
         assert reg_response.status_code == 201
@@ -252,25 +267,21 @@ class TestFullFlow:
 
         # 2. Login
         login_response = await client.post(
-            "/login",
+            "/api/login",
             json={"email": "flow@example.com", "password": "testpassword123"},
         )
         assert login_response.status_code == 200
         cookies = {"neozen_session": login_response.cookies["neozen_session"]}
 
         # 3. Access protected resource
-        me_response = await client.get("/me", cookies=cookies)
+        me_response = await client.get("/api/me", cookies=cookies)
         assert me_response.status_code == 200
         assert me_response.json()["id"] == user_id
 
-        # 4. Access another protected resource
-        protected_response = await client.get("/protected", cookies=cookies)
-        assert protected_response.status_code == 200
-
-        # 5. Logout
-        logout_response = await client.post("/logout", cookies=cookies)
+        # 4. Logout
+        logout_response = await client.post("/api/logout", cookies=cookies)
         assert logout_response.status_code == 200
 
-        # 6. Verify session is invalidated
-        me_response = await client.get("/me", cookies=cookies)
+        # 5. Verify session is invalidated
+        me_response = await client.get("/api/me", cookies=cookies)
         assert me_response.status_code == 401

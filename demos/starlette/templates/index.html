@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}NeoZen - Authentication Demo{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>Welcome to NeoZen</h1>
+    <p>A framework-agnostic authentication toolkit for Python</p>
+
+    {% if current_user %}
+        <p>You are logged in as <strong>{{ current_user.email }}</strong></p>
+        <a href="/dashboard" role="button">Go to Dashboard</a>
+    {% else %}
+        <div class="grid" style="max-width: 400px; margin: 2rem auto;">
+            <a href="/login" role="button" class="outline">Login</a>
+            <a href="/register" role="button">Register</a>
+        </div>
+    {% endif %}
+</div>
+
+<section>
+    <h2>Features</h2>
+    <div class="grid">
+        <article>
+            <h3>Secure Authentication</h3>
+            <p>Email + password authentication with Argon2id hashing and timing-safe comparisons.</p>
+        </article>
+        <article>
+            <h3>Session Management</h3>
+            <p>Secure session tokens with sliding window expiration and automatic refresh.</p>
+        </article>
+        <article>
+            <h3>Framework Agnostic</h3>
+            <p>Works with Starlette, Litestar, Flask, and any WSGI/ASGI application.</p>
+        </article>
+    </div>
+</section>
+
+<section>
+    <h2>API Endpoints</h2>
+    <p>This demo also provides JSON API endpoints:</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Method</th>
+                <th>Endpoint</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>POST</code></td>
+                <td><code>/api/register</code></td>
+                <td>Register a new user</td>
+            </tr>
+            <tr>
+                <td><code>POST</code></td>
+                <td><code>/api/login</code></td>
+                <td>Login and get session cookie</td>
+            </tr>
+            <tr>
+                <td><code>POST</code></td>
+                <td><code>/api/logout</code></td>
+                <td>Logout and revoke session</td>
+            </tr>
+            <tr>
+                <td><code>GET</code></td>
+                <td><code>/api/me</code></td>
+                <td>Get current user profile</td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+{% endblock %}
