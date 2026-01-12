@@ -254,9 +254,10 @@ async def login_submit(request: Request) -> Response:
         password_factor = state.get_password_factor(session)
 
         try:
-            subject = await password_factor.authenticate(
-                {"identifier": email, "password": password}
-            )
+            subject = await password_factor.authenticate({
+                "identifier": email,
+                "password": password,
+            })
         except (InvalidCredentialsError, InvalidRequestError):
             flash(request, "Invalid email or password", "error")
             return render_template(
@@ -543,9 +544,10 @@ async def api_login(request: Request) -> Response:
 
         # Authenticate
         try:
-            subject = await password_factor.authenticate(
-                {"identifier": email, "password": password}
-            )
+            subject = await password_factor.authenticate({
+                "identifier": email,
+                "password": password,
+            })
         except (InvalidCredentialsError, InvalidRequestError):
             return json_error("Invalid email or password", status_code=401)
 
@@ -562,13 +564,11 @@ async def api_login(request: Request) -> Response:
 
         await session.commit()
 
-        response = JSONResponse(
-            {
-                "message": "Login successful",
-                "user_id": subject.id,
-                "email": subject.email,
-            }
-        )
+        response = JSONResponse({
+            "message": "Login successful",
+            "user_id": subject.id,
+            "email": subject.email,
+        })
         response.set_cookie(
             SESSION_COOKIE_NAME,
             session_token,
@@ -607,16 +607,14 @@ async def api_me(request: Request) -> Response:
         if not subject:
             return json_error("Not authenticated", status_code=401)
 
-        return JSONResponse(
-            {
-                "id": subject.id,
-                "email": subject.email,
-                "is_active": subject.is_active,
-                "created_at": subject.created_at.isoformat()
-                if subject.created_at
-                else None,
-            }
-        )
+        return JSONResponse({
+            "id": subject.id,
+            "email": subject.email,
+            "is_active": subject.is_active,
+            "created_at": subject.created_at.isoformat()
+            if subject.created_at
+            else None,
+        })
 
 
 # =============================================================================

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import typing
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import dishka
@@ -62,10 +63,10 @@ class AuthorizationCodeGrantRequest(BaseModel):
     code_challenge_method: CodeChallengeMethod = "plain"
 
 
-class AuthorizationCodeGrantConsentResponse[S: Subject]:
+@dataclass
+class AuthorizationCodeGrantConsentResponse:
     """Response when user consent is required."""
 
-    subject: S
     client: OAuthClientModel
     scope: str | None
     redirect_uri: str | None
@@ -73,24 +74,8 @@ class AuthorizationCodeGrantConsentResponse[S: Subject]:
     code_challenge: str
     code_challenge_method: CodeChallengeMethod
 
-    def __init__(
-        self,
-        *,
-        client: OAuthClientModel,
-        scope: str | None,
-        redirect_uri: str | None,
-        state: str | None,
-        code_challenge: str,
-        code_challenge_method: CodeChallengeMethod,
-    ) -> None:
-        self.client = client
-        self.scope = scope
-        self.redirect_uri = redirect_uri
-        self.state = state
-        self.code_challenge = code_challenge
-        self.code_challenge_method = code_challenge_method
 
-
+@dataclass
 class AuthorizationCodeGrantGrantedResponse[S: Subject]:
     """Response when authorization is granted."""
 
@@ -98,19 +83,6 @@ class AuthorizationCodeGrantGrantedResponse[S: Subject]:
     client: OAuthClientModel
     code: str
     authorization_code: OAuthAuthorizationCodeModel
-
-    def __init__(
-        self,
-        *,
-        subject: S,
-        client: OAuthClientModel,
-        code: str,
-        authorization_code: OAuthAuthorizationCodeModel,
-    ) -> None:
-        self.subject = subject
-        self.client = client
-        self.code = code
-        self.authorization_code = authorization_code
 
 
 _DEFAULT_CODE_PREFIX = "nz_ac_"
@@ -143,8 +115,7 @@ class AuthorizationCodeGrant[
     async def __call__[S: Subject](
         self, subject: S | None, payload: dict[str, typing.Any]
     ) -> (
-        AuthorizationCodeGrantConsentResponse[S]
-        | AuthorizationCodeGrantGrantedResponse[S]
+        AuthorizationCodeGrantConsentResponse | AuthorizationCodeGrantGrantedResponse[S]
     ):
         """Process an authorization code grant request.
 
