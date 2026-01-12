@@ -183,7 +183,11 @@ class SessionService[S: SessionModel]:
 
         # Check expiration
         now = datetime.now(UTC)
-        if session.expires_at < now:
+        expires_at = session.expires_at
+        # Handle timezone-naive datetimes from SQLite
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at < now:
             raise SessionExpiredError
 
         # Update activity and extend expiration if enabled
@@ -193,7 +197,11 @@ class SessionService[S: SessionModel]:
             if self.sliding_window_seconds:
                 new_expires = now + timedelta(seconds=self.sliding_window_seconds)
                 # Don't extend beyond original max lifetime
-                max_expires = session.created_at + timedelta(
+                created_at = session.created_at
+                # Handle timezone-naive datetimes from SQLite
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=UTC)
+                max_expires = created_at + timedelta(
                     seconds=self.session_lifetime_seconds
                 )
                 updates["expires_at"] = min(new_expires, max_expires)

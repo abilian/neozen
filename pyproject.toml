@@ -24,9 +24,16 @@ phone = [
 sqlalchemy = [
     "sqlalchemy>=2.0.0",
 ]
-all = [
-    "neozen[password,phone,sqlalchemy]",
+demo = [
+    "starlette>=0.40.0",
+    "uvicorn>=0.30.0",
 ]
+all = [
+    "neozen[password,phone,sqlalchemy,demo]",
+]
+
+[project.scripts]
+neozen = "neozen.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -52,6 +59,10 @@ dev = [
     "phonenumbers>=9.0.0",
     "pwdlib[argon2]>=0.3.0",
     "sqlalchemy[asyncio]>=2.0.0",
+    # Demo dependencies
+    "starlette>=0.40.0",
+    "uvicorn>=0.30.0",
+    "httpx>=0.28.0",
 ]
 
 [tool.pytest.ini_options]
