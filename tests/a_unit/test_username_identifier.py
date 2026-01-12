@@ -6,7 +6,10 @@ import dataclasses
 
 import pytest
 
-from neozen.core.identifiers.base import IdentifierVerificationError, InvalidIdentifierFormat
+from neozen.core.identifiers.base import (
+    IdentifierVerificationError,
+    InvalidIdentifierFormat,
+)
 from neozen.core.identifiers.username import (
     DEFAULT_RESERVED_USERNAMES,
     UsernameIdentifier,

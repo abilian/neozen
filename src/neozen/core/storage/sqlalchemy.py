@@ -34,7 +34,7 @@ class SQLAlchemyStorage[Model](StorageProtocol[Model]):
         result = await self.session.execute(statement)
         obj = result.scalar_one_or_none()
         if obj is None:
-            raise DoesNotExist()
+            raise DoesNotExist
         return obj
 
     async def create(self, **data: typing.Any) -> Model:

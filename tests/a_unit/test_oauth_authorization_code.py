@@ -74,7 +74,9 @@ def authorization_code_grant(
     client_storage: MockStorage[MockOAuthClient],
     grant_storage: MockStorage[MockOAuthGrant],
     authorization_code_storage: MockStorage[MockOAuthAuthorizationCode],
-) -> AuthorizationCodeGrant[MockOAuthClient, MockOAuthGrant, MockOAuthAuthorizationCode]:
+) -> AuthorizationCodeGrant[
+    MockOAuthClient, MockOAuthGrant, MockOAuthAuthorizationCode
+]:
     return AuthorizationCodeGrant(
         oauth_client_storage=client_storage,
         oauth_grant_storage=grant_storage,

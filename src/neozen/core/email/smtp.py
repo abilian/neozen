@@ -97,7 +97,8 @@ class SMTPEmailSender:
         """
         from_addr = message.from_addr or self.default_from
         if not from_addr:
-            raise EmailSendError("No sender address specified and no default set.")
+            msg = "No sender address specified and no default set."
+            raise EmailSendError(msg)
 
         # Build the email
         if message.body_html:
@@ -125,20 +126,21 @@ class SMTPEmailSender:
                 ) as server:
                     self._authenticate_and_send(server, from_addr, message, msg)
             else:
-                with smtplib.SMTP(
-                    self.host, self.port, timeout=self.timeout
-                ) as server:
+                with smtplib.SMTP(self.host, self.port, timeout=self.timeout) as server:
                     if self.use_tls:
                         context = ssl.create_default_context()
                         server.starttls(context=context)
                     self._authenticate_and_send(server, from_addr, message, msg)
 
         except smtplib.SMTPException as e:
-            raise EmailSendError(f"SMTP error: {e}", original_error=e) from e
+            msg = f"SMTP error: {e}"
+            raise EmailSendError(msg, original_error=e) from e
         except TimeoutError as e:
-            raise EmailSendError("SMTP connection timeout", original_error=e) from e
+            msg = "SMTP connection timeout"
+            raise EmailSendError(msg, original_error=e) from e
         except OSError as e:
-            raise EmailSendError(f"Network error: {e}", original_error=e) from e
+            msg = f"Network error: {e}"
+            raise EmailSendError(msg, original_error=e) from e
 
     def _authenticate_and_send(
         self,

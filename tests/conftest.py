@@ -64,7 +64,7 @@ class MockStorage[Model](StorageProtocol[Model]):
         for obj in self._data:
             if all(getattr(obj, key) == value for key, value in filters.items()):
                 return obj
-        raise DoesNotExist()
+        raise DoesNotExist
 
     async def create(self, **data: typing.Any) -> Model:
         obj = self.model(**data)

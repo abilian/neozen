@@ -57,33 +57,31 @@ class PhoneIdentifier[S: PhoneSubjectModel](IdentifierProtocol[S]):
 
     async def parse_identifier(self, identifier: typing.Any) -> str:
         if not isinstance(identifier, str):
-            raise InvalidIdentifierFormat("Phone number must be a string.")
+            msg = "Phone number must be a string."
+            raise InvalidIdentifierFormat(msg)
         return identifier
 
     async def verify_identifier(self, identifier: str) -> str:
         try:
             parsed = phonenumbers.parse(identifier, self.default_region)
         except phonenumbers.NumberParseException as e:
-            raise IdentifierVerificationError(f"Invalid phone number: {e}") from e
+            msg = f"Invalid phone number: {e}"
+            raise IdentifierVerificationError(msg) from e
 
         # Validate the number
         if not phonenumbers.is_valid_number(parsed):
-            raise IdentifierVerificationError(
-                "The phone number is not valid for its region."
-            )
+            msg = "The phone number is not valid for its region."
+            raise IdentifierVerificationError(msg)
 
         # Check region restrictions if configured
         if self.allowed_regions is not None:
             region = phonenumbers.region_code_for_number(parsed)
             if region not in self.allowed_regions:
-                raise IdentifierVerificationError(
-                    f"Phone numbers from region '{region}' are not allowed."
-                )
+                msg = f"Phone numbers from region '{region}' are not allowed."
+                raise IdentifierVerificationError(msg)
 
         # Return in E.164 format
-        return phonenumbers.format_number(
-            parsed, phonenumbers.PhoneNumberFormat.E164
-        )
+        return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
 
 
 class PhoneIdentifierProvider[S: PhoneSubjectModel](IdentifierProvider[S]):

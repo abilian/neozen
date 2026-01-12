@@ -17,28 +17,30 @@ from neozen.core.storage import StorageProtocol
 from neozen.core.subject import Subject
 
 # Default reserved usernames that cannot be registered
-DEFAULT_RESERVED_USERNAMES = frozenset({
-    "admin",
-    "administrator",
-    "api",
-    "auth",
-    "contact",
-    "help",
-    "info",
-    "login",
-    "logout",
-    "neozen",
-    "null",
-    "oauth",
-    "register",
-    "root",
-    "signup",
-    "support",
-    "system",
-    "undefined",
-    "user",
-    "www",
-})
+DEFAULT_RESERVED_USERNAMES = frozenset(
+    {
+        "admin",
+        "administrator",
+        "api",
+        "auth",
+        "contact",
+        "help",
+        "info",
+        "login",
+        "logout",
+        "neozen",
+        "null",
+        "oauth",
+        "register",
+        "root",
+        "signup",
+        "support",
+        "system",
+        "undefined",
+        "user",
+        "www",
+    }
+)
 
 # Username validation pattern: alphanumeric, underscore, hyphen
 # Must start with alphanumeric, 3-32 characters
@@ -76,35 +78,34 @@ class UsernameIdentifier[S: UsernameSubjectModel](IdentifierProtocol[S]):
 
     async def parse_identifier(self, identifier: typing.Any) -> str:
         if not isinstance(identifier, str):
-            raise InvalidIdentifierFormat("Username must be a string.")
+            msg = "Username must be a string."
+            raise InvalidIdentifierFormat(msg)
         return identifier
 
     async def verify_identifier(self, identifier: str) -> str:
         # Check length first for better error messages
         if len(identifier) < 3:
-            raise IdentifierVerificationError(
-                "Username must be at least 3 characters long."
-            )
+            msg = "Username must be at least 3 characters long."
+            raise IdentifierVerificationError(msg)
         if len(identifier) > 32:
-            raise IdentifierVerificationError(
-                "Username must be at most 32 characters long."
-            )
+            msg = "Username must be at most 32 characters long."
+            raise IdentifierVerificationError(msg)
 
         # Check pattern
         if not USERNAME_PATTERN.match(identifier):
-            raise IdentifierVerificationError(
+            msg = (
                 "Username must start with a letter or number and contain only "
                 "letters, numbers, underscores, and hyphens."
             )
+            raise IdentifierVerificationError(msg)
 
         # Normalize to lowercase
         normalized = identifier.lower()
 
         # Check reserved usernames
         if normalized in self.reserved_usernames:
-            raise IdentifierVerificationError(
-                f"The username '{identifier}' is reserved and cannot be used."
-            )
+            msg = f"The username '{identifier}' is reserved and cannot be used."
+            raise IdentifierVerificationError(msg)
 
         return normalized
 
@@ -112,9 +113,7 @@ class UsernameIdentifier[S: UsernameSubjectModel](IdentifierProtocol[S]):
 class UsernameIdentifierProvider[S: UsernameSubjectModel](IdentifierProvider[S]):
     """Dishka provider for username identifiers."""
 
-    def __init__(
-        self, reserved_usernames: frozenset[str] | None = None
-    ) -> None:
+    def __init__(self, reserved_usernames: frozenset[str] | None = None) -> None:
         super().__init__()
         self.reserved_usernames = reserved_usernames
 

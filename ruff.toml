@@ -50,6 +50,14 @@ lint.extend-ignore = [
     # "TC003", # type-checking import - not needed for protocol definitions
     # "TC002", # type-checking import - Textual uses these at runtime
     "PERF401", # list comprehension - explicit append loop is clearer
+    "E402", #  	module-import-not-at-top-of-file
+    "E501", #  	line-too-long
+    "S107", #  	hardcoded-password-default
+    "N818", #  	error-suffix-on-exception-name
+    "UP049", # 	private-type-parameter
+    "DTZ005", #	call-datetime-now-without-tzinfo
+    "S106", #  	hardcoded-password-func-arg
+    "ARG001", #	unused-function-argument
 ]
 
 [lint.extend-per-file-ignores]

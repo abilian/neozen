@@ -199,12 +199,10 @@ class IdentifierLookupService[S: Subject]:
                 continue
 
         if last_error:
-            raise DoesNotExist() from last_error
-        raise DoesNotExist()
+            raise DoesNotExist from last_error
+        raise DoesNotExist
 
-    async def verify_and_normalize(
-        self, type_name: str, identifier: str
-    ) -> str:
+    async def verify_and_normalize(self, type_name: str, identifier: str) -> str:
         """Verify and normalize an identifier.
 
         Args:

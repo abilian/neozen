@@ -59,7 +59,9 @@ class InvalidGrantError(TokenEndpointError):
 class UnauthorizedClientError(TokenEndpointError):
     """Raised when client is not authorized for this grant type."""
 
-    def __init__(self, description: str = "Client not authorized for this grant.") -> None:
+    def __init__(
+        self, description: str = "Client not authorized for this grant."
+    ) -> None:
         super().__init__("unauthorized_client", description)
 
 
@@ -221,7 +223,8 @@ class TokenEndpoint[
         elif grant_type == "refresh_token":
             return await self._handle_refresh_token(payload, client_id, client_secret)
         elif grant_type is None:
-            raise InvalidRequestError("Missing required parameter: grant_type")
+            msg = "Missing required parameter: grant_type"
+            raise InvalidRequestError(msg)
         else:
             raise UnsupportedGrantTypeError(str(grant_type))
 
@@ -237,10 +240,10 @@ class TokenEndpoint[
         except ValidationError as e:
             errors = e.errors()
             if errors:
-                raise InvalidRequestError(
-                    f"Invalid parameter: {errors[0]['loc'][0]}"
-                ) from e
-            raise InvalidRequestError("Invalid request") from e
+                msg = f"Invalid parameter: {errors[0]['loc'][0]}"
+                raise InvalidRequestError(msg) from e
+            msg = "Invalid request"
+            raise InvalidRequestError(msg) from e
 
         # Get and verify client
         client = await self._get_and_verify_client(
@@ -253,20 +256,24 @@ class TokenEndpoint[
                 code=request.code
             )
         except DoesNotExist as e:
-            raise InvalidGrantError("Authorization code not found.") from e
+            msg = "Authorization code not found."
+            raise InvalidGrantError(msg) from e
 
         # Verify code belongs to client
         if auth_code.client_id != client.client_id:
-            raise InvalidGrantError("Authorization code was not issued to this client.")
+            msg = "Authorization code was not issued to this client."
+            raise InvalidGrantError(msg)
 
         # Check expiration
         now = datetime.now(UTC)
         if auth_code.expires_at < now:
-            raise InvalidGrantError("Authorization code has expired.")
+            msg = "Authorization code has expired."
+            raise InvalidGrantError(msg)
 
         # Verify redirect_uri matches
         if auth_code.redirect_uri and request.redirect_uri != auth_code.redirect_uri:
-            raise InvalidGrantError("redirect_uri does not match.")
+            msg = "redirect_uri does not match."
+            raise InvalidGrantError(msg)
 
         # Verify PKCE
         if not self._verify_pkce(
@@ -274,7 +281,8 @@ class TokenEndpoint[
             auth_code.code_challenge,
             auth_code.code_challenge_method,
         ):
-            raise InvalidGrantError("PKCE verification failed.")
+            msg = "PKCE verification failed."
+            raise InvalidGrantError(msg)
 
         # Generate tokens
         access_token, access_token_hash = generate_token_hash_pair(
@@ -333,28 +341,33 @@ class TokenEndpoint[
         except ValidationError as e:
             errors = e.errors()
             if errors:
-                raise InvalidRequestError(
-                    f"Invalid parameter: {errors[0]['loc'][0]}"
-                ) from e
-            raise InvalidRequestError("Invalid request") from e
+                msg = f"Invalid parameter: {errors[0]['loc'][0]}"
+                raise InvalidRequestError(msg) from e
+            msg = "Invalid request"
+            raise InvalidRequestError(msg) from e
 
         # Get refresh token
-        refresh_token_hash = get_token_hash(request.refresh_token, key=self.token_hash_key)
+        refresh_token_hash = get_token_hash(
+            request.refresh_token, key=self.token_hash_key
+        )
         try:
             stored_refresh = await self.refresh_token_storage.get_one_by(
                 token_hash=refresh_token_hash
             )
         except DoesNotExist as e:
-            raise InvalidGrantError("Refresh token not found.") from e
+            msg = "Refresh token not found."
+            raise InvalidGrantError(msg) from e
 
         # Check if revoked
         if stored_refresh.revoked_at is not None:
-            raise InvalidGrantError("Refresh token has been revoked.")
+            msg = "Refresh token has been revoked."
+            raise InvalidGrantError(msg)
 
         # Check expiration
         now = datetime.now(UTC)
         if stored_refresh.expires_at and stored_refresh.expires_at < now:
-            raise InvalidGrantError("Refresh token has expired.")
+            msg = "Refresh token has expired."
+            raise InvalidGrantError(msg)
 
         # Verify client
         client_id = request.client_id or auth_client_id or stored_refresh.client_id
@@ -363,7 +376,8 @@ class TokenEndpoint[
         )
 
         if stored_refresh.client_id != client.client_id:
-            raise InvalidGrantError("Refresh token was not issued to this client.")
+            msg = "Refresh token was not issued to this client."
+            raise InvalidGrantError(msg)
 
         # Handle scope downgrade
         scope = stored_refresh.scope
@@ -371,9 +385,8 @@ class TokenEndpoint[
             requested_scopes = set(request.scope.split())
             original_scopes = set(scope.split())
             if not requested_scopes.issubset(original_scopes):
-                raise InvalidScopeError(
-                    "Requested scope exceeds original grant scope."
-                )
+                msg = "Requested scope exceeds original grant scope."
+                raise InvalidScopeError(msg)
             scope = request.scope
 
         # Generate new access token
@@ -441,12 +454,14 @@ class TokenEndpoint[
         """
         # If Basic auth provided, ensure client_id matches
         if auth_client_id and auth_client_id != client_id:
-            raise InvalidClientError("Client ID mismatch.")
+            msg = "Client ID mismatch."
+            raise InvalidClientError(msg)
 
         try:
             client = await self.client_storage.get_one_by(client_id=client_id)
         except DoesNotExist as e:
-            raise InvalidClientError("Unknown client.") from e
+            msg = "Unknown client."
+            raise InvalidClientError(msg) from e
 
         # Note: Client secret verification should be implemented based on
         # your OAuthClientModel. This is a simplified version.

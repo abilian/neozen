@@ -14,14 +14,14 @@ from neozen.core.identifiers.email import (
     EmailIdentifierProvider,
     EmailSubjectModel,
 )
+from neozen.core.identifiers.lookup import (
+    IdentifierLookupService,
+    IdentifierType,
+)
 from neozen.core.identifiers.phone import (
     PhoneIdentifier,
     PhoneIdentifierProvider,
     PhoneSubjectModel,
-)
-from neozen.core.identifiers.lookup import (
-    IdentifierLookupService,
-    IdentifierType,
 )
 from neozen.core.identifiers.username import (
     DEFAULT_RESERVED_USERNAMES,

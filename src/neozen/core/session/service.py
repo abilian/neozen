@@ -8,7 +8,6 @@ from datetime import UTC, datetime, timedelta
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
 from neozen.core.session.models import SessionModel
 from neozen.core.storage import DoesNotExist, StorageProtocol
-from neozen.core.subject import Subject
 
 
 class SessionError(Exception):
@@ -176,16 +175,16 @@ class SessionService[S: SessionModel]:
         try:
             session = await self.storage.get_one_by(token_hash=token_hash)
         except DoesNotExist as e:
-            raise SessionNotFoundError() from e
+            raise SessionNotFoundError from e
 
         # Check if revoked
         if session.revoked_at is not None:
-            raise SessionRevokedError()
+            raise SessionRevokedError
 
         # Check expiration
         now = datetime.now(UTC)
         if session.expires_at < now:
-            raise SessionExpiredError()
+            raise SessionExpiredError
 
         # Update activity and extend expiration if enabled
         if update_activity:
@@ -216,7 +215,7 @@ class SessionService[S: SessionModel]:
         try:
             session = await self.storage.get_one_by(token_hash=token_hash)
         except DoesNotExist as e:
-            raise SessionNotFoundError() from e
+            raise SessionNotFoundError from e
 
         now = datetime.now(UTC)
         await self.storage.update(session, revoked_at=now)
@@ -300,9 +299,8 @@ class SessionService[S: SessionModel]:
         """
         # Note: The storage protocol needs extension to support this properly.
         # This is a placeholder that would need a get_many_by() or similar method.
-        raise NotImplementedError(
-            "list_sessions requires extended storage protocol with list support"
-        )
+        msg = "list_sessions requires extended storage protocol with list support"
+        raise NotImplementedError(msg)
 
 
 __all__ = [

@@ -34,7 +34,7 @@ class EmailIdentifier[S: EmailSubjectModel](IdentifierProtocol[S]):
 
     async def parse_identifier(self, identifier: typing.Any) -> str:
         if not isinstance(identifier, str):
-            raise InvalidIdentifierFormat()
+            raise InvalidIdentifierFormat
         return identifier
 
     async def verify_identifier(self, identifier: str) -> str:

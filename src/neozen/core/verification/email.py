@@ -181,16 +181,16 @@ class EmailVerificationService[T: EmailVerificationTokenModel]:
         try:
             verification = await self.storage.get_one_by(token_hash=token_hash)
         except DoesNotExist as e:
-            raise EmailVerificationTokenNotFoundError() from e
+            raise EmailVerificationTokenNotFoundError from e
 
         # Check if already used
         if verification.used_at is not None:
-            raise EmailVerificationTokenNotFoundError()
+            raise EmailVerificationTokenNotFoundError
 
         # Check expiration
         now = datetime.now(UTC)
         if verification.expires_at < now:
-            raise EmailVerificationTokenExpiredError()
+            raise EmailVerificationTokenExpiredError
 
         # Mark as used
         await self.storage.update(verification, used_at=now)
@@ -238,9 +238,7 @@ class EmailVerificationService[T: EmailVerificationTokenModel]:
             recent = await self.storage.get_one_by(email=email)
 
             # Check cooldown
-            cooldown_end = recent.created_at + timedelta(
-                seconds=self.cooldown_seconds
-            )
+            cooldown_end = recent.created_at + timedelta(seconds=self.cooldown_seconds)
             if now < cooldown_end:
                 remaining = int((cooldown_end - now).total_seconds())
                 raise VerificationCooldownError(remaining)

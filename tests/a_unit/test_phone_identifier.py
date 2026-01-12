@@ -6,7 +6,10 @@ import dataclasses
 
 import pytest
 
-from neozen.core.identifiers.base import IdentifierVerificationError, InvalidIdentifierFormat
+from neozen.core.identifiers.base import (
+    IdentifierVerificationError,
+    InvalidIdentifierFormat,
+)
 from neozen.core.identifiers.phone import PhoneIdentifier, PhoneSubjectModel
 from neozen.core.storage import DoesNotExist
 from tests.conftest import MockStorage
