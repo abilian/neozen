@@ -1,7 +1,6 @@
 """Main CLI entry point for NeoZen.
 
 Provides commands for:
-- serve: Run the demo application
 - subject: Manage subjects (create, list)
 - client: Manage OAuth clients (create, list)
 """
@@ -11,7 +10,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from neozen.cli.commands import client, serve, subject
+from neozen.cli.commands import client, subject
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -22,8 +21,6 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  neozen serve                         # Start the demo server
-  neozen serve --port 8080             # Start on specific port
   neozen subject create -e user@example.com -p secret
   neozen subject list
   neozen client create --name myapp
@@ -42,39 +39,6 @@ Examples:
         title="commands",
         description="Available commands",
     )
-
-    # Serve command
-    serve_parser = subparsers.add_parser(
-        "serve",
-        help="Run the NeoZen demo application",
-        description="Start a demo application with uvicorn.",
-    )
-    serve_parser.add_argument(
-        "--demo",
-        "-d",
-        choices=["starlette"],
-        default="starlette",
-        help="Demo to run (default: starlette)",
-    )
-    serve_parser.add_argument(
-        "--host",
-        default="127.0.0.1",
-        help="Host to bind to (default: 127.0.0.1)",
-    )
-    serve_parser.add_argument(
-        "--port",
-        "-p",
-        type=int,
-        default=8000,
-        help="Port to bind to (default: 8000)",
-    )
-    serve_parser.add_argument(
-        "--reload",
-        "-r",
-        action="store_true",
-        help="Enable auto-reload for development",
-    )
-    serve_parser.set_defaults(func=serve.run)
 
     # Subject command
     subject_parser = subparsers.add_parser(

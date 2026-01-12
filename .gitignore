@@ -14,4 +14,4 @@ wheels/
 # Local / secrets / tmp
 .envrc
 /sandbox/
-/data/
+data/

@@ -14,7 +14,7 @@ from neozen.core.oauth.models.base import (
     OAuthGrantModel,
 )
 from neozen.core.oauth.types import CodeChallengeMethod
-from neozen.core.storage.sqlalchemy import Base
+from neozen.storage.sqlalchemy import Base
 
 
 class OAuthClient(OAuthClientModel, Base):

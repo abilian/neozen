@@ -23,6 +23,7 @@ phone = [
 ]
 sqlalchemy = [
     "sqlalchemy>=2.0.0",
+    "advanced-alchemy>=0.30.0",
 ]
 demo = [
     "starlette>=0.40.0",
@@ -61,6 +62,7 @@ dev = [
     "phonenumbers>=9.0.0",
     "pwdlib[argon2]>=0.3.0",
     "sqlalchemy[asyncio]>=2.0.0",
+    "advanced-alchemy>=0.30.0",
     # Demo dependencies
     "starlette>=0.40.0",
     "uvicorn>=0.30.0",

@@ -23,11 +23,10 @@ async def _create_subject(
     """Create a new subject in the database."""
     from pwdlib import PasswordHash
 
-    from neozen.core.sqlmodels import Subject
-    from neozen.core.storage import DoesNotExist
-    from neozen.core.storage.sqlalchemy import SQLAlchemyStorage
+    from neozen.storage import DoesNotExist
+    from neozen.storage.sqlalchemy import Subject, SubjectRepository
 
-    storage = SQLAlchemyStorage(Subject, session)
+    storage = SubjectRepository(session=session)
 
     # Check if email already exists
     try:
@@ -72,7 +71,7 @@ async def _create_subject(
 
 async def _list_subjects(session: AsyncSession, output_format: str) -> list[dict]:
     """List all subjects from the database."""
-    from neozen.core.sqlmodels import Subject
+    from neozen.storage.sqlalchemy import Subject
 
     result = await session.execute(select(Subject).order_by(Subject.created_at.desc()))
     subjects = result.scalars().all()

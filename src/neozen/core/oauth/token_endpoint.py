@@ -18,7 +18,7 @@ from neozen.core.oauth.models import (
     OAuthRefreshTokenModel,
 )
 from neozen.core.oauth.types import CodeChallengeMethod
-from neozen.core.storage import DoesNotExist, StorageProtocol
+from neozen.storage import DoesNotExist, StorageProtocol
 
 
 class TokenEndpointError(Exception):
@@ -418,7 +418,7 @@ class TokenEndpoint[
         new_refresh_token: str | None = None
         if self.rotate_refresh_tokens:
             # Revoke old refresh token
-            await self.refresh_token_storage.update(stored_refresh, revoked_at=now)
+            await self.refresh_token_storage.update_obj(stored_refresh, revoked_at=now)
 
             # Create new refresh token
             new_refresh_token, new_refresh_token_hash = generate_token_hash_pair(

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from neozen.core.storage.sqlalchemy import Base
+from neozen.storage.sqlalchemy import Base
 
 # Default database location (relative to current working directory)
 DEFAULT_DB_PATH = Path("data") / "neozen.db"
@@ -74,7 +74,7 @@ async def init_database(db_url: str | None = None) -> AsyncEngine:
     engine = create_async_engine(db_url, echo=False)
 
     # Import models to register them with Base
-    from neozen.core.sqlmodels import (  # noqa: F401
+    from neozen.storage.sqlalchemy import (  # noqa: F401
         EmailVerificationToken,
         Session,
         Subject,

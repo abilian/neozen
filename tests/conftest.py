@@ -41,9 +41,8 @@ def pytest_collection_modifyitems(config, items):
 
 import dataclasses
 import typing
-from collections.abc import Callable, Coroutine, Iterable
 
-from neozen.core.storage import DoesNotExist, StorageProtocol, StorageProvider
+from neozen.storage import DoesNotExist, StorageProtocol
 
 
 @dataclasses.dataclass
@@ -56,9 +55,9 @@ class MockModel:
 class MockStorage[Model](StorageProtocol[Model]):
     """In-memory mock storage for testing."""
 
-    def __init__(self, model: type[Model], data: list[Model]) -> None:
-        self.model = model
-        self._data = data
+    def __init__(self, model: type[Model], data: list[Model] | None = None) -> None:
+        self.model_type = model
+        self._data = data if data is not None else []
 
     async def get_one_by(self, **filters: typing.Any) -> Model:
         for obj in self._data:
@@ -67,36 +66,14 @@ class MockStorage[Model](StorageProtocol[Model]):
         raise DoesNotExist
 
     async def create(self, **data: typing.Any) -> Model:
-        obj = self.model(**data)
+        obj = self.model_type(**data)
         self._data.append(obj)
         return obj
 
-    async def update(self, obj: Model, **data: typing.Any) -> Model:
+    async def update_obj(self, obj: Model, **data: typing.Any) -> Model:
         for key, value in data.items():
             setattr(obj, key, value)
         return obj
-
-
-class MockStorageProvider(StorageProvider):
-    """Mock storage provider for testing."""
-
-    def __init__[Model](
-        self,
-        data: dict[typing.Any, list[typing.Any]],
-        models: Iterable[type[Model]] | None = None,
-        storage_class: type[MockStorage[typing.Any]] = MockStorage,
-    ) -> None:
-        super().__init__(models=models)
-        self.data = data
-        self.storage_class = storage_class
-
-    def _get_storage_factory(
-        self,
-    ) -> Callable[..., Coroutine[None, None, StorageProtocol[typing.Any]]]:
-        async def _get_storage[Model](model: type[Model]) -> StorageProtocol[Model]:
-            return self.storage_class(model, self.data.get(model, []))
-
-        return _get_storage
 
 
 @pytest.fixture

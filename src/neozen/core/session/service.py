@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
 from neozen.core.session.models import SessionModel
-from neozen.core.storage import DoesNotExist, StorageProtocol
+from neozen.storage import DoesNotExist, StorageProtocol
 
 
 class SessionError(Exception):
@@ -206,7 +206,7 @@ class SessionService[S: SessionModel]:
                 )
                 updates["expires_at"] = min(new_expires, max_expires)
 
-            await self.storage.update(session, **updates)
+            await self.storage.update_obj(session, **updates)
 
         return session
 
@@ -226,7 +226,7 @@ class SessionService[S: SessionModel]:
             raise SessionNotFoundError from e
 
         now = datetime.now(UTC)
-        await self.storage.update(session, revoked_at=now)
+        await self.storage.update_obj(session, revoked_at=now)
 
     async def revoke_session_by_token(self, token: str) -> None:
         """Revoke a session by its plaintext token.
@@ -275,7 +275,7 @@ class SessionService[S: SessionModel]:
                     # Skip the current session, but we need to find another way
                     # to continue. For now, break to avoid infinite loop.
                     break
-                await self.storage.update(session, revoked_at=now)
+                await self.storage.update_obj(session, revoked_at=now)
                 count += 1
         except DoesNotExist:
             pass

@@ -16,7 +16,7 @@ from neozen.core.oauth.models import (
     OAuthGrantModel,
 )
 from neozen.core.oauth.types import CodeChallengeMethod
-from neozen.core.storage import DoesNotExist, StorageProtocol
+from neozen.storage import DoesNotExist, StorageProtocol
 from neozen.core.subject import Subject
 
 

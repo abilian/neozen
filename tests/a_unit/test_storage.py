@@ -6,7 +6,7 @@ import dataclasses
 
 import pytest
 
-from neozen.core.storage import DoesNotExist
+from neozen.storage import DoesNotExist
 from tests.conftest import MockModel, MockStorage
 
 
@@ -32,7 +32,7 @@ class TestMockStorage:
 
     async def test_update(self, storage: MockStorage[MockModel]) -> None:
         obj = await storage.create(id="1")
-        updated = await storage.update(obj, id="2")
+        updated = await storage.update_obj(obj, id="2")
         assert updated.id == "2"
 
 
@@ -71,7 +71,7 @@ class TestMockStorageExtended:
         self, extended_storage: MockStorage[ExtendedModel]
     ) -> None:
         obj = await extended_storage.create(id="1", name="test", value=42)
-        updated = await extended_storage.update(obj, value=100)
+        updated = await extended_storage.update_obj(obj, value=100)
         assert updated.id == "1"
         assert updated.name == "test"
         assert updated.value == 100

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ValidationError
 
 from neozen.core.exceptions import InvalidRequestError, NeoZenException
 from neozen.core.identifiers.base import IdentifierProtocol, InvalidIdentifierFormat
-from neozen.core.storage import DoesNotExist, StorageProtocol
+from neozen.storage import DoesNotExist, StorageProtocol
 from neozen.core.subject import Subject
 
 
@@ -131,7 +131,7 @@ class PasswordFactor[S: PasswordSubjectModel]:
 
         # Update the password hash if needed
         if updated_hash is not None:
-            subject = await self.subject_storage.update(
+            subject = await self.subject_storage.update_obj(
                 subject, hashed_password=updated_hash
             )
 
@@ -158,7 +158,7 @@ class PasswordFactor[S: PasswordSubjectModel]:
 
         hashed_password = self.hasher.hash(request.password)
 
-        subject = await self.subject_storage.update(
+        subject = await self.subject_storage.update_obj(
             subject, hashed_password=hashed_password
         )
 

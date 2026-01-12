@@ -11,7 +11,7 @@ from neozen.core.identifiers.base import (
     InvalidIdentifierFormat,
 )
 from neozen.core.identifiers.email import EmailIdentifier, EmailSubjectModel
-from neozen.core.storage import DoesNotExist
+from neozen.storage import DoesNotExist
 from tests.conftest import MockStorage
 
 

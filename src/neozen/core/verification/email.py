@@ -6,7 +6,7 @@ import typing
 from datetime import UTC, datetime, timedelta
 
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
-from neozen.core.storage import DoesNotExist, StorageProtocol
+from neozen.storage import DoesNotExist, StorageProtocol
 
 
 class EmailVerificationTokenModel(typing.Protocol):
@@ -197,7 +197,7 @@ class EmailVerificationService[T: EmailVerificationTokenModel]:
             raise EmailVerificationTokenExpiredError
 
         # Mark as used
-        await self.storage.update(verification, used_at=now)
+        await self.storage.update_obj(verification, used_at=now)
 
         return verification
 
@@ -267,7 +267,7 @@ class EmailVerificationService[T: EmailVerificationTokenModel]:
         try:
             while True:
                 token = await self.storage.get_one_by(email=email, used_at=None)
-                await self.storage.update(token, used_at=now)
+                await self.storage.update_obj(token, used_at=now)
         except DoesNotExist:
             pass  # No more unused tokens
 

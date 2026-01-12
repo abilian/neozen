@@ -37,9 +37,15 @@ from neozen.core.identifiers.base import (
     InvalidIdentifierFormat,
 )
 from neozen.core.session import SessionService
-from neozen.core.sqlmodels import EmailVerificationToken, Session, Subject
-from neozen.core.storage import DoesNotExist
-from neozen.core.storage.sqlalchemy import SQLAlchemyStorage
+from neozen.storage import DoesNotExist
+from neozen.storage.sqlalchemy import (
+    EmailVerificationToken,
+    EmailVerificationTokenRepository,
+    Session,
+    SessionRepository,
+    Subject,
+    SubjectRepository,
+)
 from neozen.core.verification.email import EmailVerificationService
 
 # Configuration
@@ -100,7 +106,7 @@ def flash(request: Request, message: str, category: str = "info") -> None:
 class DemoEmailIdentifier(IdentifierProtocol[Subject]):
     """Email identifier for demo using SQLAlchemy storage."""
 
-    def __init__(self, storage: SQLAlchemyStorage[Subject]) -> None:
+    def __init__(self, storage: SubjectRepository) -> None:
         self.storage = storage
 
     async def get_by_identifier(self, identifier: str) -> Subject:
@@ -131,29 +137,29 @@ class AppState:
         self.hasher = PasswordHash.recommended()
         self.email_sender = ConsoleEmailSender()
 
-    def get_subject_storage(self, session: AsyncSession) -> SQLAlchemyStorage[Subject]:
-        return SQLAlchemyStorage(Subject, session)
+    def get_subject_repository(self, session: AsyncSession) -> SubjectRepository:
+        return SubjectRepository(session=session)
 
-    def get_session_storage(self, session: AsyncSession) -> SQLAlchemyStorage[Session]:
-        return SQLAlchemyStorage(Session, session)
+    def get_session_repository(self, session: AsyncSession) -> SessionRepository:
+        return SessionRepository(session=session)
 
-    def get_verification_storage(
+    def get_verification_repository(
         self, session: AsyncSession
-    ) -> SQLAlchemyStorage[EmailVerificationToken]:
-        return SQLAlchemyStorage(EmailVerificationToken, session)
+    ) -> EmailVerificationTokenRepository:
+        return EmailVerificationTokenRepository(session=session)
 
     def get_password_factor(self, session: AsyncSession) -> PasswordFactor[Subject]:
-        storage = self.get_subject_storage(session)
-        identifier = DemoEmailIdentifier(storage)
+        repository = self.get_subject_repository(session)
+        identifier = DemoEmailIdentifier(repository)
         return PasswordFactor(
             identifier=identifier,
-            subject_storage=storage,
+            subject_storage=repository,
             hasher=self.hasher,
         )
 
     def get_session_service(self, session: AsyncSession) -> SessionService[Session]:
         return SessionService(
-            storage=self.get_session_storage(session),
+            storage=self.get_session_repository(session),
             hash_key=SECRET_KEY,
         )
 
@@ -161,7 +167,7 @@ class AppState:
         self, session: AsyncSession
     ) -> EmailVerificationService[EmailVerificationToken]:
         return EmailVerificationService(
-            storage=self.get_verification_storage(session),
+            storage=self.get_verification_repository(session),
             hash_key=SECRET_KEY,
         )
 
@@ -198,8 +204,8 @@ async def get_current_subject(
     try:
         session_service = state.get_session_service(session)
         auth_session = await session_service.validate_session(token)
-        storage = state.get_subject_storage(session)
-        return await storage.get_one_by(id=auth_session.subject_id)
+        repository = state.get_subject_repository(session)
+        return await repository.get_one_by(id=auth_session.subject_id)
     except Exception:
         return None
 
@@ -321,7 +327,7 @@ async def register_submit(request: Request) -> Response:
         )
 
     async with state.session_factory() as session:
-        storage = state.get_subject_storage(session)
+        storage = state.get_subject_repository(session)
         identifier = DemoEmailIdentifier(storage)
 
         # Verify email format
@@ -460,7 +466,7 @@ async def api_register(request: Request) -> Response:
         return json_error("email and password are required")
 
     async with state.session_factory() as session:
-        storage = state.get_subject_storage(session)
+        storage = state.get_subject_repository(session)
         identifier = DemoEmailIdentifier(storage)
 
         # Verify email format

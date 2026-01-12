@@ -9,7 +9,7 @@ from neozen.core.identifiers.base import (
     IdentifierProtocol,
     InvalidIdentifierFormat,
 )
-from neozen.core.storage import DoesNotExist
+from neozen.storage import DoesNotExist
 from neozen.core.subject import Subject
 
 # Pattern to detect email addresses

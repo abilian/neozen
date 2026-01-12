@@ -15,7 +15,7 @@ from neozen.core.identifiers.username import (
     UsernameIdentifier,
     UsernameSubjectModel,
 )
-from neozen.core.storage import DoesNotExist
+from neozen.storage import DoesNotExist
 from tests.conftest import MockStorage
 
 

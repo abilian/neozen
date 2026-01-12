@@ -13,7 +13,7 @@ from neozen.core.identifiers.base import (
     IdentifierVerificationError,
     InvalidIdentifierFormat,
 )
-from neozen.core.storage import StorageProtocol
+from neozen.storage import StorageProtocol
 from neozen.core.subject import Subject
 
 
