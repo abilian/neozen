@@ -150,14 +150,14 @@ def list_subjects(args: argparse.Namespace) -> int:
                 if not subjects:
                     print("(No subjects found)")
                 else:
-                    print(
-                        f"{'ID':<30} {'Email':<30} {'Username':<15} {'Active':<8}"
-                    )
+                    print(f"{'ID':<30} {'Email':<30} {'Username':<15} {'Active':<8}")
                     print("-" * 80)
                     for s in subjects:
                         username = s["username"] or "-"
                         active = "Yes" if s["is_active"] else "No"
-                        print(f"{s['id']:<30} {s['email']:<30} {username:<15} {active:<8}")
+                        print(
+                            f"{s['id']:<30} {s['email']:<30} {username:<15} {active:<8}"
+                        )
                 print()
                 print(f"Total: {len(subjects)} subject(s)")
 

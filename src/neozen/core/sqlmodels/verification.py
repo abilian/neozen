@@ -41,7 +41,9 @@ class EmailVerificationToken(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<EmailVerificationToken email={self.email} subject_id={self.subject_id}>"
+        return (
+            f"<EmailVerificationToken email={self.email} subject_id={self.subject_id}>"
+        )
 
 
 __all__ = ["EmailVerificationToken"]

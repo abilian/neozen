@@ -58,6 +58,11 @@ lint.extend-ignore = [
     "DTZ005", #	call-datetime-now-without-tzinfo
     "S106", #  	hardcoded-password-func-arg
     "ARG001", #	unused-function-argument
+    "PYI036", #	bad-exit-annotation
+    "EM102", # 	f-string-in-exception
+    "EM101", # 	raw-string-in-exception
+    "S105", #  	hardcoded-password-string
+    "UP047", # 	non-pep695-generic-function
 ]
 
 [lint.extend-per-file-ignores]

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import os
-import tempfile
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from neozen.demo.app import AppState, create_app
 from neozen.cli.database import init_database
+from neozen.demo.app import AppState, create_app
 
 
 @pytest.fixture

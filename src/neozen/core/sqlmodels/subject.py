@@ -22,8 +22,12 @@ class Subject(Base):
     __tablename__ = "subjects"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    username: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True, index=True)
+    email: Mapped[str] = mapped_column(
+        String(255), unique=True, nullable=False, index=True
+    )
+    username: Mapped[str | None] = mapped_column(
+        String(32), unique=True, nullable=True, index=True
+    )
     hashed_password: Mapped[str | None] = mapped_column(Text(), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)

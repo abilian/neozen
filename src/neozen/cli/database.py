@@ -74,7 +74,11 @@ async def init_database(db_url: str | None = None) -> AsyncEngine:
     engine = create_async_engine(db_url, echo=False)
 
     # Import models to register them with Base
-    from neozen.core.sqlmodels import EmailVerificationToken, Session, Subject  # noqa: F401
+    from neozen.core.sqlmodels import (  # noqa: F401
+        EmailVerificationToken,
+        Session,
+        Subject,
+    )
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

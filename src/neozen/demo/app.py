@@ -16,10 +16,8 @@ import json
 import secrets
 import typing
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
 
 from pwdlib import PasswordHash
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -96,9 +94,7 @@ class AppState:
     ) -> SQLAlchemyStorage[EmailVerificationToken]:
         return SQLAlchemyStorage(EmailVerificationToken, session)
 
-    def get_password_factor(
-        self, session: AsyncSession
-    ) -> PasswordFactor[Subject]:
+    def get_password_factor(self, session: AsyncSession) -> PasswordFactor[Subject]:
         storage = self.get_subject_storage(session)
         identifier = DemoEmailIdentifier(storage)
         return PasswordFactor(
@@ -107,9 +103,7 @@ class AppState:
             hasher=self.hasher,
         )
 
-    def get_session_service(
-        self, session: AsyncSession
-    ) -> SessionService[Session]:
+    def get_session_service(self, session: AsyncSession) -> SessionService[Session]:
         return SessionService(
             storage=self.get_session_storage(session),
             hash_key=SECRET_KEY,
@@ -352,7 +346,9 @@ async def me(request: Request) -> Response:
                 "id": subject.id,
                 "email": subject.email,
                 "is_active": subject.is_active,
-                "created_at": subject.created_at.isoformat() if subject.created_at else None,
+                "created_at": subject.created_at.isoformat()
+                if subject.created_at
+                else None,
             }
         )
 
