@@ -115,7 +115,10 @@ class PasswordFactor[S: PasswordSubjectModel]:
             subject = await self.identifier.get_by_identifier(identifier)
         except DoesNotExist:
             # Never returns - runs hasher to prevent timing attacks, then raises
-            raise self._raise_invalid_credentials_timing_safe(request.password)
+            # Use 'from None' to avoid leaking whether user exists via exception chain
+            raise self._raise_invalid_credentials_timing_safe(
+                request.password
+            ) from None
 
         hashed_password = subject.hashed_password
         if hashed_password is None:
