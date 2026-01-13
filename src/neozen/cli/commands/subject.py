@@ -21,10 +21,10 @@ async def _create_subject(
     username: str | None,
 ) -> dict:
     """Create a new subject in the database."""
-    from pwdlib import PasswordHash
+    from pwdlib import PasswordHash  # noqa: PLC0415
 
-    from neozen.storage import DoesNotExist
-    from neozen.storage.sqlalchemy import SubjectRepository
+    from neozen.storage import DoesNotExist  # noqa: PLC0415
+    from neozen.storage.sqlalchemy import SubjectRepository  # noqa: PLC0415
 
     storage = SubjectRepository(session=session)
 
@@ -71,7 +71,7 @@ async def _create_subject(
 
 async def _list_subjects(session: AsyncSession, output_format: str) -> list[dict]:
     """List all subjects from the database."""
-    from neozen.storage.sqlalchemy import Subject
+    from neozen.storage.sqlalchemy import Subject  # noqa: PLC0415
 
     result = await session.execute(select(Subject).order_by(Subject.created_at.desc()))
     subjects = result.scalars().all()

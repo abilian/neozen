@@ -74,7 +74,7 @@ async def init_database(db_url: str | None = None) -> AsyncEngine:
     engine = create_async_engine(db_url, echo=False)
 
     # Import models to register them with Base
-    from neozen.storage.sqlalchemy import (  # noqa: F401
+    from neozen.storage.sqlalchemy import (  # noqa: F401, PLC0415
         EmailVerificationToken,
         Session,
         Subject,

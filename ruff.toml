@@ -19,9 +19,9 @@ lint.extend-ignore = [
     "TD",
     "PERF",
     "RUF",
-    "PLC",
     "A",
     "ERA",
+    "FIX",
 
     # False positive
     "S101", # Use of `assert` detected
@@ -47,9 +47,6 @@ lint.extend-ignore = [
     "S110", # try-except-pass - acceptable for config loading with defaults
     "PLW0603", # global statement - used for singleton config/state
     "TRY300", # return in try block - cleaner for import checks
-    # "TC001", # type-checking import - used at runtime
-    # "TC003", # type-checking import - not needed for protocol definitions
-    # "TC002", # type-checking import - Textual uses these at runtime
     "PERF401", # list comprehension - explicit append loop is clearer
     "E402", #  	module-import-not-at-top-of-file
     "E501", #  	line-too-long

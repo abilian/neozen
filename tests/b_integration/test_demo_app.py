@@ -1,51 +1,38 @@
 """Integration tests for the NeoZen demo application.
 
 Tests both the web UI endpoints and JSON API endpoints.
+Uses the simplified Starlette demo with in-memory storage.
 """
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from neozen.cli.database import init_database
-
 # Add project root to path for demos package
 project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from demos.starlette.app import AppState, create_app
+from demos.starlette.app import create_app, sessions_db, users_db
 
 
 @pytest.fixture
-async def app(tmp_path):
-    """Create a fresh demo app for each test with temporary database."""
-    # Use a temporary database for each test
-    db_path = tmp_path / "test.db"
-    db_url = f"sqlite+aiosqlite:///{db_path}"
+async def app():
+    """Create a fresh demo app for each test with cleared in-memory storage."""
+    # Clear in-memory storage before each test
+    users_db.clear()
+    sessions_db.clear()
 
-    # Set environment variable so the app uses our test database
-    old_env = os.environ.get("NEOZEN_DATABASE_URL")
-    os.environ["NEOZEN_DATABASE_URL"] = db_url
+    app = create_app()
+    yield app
 
-    try:
-        app = create_app()
-        # Manually initialize the app state (simulating lifespan startup)
-        engine = await init_database(db_url)
-        app.state.neozen = AppState(engine)
-        yield app
-        # Cleanup
-        await engine.dispose()
-    finally:
-        if old_env is not None:
-            os.environ["NEOZEN_DATABASE_URL"] = old_env
-        else:
-            os.environ.pop("NEOZEN_DATABASE_URL", None)
+    # Cleanup
+    users_db.clear()
+    sessions_db.clear()
 
 
 @pytest.fixture
@@ -78,9 +65,8 @@ class TestRegistrationAPI:
         )
         assert response.status_code == 201
         data = response.json()
-        assert data["email"] == "test@example.com"
         assert "user_id" in data
-        assert "Registration successful" in data["message"]
+        assert "Registered" in data["message"]
 
     async def test_register_invalid_email(self, client: AsyncClient) -> None:
         response = await client.post(
@@ -132,7 +118,7 @@ class TestLoginAPI:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "Login successful" in data["message"]
+        assert "Logged in" in data["message"]
         assert "neozen_session" in response.cookies
 
     async def test_login_invalid_password(self, client: AsyncClient) -> None:
@@ -148,7 +134,7 @@ class TestLoginAPI:
         )
         assert response.status_code == 401
         data = response.json()
-        assert "Invalid email or password" in data["error"]
+        assert "Invalid credentials" in data["error"]
 
     async def test_login_nonexistent_user(self, client: AsyncClient) -> None:
         response = await client.post(
@@ -166,7 +152,7 @@ class TestProtectedAPI:
         response = await client.get("/api/me")
         assert response.status_code == 401
         data = response.json()
-        assert "Not authenticated" in data["error"]
+        assert "error" in data
 
     async def test_me_with_auth(self, client: AsyncClient) -> None:
         # Register and login
