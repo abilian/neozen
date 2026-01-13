@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - NeoZen{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+<p>Welcome back! You are logged in.</p>
+
+<section>
+    <h2>Your Profile</h2>
+    <article>
+        <table>
+            <tbody>
+                <tr>
+                    <th scope="row">User ID</th>
+                    <td><code>{{ current_user.id }}</code></td>
+                </tr>
+                <tr>
+                    <th scope="row">Email</th>
+                    <td>{{ current_user.email }}</td>
+                </tr>
+                {% if current_user.username %}
+                <tr>
+                    <th scope="row">Username</th>
+                    <td>{{ current_user.username }}</td>
+                </tr>
+                {% endif %}
+                <tr>
+                    <th scope="row">Status</th>
+                    <td>
+                        {% if current_user.is_active %}
+                        <span style="color: var(--pico-ins-color);">Active</span>
+                        {% else %}
+                        <span style="color: var(--pico-del-color);">Inactive</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Email Verified</th>
+                    <td>
+                        {% if current_user.is_verified %}
+                        <span style="color: var(--pico-ins-color);">Yes</span>
+                        {% else %}
+                        <span style="color: var(--pico-muted-color);">Not yet</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% if current_user.created_at %}
+                <tr>
+                    <th scope="row">Member Since</th>
+                    <td>{{ current_user.created_at.strftime('%B %d, %Y') }}</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </article>
+</section>
+
+<section>
+    <h2>Protected Resources</h2>
+    <p>As an authenticated user, you have access to protected resources.</p>
+    <article>
+        <h3>Example Protected Data</h3>
+        <p>This content is only visible to logged-in users. In a real application, this could be:</p>
+        <ul>
+            <li>User-specific settings</li>
+            <li>Private documents</li>
+            <li>Account management options</li>
+            <li>API keys and credentials</li>
+        </ul>
+    </article>
+</section>
+
+<section>
+    <h2>Actions</h2>
+    <div class="grid">
+        <form action="/logout" method="post">
+            <button type="submit" class="outline">Logout</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

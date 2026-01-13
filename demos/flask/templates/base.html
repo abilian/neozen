@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}NeoZen Demo{% endblock %}</title>
+    <!-- Pico CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        /* Custom styles */
+        :root {
+            --nav-height: 4rem;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        nav {
+            background: var(--pico-primary-background);
+        }
+
+        nav ul {
+            margin-bottom: 0;
+        }
+
+        nav a {
+            color: var(--pico-primary-inverse);
+        }
+
+        nav .brand {
+            font-weight: bold;
+            font-size: 1.25rem;
+        }
+
+        main {
+            flex: 1;
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+
+        footer {
+            padding: 1rem 0;
+            text-align: center;
+            color: var(--pico-muted-color);
+            font-size: 0.875rem;
+        }
+
+        .flash-messages {
+            margin-bottom: 1rem;
+        }
+
+        .flash-message {
+            padding: 1rem;
+            border-radius: var(--pico-border-radius);
+            margin-bottom: 0.5rem;
+        }
+
+        .flash-success {
+            background: var(--pico-ins-color);
+            color: white;
+        }
+
+        .flash-error {
+            background: var(--pico-del-color);
+            color: white;
+        }
+
+        .flash-info {
+            background: var(--pico-primary);
+            color: white;
+        }
+
+        .hero {
+            text-align: center;
+            padding: 3rem 0;
+        }
+
+        .hero h1 {
+            margin-bottom: 1rem;
+        }
+
+        .auth-form {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <nav class="container-fluid">
+        <ul>
+            <li><a href="/" class="brand">NeoZen</a></li>
+        </ul>
+        <ul>
+            {% if current_user %}
+                <li><a href="/dashboard">Dashboard</a></li>
+                <li>
+                    <form action="/logout" method="post" style="margin: 0;">
+                        <button type="submit" class="outline">Logout</button>
+                    </form>
+                </li>
+            {% else %}
+                <li><a href="/login">Login</a></li>
+                <li><a href="/register" role="button">Register</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+
+    <main class="container">
+        {% if messages %}
+        <div class="flash-messages">
+            {% for category, message in messages %}
+            <div class="flash-message flash-{{ category }}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="container">
+        <p>NeoZen Authentication Demo &bull; <a href="https://github.com/anthropics/neozen">GitHub</a></p>
+    </footer>
+</body>
+</html>
