@@ -18,6 +18,7 @@ def test_core_should_not_import_sqlalchemy() -> None:
         .check("neozen")
     )
 
+
 def test_core_should_not_import_web() -> None:
     (
         archrule("core should not import web")
@@ -26,6 +27,7 @@ def test_core_should_not_import_web() -> None:
         .check("neozen")
     )
 
+
 def test_core_should_not_import_storage() -> None:
     (
         archrule("core should not import storage")
@@ -33,6 +35,7 @@ def test_core_should_not_import_storage() -> None:
         .should_not_import("neozen.storage")
         .check("neozen")
     )
+
 
 def test_core_should_not_import_cli() -> None:
     (
