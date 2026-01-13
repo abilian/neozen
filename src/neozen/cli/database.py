@@ -12,7 +12,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Concatenate, ParamSpec, TypeVar
 
-from sqlalchemy import select
+from sqlalchemy import Result, select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -153,7 +153,7 @@ async def list_all(session: AsyncSession, model: type) -> list:
     Returns:
         List of all records.
     """
-    result = await session.execute(select(model))
+    result: Result[tuple[Any, ...]] = await session.execute(select(model))
     return list(result.scalars().all())
 
 

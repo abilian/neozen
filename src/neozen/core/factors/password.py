@@ -114,15 +114,16 @@ class PasswordFactor[S: PasswordSubjectModel]:
         try:
             subject = await self.identifier.get_by_identifier(identifier)
         except DoesNotExist:
-            self._raise_invalid_credentials_timing_safe(request.password)
+            # Never returns - runs hasher to prevent timing attacks, then raises
+            raise self._raise_invalid_credentials_timing_safe(request.password)
 
         hashed_password = subject.hashed_password
         if hashed_password is None:
-            self._raise_invalid_credentials_timing_safe(request.password)
+            raise self._raise_invalid_credentials_timing_safe(request.password)
 
-        # Verify the password (cast needed for ty type checker)
+        # Verify the password
         is_valid, updated_hash = self.hasher.verify_and_update(
-            request.password, typing.cast(str, hashed_password)
+            request.password, hashed_password
         )
 
         if not is_valid:

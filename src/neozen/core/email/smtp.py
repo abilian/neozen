@@ -97,26 +97,26 @@ class SMTPEmailSender:
         """
         from_addr = message.from_addr or self.default_from
         if not from_addr:
-            msg = "No sender address specified and no default set."
-            raise EmailSendError(msg)
+            raise EmailSendError("No sender address specified and no default set.")
 
         # Build the email
+        mime_msg: MIMEText | MIMEMultipart
         if message.body_html:
-            msg = MIMEMultipart("alternative")
-            msg.attach(MIMEText(message.body_text, "plain"))
-            msg.attach(MIMEText(message.body_html, "html"))
+            mime_msg = MIMEMultipart("alternative")
+            mime_msg.attach(MIMEText(message.body_text, "plain"))
+            mime_msg.attach(MIMEText(message.body_html, "html"))
         else:
-            msg = MIMEText(message.body_text, "plain")
+            mime_msg = MIMEText(message.body_text, "plain")
 
-        msg["Subject"] = message.subject
-        msg["From"] = from_addr
-        msg["To"] = ", ".join(message.recipients)
+        mime_msg["Subject"] = message.subject
+        mime_msg["From"] = from_addr
+        mime_msg["To"] = ", ".join(message.recipients)
 
         if message.reply_to:
-            msg["Reply-To"] = message.reply_to
+            mime_msg["Reply-To"] = message.reply_to
 
         for key, value in message.headers.items():
-            msg[key] = value
+            mime_msg[key] = value
 
         try:
             if self.use_ssl:
@@ -124,23 +124,20 @@ class SMTPEmailSender:
                 with smtplib.SMTP_SSL(
                     self.host, self.port, timeout=self.timeout, context=context
                 ) as server:
-                    self._authenticate_and_send(server, from_addr, message, msg)
+                    self._authenticate_and_send(server, from_addr, message, mime_msg)
             else:
                 with smtplib.SMTP(self.host, self.port, timeout=self.timeout) as server:
                     if self.use_tls:
                         context = ssl.create_default_context()
                         server.starttls(context=context)
-                    self._authenticate_and_send(server, from_addr, message, msg)
+                    self._authenticate_and_send(server, from_addr, message, mime_msg)
 
         except smtplib.SMTPException as e:
-            msg = f"SMTP error: {e}"
-            raise EmailSendError(msg, original_error=e) from e
+            raise EmailSendError(f"SMTP error: {e}", original_error=e) from e
         except TimeoutError as e:
-            msg = "SMTP connection timeout"
-            raise EmailSendError(msg, original_error=e) from e
+            raise EmailSendError("SMTP connection timeout", original_error=e) from e
         except OSError as e:
-            msg = f"Network error: {e}"
-            raise EmailSendError(msg, original_error=e) from e
+            raise EmailSendError(f"Network error: {e}", original_error=e) from e
 
     def _authenticate_and_send(
         self,
