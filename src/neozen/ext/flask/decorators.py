@@ -63,8 +63,7 @@ def login_required(
 
                     neozen = _get_neozen()
                     return neozen.handle_unauthorized()
-                else:
-                    return jsonify({"error": "Unauthorized"}), 401  # type: ignore[return-value]
+                return jsonify({"error": "Unauthorized"}), 401  # type: ignore[return-value]
             return f(*args, **kwargs)
 
         return decorated_function  # type: ignore[return-value]

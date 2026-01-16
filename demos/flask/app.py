@@ -61,7 +61,11 @@ class InMemorySessionService:
         user_agent: str | None = None,
     ) -> str:
         token = secrets.token_urlsafe(32)
-        sessions_db[token] = {"token": token, "subject_id": subject_id, "is_active": True}
+        sessions_db[token] = {
+            "token": token,
+            "subject_id": subject_id,
+            "is_active": True,
+        }
         return token
 
     async def validate_session(self, token: str) -> InMemorySession | None:

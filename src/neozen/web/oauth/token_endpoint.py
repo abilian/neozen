@@ -150,18 +150,19 @@ class TokenEndpoint[
             TokenUnsupportedGrantTypeError: Unsupported grant type.
             TokenInvalidScopeError: Invalid scope request.
         """
-        grant_type = payload.get("grant_type")
-
-        if grant_type == "authorization_code":
-            return await self._handle_authorization_code(
-                payload, client_id, client_secret
-            )
-        elif grant_type == "refresh_token":
-            return await self._handle_refresh_token(payload, client_id, client_secret)
-        elif grant_type is None:
-            raise TokenInvalidRequestError("Missing required parameter: grant_type")
-        else:
-            raise TokenUnsupportedGrantTypeError(str(grant_type))
+        match payload.get("grant_type"):
+            case "authorization_code":
+                return await self._handle_authorization_code(
+                    payload, client_id, client_secret
+                )
+            case "refresh_token":
+                return await self._handle_refresh_token(
+                    payload, client_id, client_secret
+                )
+            case None:
+                raise TokenInvalidRequestError("Missing required parameter: grant_type")
+            case grant_type:
+                raise TokenUnsupportedGrantTypeError(str(grant_type))
 
     async def _handle_authorization_code(
         self,
