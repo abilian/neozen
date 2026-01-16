@@ -31,7 +31,8 @@ async def _create_subject(
     # Check if email already exists
     try:
         await storage.get_one_by(email=email.lower())
-        raise ValueError(f"Email '{email}' is already registered")
+        msg = f"Email '{email}' is already registered"
+        raise ValueError(msg)
     except DoesNotExist:
         pass
 
@@ -39,7 +40,8 @@ async def _create_subject(
     if username:
         try:
             await storage.get_one_by(username=username.lower())
-            raise ValueError(f"Username '{username}' is already taken")
+            msg = f"Username '{username}' is already taken"
+            raise ValueError(msg)
         except DoesNotExist:
             pass
 

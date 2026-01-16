@@ -15,13 +15,11 @@ lint.extend-ignore = [
     "TC",
     "D",
     "DOC",
-    "FBT",
     "PLR",
     "TRY",
     "RET",
     "TD",
     "PERF",
-    "RUF",
     "A",
     "ERA",
     "FIX",
@@ -32,12 +30,10 @@ lint.extend-ignore = [
     "D213", # multi-line-summary-second-line
     "COM812", # ...
     "T201", # Print...
+    "RUF022", # Sort __all__
 
     # Fix later (or not)
     "ANN401",
-    "FBT001", # Boolean positional arg - common in widget/Textual APIs
-    "FBT002", # Boolean default arg - common in widget/Textual APIs
-    "FBT003", # Boolean positional value - common with reactive()
     "ARG002", # Unused argument - common in watch methods/event handlers
     "PLR0913", # Too many arguments - export functions need them
     "S603", # subprocess call - intentional for $EDITOR
@@ -46,13 +42,10 @@ lint.extend-ignore = [
     "PLW2901", # Loop variable overwritten - common strip() pattern
     "ANN003", # Missing **kwargs annotation - common in widget subclasses
     "ANN001", # Missing arg annotation - event handlers
-    "PTH108", # os.unlink -> Path.unlink - contextlib.suppress pattern
-    "PTH123", # open() -> Path.open() - binary file writing
     "S110", # try-except-pass - acceptable for config loading with defaults
     "PLW0603", # global statement - used for singleton config/state
     "TRY300", # return in try block - cleaner for import checks
     "PERF401", # list comprehension - explicit append loop is clearer
-    "E402", #  	module-import-not-at-top-of-file
     "E501", #  	line-too-long
     "S107", #  	hardcoded-password-default
     "N818", #  	error-suffix-on-exception-name
@@ -61,8 +54,6 @@ lint.extend-ignore = [
     "S106", #  	hardcoded-password-func-arg
     "ARG001", #	unused-function-argument
     "PYI036", #	bad-exit-annotation
-    "EM102", # 	f-string-in-exception
-    "EM101", # 	raw-string-in-exception
     "S105", #  	hardcoded-password-string
     "UP047", # 	non-pep695-generic-function
     "FURB113",

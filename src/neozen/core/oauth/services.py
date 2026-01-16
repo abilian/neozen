@@ -108,7 +108,8 @@ class OAuthTokenService[
         try:
             return await self.client_repository.get_one_by(client_id=client_id)
         except DoesNotExist as e:
-            raise InvalidClientError("Unknown client.") from e
+            msg = "Unknown client."
+            raise InvalidClientError(msg) from e
 
     async def validate_authorization_code(
         self,

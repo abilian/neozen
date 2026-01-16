@@ -160,7 +160,8 @@ class TokenEndpoint[
                     payload, client_id, client_secret
                 )
             case None:
-                raise TokenInvalidRequestError("Missing required parameter: grant_type")
+                msg = "Missing required parameter: grant_type"
+                raise TokenInvalidRequestError(msg)
             case grant_type:
                 raise TokenUnsupportedGrantTypeError(str(grant_type))
 
@@ -189,17 +190,20 @@ class TokenEndpoint[
                 code_verifier=request.code_verifier,
             )
         except AuthorizationCodeNotFoundError as e:
-            raise TokenInvalidGrantError("Authorization code not found.") from e
+            msg = "Authorization code not found."
+            raise TokenInvalidGrantError(msg) from e
         except AuthorizationCodeExpiredError as e:
-            raise TokenInvalidGrantError("Authorization code has expired.") from e
+            msg = "Authorization code has expired."
+            raise TokenInvalidGrantError(msg) from e
         except ClientMismatchError as e:
-            raise TokenInvalidGrantError(
-                "Authorization code was not issued to this client."
-            ) from e
+            msg = "Authorization code was not issued to this client."
+            raise TokenInvalidGrantError(msg) from e
         except RedirectUriMismatchError as e:
-            raise TokenInvalidGrantError("redirect_uri does not match.") from e
+            msg = "redirect_uri does not match."
+            raise TokenInvalidGrantError(msg) from e
         except PKCEVerificationFailedError as e:
-            raise TokenInvalidGrantError("PKCE verification failed.") from e
+            msg = "PKCE verification failed."
+            raise TokenInvalidGrantError(msg) from e
 
         # Exchange for tokens
         token_pair = await self.service.exchange_authorization_code(auth_code, client)
@@ -231,22 +235,25 @@ class TokenEndpoint[
             if not client_id:
                 # This is a simplified flow - in production you'd want to
                 # get the client_id from the token first
-                raise TokenInvalidRequestError("client_id is required")
+                msg = "client_id is required"
+                raise TokenInvalidRequestError(msg)
 
             stored_refresh = await self.service.validate_refresh_token(
                 refresh_token=request.refresh_token,
                 client_id=client_id,
             )
         except RefreshTokenNotFoundError as e:
-            raise TokenInvalidGrantError("Refresh token not found.") from e
+            msg = "Refresh token not found."
+            raise TokenInvalidGrantError(msg) from e
         except RefreshTokenRevokedError as e:
-            raise TokenInvalidGrantError("Refresh token has been revoked.") from e
+            msg = "Refresh token has been revoked."
+            raise TokenInvalidGrantError(msg) from e
         except RefreshTokenExpiredError as e:
-            raise TokenInvalidGrantError("Refresh token has expired.") from e
+            msg = "Refresh token has expired."
+            raise TokenInvalidGrantError(msg) from e
         except ClientMismatchError as e:
-            raise TokenInvalidGrantError(
-                "Refresh token was not issued to this client."
-            ) from e
+            msg = "Refresh token was not issued to this client."
+            raise TokenInvalidGrantError(msg) from e
 
         # Get client
         client = await self._get_client(client_id)
@@ -257,9 +264,8 @@ class TokenEndpoint[
                 request.scope, stored_refresh.scope
             )
         except ScopeExceedsGrantError as e:
-            raise TokenInvalidScopeError(
-                "Requested scope exceeds original grant scope."
-            ) from e
+            msg = "Requested scope exceeds original grant scope."
+            raise TokenInvalidScopeError(msg) from e
 
         # Generate new access token
         result = await self.service.refresh_access_token(stored_refresh, client, scope)
@@ -281,10 +287,10 @@ class TokenEndpoint[
         except ValidationError as e:
             errors = e.errors()
             if errors:
-                raise TokenInvalidRequestError(
-                    f"Invalid parameter: {errors[0]['loc'][0]}"
-                ) from e
-            raise TokenInvalidRequestError("Invalid request") from e
+                msg = f"Invalid parameter: {errors[0]['loc'][0]}"
+                raise TokenInvalidRequestError(msg) from e
+            msg = "Invalid request"
+            raise TokenInvalidRequestError(msg) from e
 
     def _parse_refresh_token_request(
         self, payload: dict[str, typing.Any]
@@ -295,17 +301,18 @@ class TokenEndpoint[
         except ValidationError as e:
             errors = e.errors()
             if errors:
-                raise TokenInvalidRequestError(
-                    f"Invalid parameter: {errors[0]['loc'][0]}"
-                ) from e
-            raise TokenInvalidRequestError("Invalid request") from e
+                msg = f"Invalid parameter: {errors[0]['loc'][0]}"
+                raise TokenInvalidRequestError(msg) from e
+            msg = "Invalid request"
+            raise TokenInvalidRequestError(msg) from e
 
     def _resolve_client_id(
         self, request_client_id: str, auth_client_id: str | None
     ) -> str:
         """Resolve client_id from request and auth header."""
         if auth_client_id and auth_client_id != request_client_id:
-            raise TokenInvalidClientError("Client ID mismatch.")
+            msg = "Client ID mismatch."
+            raise TokenInvalidClientError(msg)
         return request_client_id
 
     async def _get_client(self, client_id: str) -> OC:
@@ -313,7 +320,8 @@ class TokenEndpoint[
         try:
             return await self.service.get_client(client_id)
         except InvalidClientError as e:
-            raise TokenInvalidClientError("Unknown client.") from e
+            msg = "Unknown client."
+            raise TokenInvalidClientError(msg) from e
 
 
 __all__ = [

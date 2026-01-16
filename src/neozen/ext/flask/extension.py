@@ -260,7 +260,7 @@ class NeoZen:
         """After request hook to set/clear session cookie."""
         # Handle login
         if g._neozen_login_user is not None:
-            subject, token, remember = g._neozen_login_user
+            _subject, token, remember = g._neozen_login_user
             max_age = self.cookie_max_age if remember else None
             response.set_cookie(
                 self.cookie_name,

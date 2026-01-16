@@ -86,7 +86,7 @@ async def init_database(db_url: str | None = None) -> AsyncEngine:
     return engine
 
 
-async def get_session(engine: AsyncEngine) -> AsyncSession:
+def get_session(engine: AsyncEngine) -> AsyncSession:
     """Get a new database session.
 
     Args:
@@ -109,7 +109,7 @@ class DatabaseContext:
 
     async def __aenter__(self) -> AsyncSession:
         self.engine = await init_database(self.db_url)
-        self.session = await get_session(self.engine)
+        self.session = get_session(self.engine)
         return self.session
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
