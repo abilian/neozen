@@ -294,7 +294,9 @@ class NeoZen:
         if self.login_view:
             if self.login_message:
                 flash(self.login_message, self.login_message_category)
-            return redirect(url_for(self.login_view, next=request.url))
+            return typing.cast(
+                Response, redirect(url_for(self.login_view, next=request.url))
+            )
 
         # Default: return 401
         from flask import abort  # noqa: PLC0415

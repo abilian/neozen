@@ -41,7 +41,7 @@ class NeoZenMiddleware:
             receive: ASGI receive callable
             send: ASGI send callable
         """
-        if scope["type"] != "http":  # type: ignore[comparison-overlap]
+        if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 

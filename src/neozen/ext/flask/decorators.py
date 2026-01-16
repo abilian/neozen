@@ -57,7 +57,7 @@ def login_required(
     def decorator(f: F) -> F:
         @wraps(f)
         def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> Response:
-            if not current_user.is_authenticated:
+            if not getattr(current_user, "is_authenticated", False):
                 if redirect:
                     from .extension import _get_neozen  # noqa: PLC0415
 
@@ -73,7 +73,7 @@ def login_required(
         return decorator(func)
 
     # Called with arguments: @login_required() or @login_required(redirect=False)
-    return decorator  # type: ignore[return-value]
+    return decorator
 
 
 def fresh_login_required(
@@ -132,7 +132,7 @@ def roles_required(*roles: str) -> Callable[[F], F]:
         def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> Response:
             # TODO: Implement role checking
             # For now, just check if logged in
-            if not current_user.is_authenticated:
+            if not getattr(current_user, "is_authenticated", False):
                 from .extension import _get_neozen  # noqa: PLC0415
 
                 neozen = _get_neozen()
@@ -149,7 +149,7 @@ def roles_required(*roles: str) -> Callable[[F], F]:
 
         return decorated_function  # type: ignore[return-value]
 
-    return decorator  # type: ignore[return-value]
+    return decorator
 
 
 __all__ = ["fresh_login_required", "login_required", "roles_required"]
