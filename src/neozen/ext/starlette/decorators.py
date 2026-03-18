@@ -89,4 +89,141 @@ def login_required(
     return decorator
 
 
-__all__ = ["login_required"]
+def roles_required(
+    *roles: str,
+    on_forbidden: Callable[[Request], Awaitable[Response]] | None = None,
+) -> Callable[[RouteHandler], RouteHandler]:
+    """Decorator to require specific roles.
+
+    Checks if the current user has at least one of the specified roles.
+    Requires @login_required to be applied first (authentication check).
+
+    Args:
+        *roles: Role names - user must have at least one of these
+        on_forbidden: Custom async handler for forbidden access (403)
+
+    Returns:
+        Decorated route handler
+
+    Example:
+        @app.route("/admin")
+        @login_required
+        @roles_required("admin", "superuser")
+        async def admin_panel(request: Request) -> Response:
+            return templates.TemplateResponse("admin.html", {})
+    """
+
+    def decorator(f: RouteHandler) -> RouteHandler:
+        @wraps(f)
+        async def decorated_function(
+            request: Request, *args: typing.Any, **kwargs: typing.Any
+        ) -> Response:
+            # Get user from request state
+            user = getattr(request.state, "user", None)
+            if user is None:
+                # User should be authenticated first
+                return JSONResponse(
+                    {"error": "Forbidden", "detail": "Authentication required"},
+                    status_code=403,
+                )
+
+            # Check roles
+            user_roles = getattr(user, "roles", [])
+            if not any(role in user_roles for role in roles):
+                if on_forbidden is not None:
+                    return await on_forbidden(request)
+                return JSONResponse(
+                    {"error": "Forbidden", "detail": "Insufficient permissions"},
+                    status_code=403,
+                )
+
+            return await f(request, *args, **kwargs)
+
+        return decorated_function
+
+    return decorator
+
+
+def permissions_required(
+    *permissions: str,
+    on_forbidden: Callable[[Request], Awaitable[Response]] | None = None,
+) -> Callable[[RouteHandler], RouteHandler]:
+    """Decorator to require specific permissions.
+
+    Checks if the current user has all of the specified permissions.
+    Requires @login_required to be applied first (authentication check).
+
+    Permission format: "resource:action" or "resource:action:scope"
+    Examples: "user:read", "post:delete:own", "*:*" (superuser)
+
+    Args:
+        *permissions: Permission strings - user must have ALL of these
+        on_forbidden: Custom async handler for forbidden access (403)
+
+    Returns:
+        Decorated route handler
+
+    Example:
+        @app.route("/users")
+        @login_required
+        @permissions_required("user:read")
+        async def list_users(request: Request) -> Response:
+            return JSONResponse({"users": [...]})
+
+        @app.route("/users/{id}", methods=["DELETE"])
+        @login_required
+        @permissions_required("user:delete")
+        async def delete_user(request: Request) -> Response:
+            ...
+    """
+    from neozen.core.authz.models import Permission  # noqa: PLC0415
+
+    def decorator(f: RouteHandler) -> RouteHandler:
+        @wraps(f)
+        async def decorated_function(
+            request: Request, *args: typing.Any, **kwargs: typing.Any
+        ) -> Response:
+            # Get user from request state
+            user = getattr(request.state, "user", None)
+            if user is None:
+                return JSONResponse(
+                    {"error": "Forbidden", "detail": "Authentication required"},
+                    status_code=403,
+                )
+
+            # Check permissions
+            for perm_str in permissions:
+                required = Permission.parse(perm_str)
+                has_perm = False
+
+                # Try has_permission method first
+                if hasattr(user, "has_permission"):
+                    has_perm = user.has_permission(required)
+                else:
+                    # Fall back to checking permissions attribute
+                    user_perms = getattr(user, "permissions", [])
+                    for user_perm_str in user_perms:
+                        user_perm = Permission.parse(user_perm_str)
+                        if user_perm.matches(required):
+                            has_perm = True
+                            break
+
+                if not has_perm:
+                    if on_forbidden is not None:
+                        return await on_forbidden(request)
+                    return JSONResponse(
+                        {
+                            "error": "Forbidden",
+                            "detail": f"Missing permission: {perm_str}",
+                        },
+                        status_code=403,
+                    )
+
+            return await f(request, *args, **kwargs)
+
+        return decorated_function
+
+    return decorator
+
+
+__all__ = ["login_required", "permissions_required", "roles_required"]

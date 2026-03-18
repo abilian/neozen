@@ -59,11 +59,37 @@ class MockStorage[Model](RepositoryProtocol[Model]):
         self.model_type = model
         self._data = data if data is not None else []
 
+    def _filter(self, **filters: typing.Any) -> list[Model]:
+        """Filter data by the given filters."""
+        return [
+            obj
+            for obj in self._data
+            if all(getattr(obj, key) == value for key, value in filters.items())
+        ]
+
     async def get_one_by(self, **filters: typing.Any) -> Model:
-        for obj in self._data:
-            if all(getattr(obj, key) == value for key, value in filters.items()):
-                return obj
-        raise DoesNotExist
+        results = self._filter(**filters)
+        if not results:
+            raise DoesNotExist
+        return results[0]
+
+    async def get_many_by(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+        **filters: typing.Any,
+    ) -> list[Model]:
+        results = self._filter(**filters)
+        if limit is not None:
+            return results[offset : offset + limit]
+        return results[offset:]
+
+    async def count(self, **filters: typing.Any) -> int:
+        return len(self._filter(**filters))
+
+    async def exists(self, **filters: typing.Any) -> bool:
+        return len(self._filter(**filters)) > 0
 
     async def create(self, **data: typing.Any) -> Model:
         obj = self.model_type(**data)
@@ -74,6 +100,9 @@ class MockStorage[Model](RepositoryProtocol[Model]):
         for key, value in data.items():
             setattr(obj, key, value)
         return obj
+
+    async def delete(self, obj: Model) -> None:
+        self._data.remove(obj)
 
 
 @pytest.fixture

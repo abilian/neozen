@@ -48,7 +48,12 @@ Configuration:
 
 from __future__ import annotations
 
-from .decorators import fresh_login_required, login_required, roles_required
+from .decorators import (
+    fresh_login_required,
+    login_required,
+    permissions_required,
+    roles_required,
+)
 from .extension import NeoZen, NeoZenState
 from .helpers import (
     confirm_login,
@@ -66,6 +71,7 @@ __all__ = [
     # Decorators
     "fresh_login_required",
     "login_required",
+    "permissions_required",
     "roles_required",
     # Helpers
     "confirm_login",

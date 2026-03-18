@@ -43,7 +43,7 @@ Example:
 from __future__ import annotations
 
 from .backend import NeoZenBackend, SubjectLoader
-from .decorators import login_required
+from .decorators import login_required, permissions_required, roles_required
 from .helpers import (
     get_backend,
     get_current_user,
@@ -61,6 +61,8 @@ __all__ = [
     "NeoZenMiddleware",
     # Decorators
     "login_required",
+    "permissions_required",
+    "roles_required",
     # Helpers
     "get_backend",
     "get_current_user",

@@ -41,7 +41,16 @@ Example:
 from __future__ import annotations
 
 from .config import NeoZenConfig, SameSitePolicy, SubjectLoader
-from .guards import AuthenticationRequiredError, LoginRequiredGuard, login_required
+from .guards import (
+    AuthenticationRequiredError,
+    LoginRequiredGuard,
+    PermissionDeniedError,
+    PermissionsRequiredGuard,
+    RolesRequiredGuard,
+    login_required,
+    permissions_required,
+    roles_required,
+)
 from .helpers import (
     get_config,
     get_current_user,
@@ -64,7 +73,12 @@ __all__ = [
     # Guards
     "AuthenticationRequiredError",
     "LoginRequiredGuard",
+    "PermissionDeniedError",
+    "PermissionsRequiredGuard",
+    "RolesRequiredGuard",
     "login_required",
+    "permissions_required",
+    "roles_required",
     # Helpers
     "get_config",
     "get_current_user",

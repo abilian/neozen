@@ -28,7 +28,7 @@ def _crc32_to_base62(number: int) -> str:
     return encoded.zfill(6)  # Ensure the checksum is 6 characters long
 
 
-def _generate_token(*, prefix: str = "") -> str:
+def generate_token(*, prefix: str = "") -> str:
     """Generate a random token with a CRC32 checksum.
 
     Args:
@@ -84,8 +84,8 @@ def generate_token_hash_pair(key: str, *, prefix: str = "") -> tuple[str, str]:
         A tuple containing the generated token and its HMAC-SHA256 hash.
 
     """
-    token = _generate_token(prefix=prefix)
+    token = generate_token(prefix=prefix)
     return token, get_token_hash(token, key=key)
 
 
-__all__ = ["generate_token_hash_pair", "get_token_hash"]
+__all__ = ["generate_token", "generate_token_hash_pair", "get_token_hash"]

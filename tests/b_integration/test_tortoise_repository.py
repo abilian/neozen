@@ -1,0 +1,259 @@
+"""Integration tests for Tortoise ORM repository implementation.
+
+Tests that TortoiseRepository properly implements the RepositoryProtocol
+using a real Tortoise database (in-memory SQLite).
+"""
+
+from __future__ import annotations
+
+import pytest
+from tortoise import Tortoise, fields
+from tortoise.models import Model
+
+from neozen.core.repository import DoesNotExist
+from neozen.storage.tortoise import TortoiseRepository
+
+
+class SampleModel(Model):
+    """Sample Tortoise model for testing."""
+
+    id = fields.CharField(max_length=64, primary_key=True)
+    name = fields.CharField(max_length=128)
+    value = fields.IntField()
+
+    class Meta:
+        table = "sample_entity"
+
+
+class SampleRepository(TortoiseRepository[SampleModel]):
+    """Repository for SampleModel."""
+
+    model_type = SampleModel
+
+
+@pytest.fixture
+async def tortoise_repository():
+    """Provide a Tortoise repository instance with fresh database."""
+    # Initialize Tortoise with in-memory SQLite
+    await Tortoise.init(
+        db_url="sqlite://:memory:",
+        modules={"models": [__name__]},
+    )
+    await Tortoise.generate_schemas()
+
+    yield SampleRepository()
+
+    # Cleanup
+    await Tortoise.close_connections()
+
+
+# -----------------------------------------------------------------------------
+# Tortoise-specific repository tests
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+class TestTortoiseRepositoryProtocol:
+    """Tests that verify Tortoise repository implements RepositoryProtocol."""
+
+    # -------------------------------------------------------------------------
+    # create() tests
+    # -------------------------------------------------------------------------
+
+    async def test_create_returns_object(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        obj = await tortoise_repository.create(id="1", name="test", value=42)
+
+        assert obj.id == "1"
+        assert obj.name == "test"
+        assert obj.value == 42
+
+    async def test_create_persists_object(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        await tortoise_repository.create(id="1", name="test", value=42)
+
+        obj = await tortoise_repository.get_one_by(id="1")
+        assert obj.id == "1"
+
+    # -------------------------------------------------------------------------
+    # get_one_by() tests
+    # -------------------------------------------------------------------------
+
+    async def test_get_one_by_returns_matching_object(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        await tortoise_repository.create(id="1", name="test", value=42)
+
+        obj = await tortoise_repository.get_one_by(id="1")
+
+        assert obj.id == "1"
+        assert obj.name == "test"
+
+    async def test_get_one_by_raises_does_not_exist(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        with pytest.raises(DoesNotExist):
+            await tortoise_repository.get_one_by(id="nonexistent")
+
+    async def test_get_one_by_multiple_filters(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        await tortoise_repository.create(id="1", name="test", value=42)
+        await tortoise_repository.create(id="2", name="test", value=100)
+
+        obj = await tortoise_repository.get_one_by(name="test", value=42)
+
+        assert obj.id == "1"
+
+    # -------------------------------------------------------------------------
+    # get_many_by() tests
+    # -------------------------------------------------------------------------
+
+    async def test_get_many_by_returns_all_matching(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        await tortoise_repository.create(id="1", name="alpha", value=10)
+        await tortoise_repository.create(id="2", name="alpha", value=20)
+        await tortoise_repository.create(id="3", name="beta", value=30)
+
+        results = await tortoise_repository.get_many_by(name="alpha")
+
+        assert len(results) == 2
+        assert all(obj.name == "alpha" for obj in results)
+
+    async def test_get_many_by_returns_empty_list_when_no_match(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        await tortoise_repository.create(id="1", name="test", value=42)
+
+        results = await tortoise_repository.get_many_by(name="nonexistent")
+
+        assert results == []
+
+    async def test_get_many_by_with_limit(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        await tortoise_repository.create(id="1", name="test", value=1)
+        await tortoise_repository.create(id="2", name="test", value=2)
+        await tortoise_repository.create(id="3", name="test", value=3)
+
+        results = await tortoise_repository.get_many_by(name="test", limit=2)
+
+        assert len(results) == 2
+
+    async def test_get_many_by_with_offset(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        await tortoise_repository.create(id="1", name="test", value=1)
+        await tortoise_repository.create(id="2", name="test", value=2)
+        await tortoise_repository.create(id="3", name="test", value=3)
+
+        results = await tortoise_repository.get_many_by(name="test", offset=1)
+
+        assert len(results) == 2
+
+    # -------------------------------------------------------------------------
+    # count() tests
+    # -------------------------------------------------------------------------
+
+    async def test_count_returns_zero_when_empty(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        result = await tortoise_repository.count()
+
+        assert result == 0
+
+    async def test_count_returns_total_without_filters(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        await tortoise_repository.create(id="1", name="first", value=1)
+        await tortoise_repository.create(id="2", name="second", value=2)
+
+        result = await tortoise_repository.count()
+
+        assert result == 2
+
+    async def test_count_with_filters(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        await tortoise_repository.create(id="1", name="alpha", value=10)
+        await tortoise_repository.create(id="2", name="alpha", value=20)
+        await tortoise_repository.create(id="3", name="beta", value=30)
+
+        result = await tortoise_repository.count(name="alpha")
+
+        assert result == 2
+
+    # -------------------------------------------------------------------------
+    # exists() tests
+    # -------------------------------------------------------------------------
+
+    async def test_exists_returns_true_when_match_found(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        await tortoise_repository.create(id="1", name="test", value=42)
+
+        result = await tortoise_repository.exists(id="1")
+
+        assert result is True
+
+    async def test_exists_returns_false_when_no_match(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        await tortoise_repository.create(id="1", name="test", value=42)
+
+        result = await tortoise_repository.exists(id="nonexistent")
+
+        assert result is False
+
+    # -------------------------------------------------------------------------
+    # update_obj() tests
+    # -------------------------------------------------------------------------
+
+    async def test_update_obj_modifies_object(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        obj = await tortoise_repository.create(id="1", name="original", value=10)
+
+        updated = await tortoise_repository.update_obj(obj, name="updated", value=20)
+
+        assert updated.name == "updated"
+        assert updated.value == 20
+
+    async def test_update_obj_persists_changes(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        obj = await tortoise_repository.create(id="1", name="original", value=10)
+
+        await tortoise_repository.update_obj(obj, name="updated")
+
+        retrieved = await tortoise_repository.get_one_by(id="1")
+        assert retrieved.name == "updated"
+
+    # -------------------------------------------------------------------------
+    # delete() tests
+    # -------------------------------------------------------------------------
+
+    async def test_delete_removes_object(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        obj = await tortoise_repository.create(id="1", name="test", value=42)
+
+        await tortoise_repository.delete(obj)
+
+        with pytest.raises(DoesNotExist):
+            await tortoise_repository.get_one_by(id="1")
+
+    async def test_delete_reduces_count(
+        self, tortoise_repository: SampleRepository
+    ) -> None:
+        obj = await tortoise_repository.create(id="1", name="test", value=42)
+        await tortoise_repository.create(id="2", name="test2", value=43)
+
+        assert await tortoise_repository.count() == 2
+
+        await tortoise_repository.delete(obj)
+
+        assert await tortoise_repository.count() == 1

@@ -8,10 +8,15 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "advanced-alchemy[litestar]>=1.8.2",
     "anyio>=4.0.0",
+    "asyncpg>=0.31.0",
     "dishka>=1.0.0",
     "email-validator>=2.3.0",
+    "litestar[standard]>=2.19.0",
     "pydantic>=2.0.0",
+    "sqlalchemy>=2.0.45",
+    "uvicorn>=0.40.0",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +30,16 @@ sqlalchemy = [
     "sqlalchemy>=2.0.0",
     "advanced-alchemy>=0.30.0",
 ]
+peewee = [
+    "peewee>=3.17.0",
+    "aiosqlite>=0.21.0",  # For async SQLite support
+]
+tortoise = [
+    "tortoise-orm[asyncpg,aiosqlite]>=0.22.0",
+]
+databases = [
+    "databases[aiosqlite]>=0.9.0",
+]
 demo = [
     "starlette>=0.40.0",
     "litestar>=2.0.0",
@@ -34,7 +49,7 @@ demo = [
     "itsdangerous>=2.0.0",
 ]
 all = [
-    "neozen[password,phone,sqlalchemy,demo]",
+    "neozen[password,phone,sqlalchemy,peewee,tortoise,databases,demo]",
 ]
 
 [project.scripts]
@@ -65,6 +80,10 @@ dev = [
     "pwdlib[argon2]>=0.3.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "advanced-alchemy>=0.30.0",
+    # Storage backends for testing
+    "peewee>=3.17.0",
+    "tortoise-orm[aiosqlite]>=0.22.0",
+    "databases[aiosqlite]>=0.9.0",
     # Demo dependencies
     "starlette>=0.40.0",
     "litestar>=2.0.0",
@@ -75,6 +94,7 @@ dev = [
     "itsdangerous>=2.0.0",
     "python-multipart>=0.0.21",
     "pytest-archon>=0.0.7",
+    "pytest-asyncio>=1.3.0",
 ]
 
 [tool.pytest.ini_options]

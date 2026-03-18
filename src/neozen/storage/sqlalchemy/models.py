@@ -4,6 +4,8 @@ This module contains all SQLAlchemy ORM models used by NeoZen:
 - Subject: Authentication subjects (users)
 - Session: Authentication sessions
 - EmailVerificationToken: Email verification tokens
+- Role: Authorization roles
+- RoleAssignment: Role assignments to subjects
 """
 
 from __future__ import annotations
@@ -11,9 +13,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from advanced_alchemy.base import AuditColumns
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from neozen.core.authz.models import ScopeType
 from neozen.storage.sqlalchemy.base import Base
 
 
@@ -119,8 +122,93 @@ class EmailVerificationToken(Base):
         )
 
 
+class Role(AuditColumns, Base):
+    """SQLAlchemy model for authorization roles.
+
+    A role is a named collection of permissions that can be assigned
+    to subjects.
+    """
+
+    __tablename__ = "roles"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
+    description: Mapped[str] = mapped_column(Text(), nullable=False, default="")
+    permissions: Mapped[str] = mapped_column(
+        Text(), nullable=False, default=""
+    )  # Comma-separated permission strings
+    is_system: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<Role id={self.id} name={self.name}>"
+
+    def get_permissions_list(self) -> list[str]:
+        """Return permissions as a list."""
+        if not self.permissions:
+            return []
+        return [p.strip() for p in self.permissions.split(",") if p.strip()]
+
+    def set_permissions_list(self, permissions: list[str]) -> None:
+        """Set permissions from a list."""
+        self.permissions = ",".join(permissions)
+
+
+class RoleAssignment(Base):
+    """SQLAlchemy model for role assignments.
+
+    Links a subject to a role with optional scoping.
+    """
+
+    __tablename__ = "role_assignments"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    subject_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("roles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    scope_type: Mapped[ScopeType] = mapped_column(
+        Enum(ScopeType),
+        default=ScopeType.GLOBAL,
+        nullable=False,
+    )
+    scope_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        index=True,
+    )
+    granted_by: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    def __repr__(self) -> str:
+        return f"<RoleAssignment subject={self.subject_id} role={self.role_id}>"
+
+
 __all__ = [
     "EmailVerificationToken",
+    "Role",
+    "RoleAssignment",
     "Session",
     "Subject",
 ]

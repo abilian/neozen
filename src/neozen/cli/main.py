@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from neozen.cli.commands import client, subject
+from neozen.cli.commands import client, role, subject
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -25,6 +25,10 @@ Examples:
   neozen subject list
   neozen client create --name myapp
   neozen client list
+  neozen role init
+  neozen role create -n editor -p post:read -p post:write
+  neozen role assign -s user123 -r editor
+  neozen role show-subject user123
 """,
     )
 
@@ -139,6 +143,152 @@ Examples:
     )
     client_list.set_defaults(func=client.list_clients)
 
+    # Role command
+    role_parser = subparsers.add_parser(
+        "role",
+        help="Manage authorization roles",
+        description="Create and manage RBAC roles and assignments.",
+    )
+    role_subparsers = role_parser.add_subparsers(
+        dest="subcommand",
+        title="subcommands",
+    )
+
+    # role create
+    role_create = role_subparsers.add_parser(
+        "create",
+        help="Create a new role",
+    )
+    role_create.add_argument(
+        "--name",
+        "-n",
+        required=True,
+        help="Role name",
+    )
+    role_create.add_argument(
+        "--permission",
+        "-p",
+        action="append",
+        dest="permissions",
+        help="Permission string (e.g., 'user:read'). Can be repeated.",
+    )
+    role_create.add_argument(
+        "--description",
+        "-d",
+        help="Role description",
+    )
+    role_create.set_defaults(func=role.create)
+
+    # role list
+    role_list = role_subparsers.add_parser(
+        "list",
+        help="List all roles",
+    )
+    role_list.add_argument(
+        "--format",
+        "-f",
+        choices=["table", "json"],
+        default="table",
+        help="Output format (default: table)",
+    )
+    role_list.set_defaults(func=role.list_roles)
+
+    # role delete
+    role_delete = role_subparsers.add_parser(
+        "delete",
+        help="Delete a role",
+    )
+    role_delete.add_argument(
+        "name",
+        help="Role name to delete",
+    )
+    role_delete.set_defaults(func=role.delete)
+
+    # role assign
+    role_assign = role_subparsers.add_parser(
+        "assign",
+        help="Assign a role to a subject",
+    )
+    role_assign.add_argument(
+        "--subject",
+        "-s",
+        required=True,
+        dest="subject_id",
+        help="Subject ID to assign role to",
+    )
+    role_assign.add_argument(
+        "--role",
+        "-r",
+        required=True,
+        help="Role name to assign",
+    )
+    role_assign.add_argument(
+        "--scope-type",
+        choices=["global", "team", "resource"],
+        default="global",
+        help="Scope type (default: global)",
+    )
+    role_assign.add_argument(
+        "--scope-id",
+        help="Scope ID (required for team/resource scopes)",
+    )
+    role_assign.set_defaults(func=role.assign)
+
+    # role revoke
+    role_revoke = role_subparsers.add_parser(
+        "revoke",
+        help="Revoke a role from a subject",
+    )
+    role_revoke.add_argument(
+        "--subject",
+        "-s",
+        required=True,
+        dest="subject_id",
+        help="Subject ID to revoke role from",
+    )
+    role_revoke.add_argument(
+        "--role",
+        "-r",
+        required=True,
+        help="Role name to revoke",
+    )
+    role_revoke.add_argument(
+        "--scope-type",
+        choices=["global", "team", "resource"],
+        default="global",
+        help="Scope type (default: global)",
+    )
+    role_revoke.add_argument(
+        "--scope-id",
+        help="Scope ID (required for team/resource scopes)",
+    )
+    role_revoke.set_defaults(func=role.revoke)
+
+    # role show-subject
+    role_show = role_subparsers.add_parser(
+        "show-subject",
+        help="Show roles for a subject",
+    )
+    role_show.add_argument(
+        "subject_id",
+        help="Subject ID to show roles for",
+    )
+    role_show.add_argument(
+        "--format",
+        "-f",
+        choices=["table", "json"],
+        default="table",
+        help="Output format (default: table)",
+    )
+    role_show.set_defaults(func=role.show_subject)
+
+    # role init
+    role_init = role_subparsers.add_parser(
+        "init",
+        help="Initialize built-in roles",
+    )
+    role_init.set_defaults(func=role.init)
+
     return parser
 
 
@@ -152,7 +302,7 @@ def main(args: list[str] | None = None) -> int:
         return 0
 
     # Handle commands with subcommands
-    if parsed.command in ("subject", "client") and not getattr(
+    if parsed.command in ("subject", "client", "role") and not getattr(
         parsed, "subcommand", None
     ):
         # Print help for the specific command
@@ -160,6 +310,8 @@ def main(args: list[str] | None = None) -> int:
             parser.parse_args(["subject", "--help"])
         elif parsed.command == "client":
             parser.parse_args(["client", "--help"])
+        elif parsed.command == "role":
+            parser.parse_args(["role", "--help"])
         return 0
 
     # Execute the command function

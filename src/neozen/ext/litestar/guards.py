@@ -144,4 +144,205 @@ def login_required(
     return LoginRequiredGuard(redirect=redirect, scopes=scopes)
 
 
-__all__ = ["AuthenticationRequiredError", "LoginRequiredGuard", "login_required"]
+class PermissionDeniedError(NotAuthorizedException):
+    """Exception raised when a permission check fails.
+
+    Attributes:
+        permission: The permission that was required
+    """
+
+    def __init__(
+        self,
+        permission: str,
+        detail: str = "Permission denied",
+    ) -> None:
+        super().__init__(detail=detail)
+        self.permission = permission
+
+
+class RolesRequiredGuard:
+    """Guard that requires specific roles.
+
+    Checks if the user has at least one of the specified roles.
+    Requires authentication middleware to populate the session.
+
+    Example:
+        @get("/admin", guards=[RolesRequiredGuard("admin", "superuser")])
+        async def admin_panel(current_user: CurrentUser) -> Template:
+            return Template("admin.html", context={"user": current_user})
+    """
+
+    __slots__ = ("roles",)
+
+    def __init__(self, *roles: str) -> None:
+        """Initialize guard.
+
+        Args:
+            *roles: Role names - user must have at least one of these
+        """
+        self.roles = roles
+
+    async def __call__(
+        self,
+        connection: ASGIConnection[typing.Any, typing.Any, typing.Any, typing.Any],
+        _: BaseRouteHandler,
+    ) -> None:
+        """Check if user has required roles.
+
+        Args:
+            connection: The ASGI connection
+            _: The route handler (unused)
+
+        Raises:
+            AuthenticationRequiredError: If user is not authenticated
+            PermissionDeniedError: If user lacks required roles
+        """
+        state = connection.scope.get("state", {})
+        session = state.get("neozen_session")
+
+        if session is None:
+            raise AuthenticationRequiredError(detail="Authentication required")
+
+        # Get user from state
+        user = state.get("neozen_user")
+        if user is None:
+            raise AuthenticationRequiredError(detail="Authentication required")
+
+        # Check roles
+        user_roles = getattr(user, "roles", [])
+        if not any(role in user_roles for role in self.roles):
+            raise PermissionDeniedError(
+                permission=f"roles:{','.join(self.roles)}",
+                detail="Insufficient permissions",
+            )
+
+
+class PermissionsRequiredGuard:
+    """Guard that requires specific permissions.
+
+    Checks if the user has all of the specified permissions.
+    Requires authentication middleware to populate the session.
+
+    Permission format: "resource:action" or "resource:action:scope"
+    Examples: "user:read", "post:delete:own", "*:*" (superuser)
+
+    Example:
+        @get("/users", guards=[PermissionsRequiredGuard("user:read")])
+        async def list_users(current_user: CurrentUser) -> list[dict]:
+            return [...]
+
+        @delete("/users/{id}", guards=[PermissionsRequiredGuard("user:delete")])
+        async def delete_user(id: str) -> None:
+            ...
+    """
+
+    __slots__ = ("permissions",)
+
+    def __init__(self, *permissions: str) -> None:
+        """Initialize guard.
+
+        Args:
+            *permissions: Permission strings - user must have ALL of these
+        """
+        self.permissions = permissions
+
+    async def __call__(
+        self,
+        connection: ASGIConnection[typing.Any, typing.Any, typing.Any, typing.Any],
+        _: BaseRouteHandler,
+    ) -> None:
+        """Check if user has required permissions.
+
+        Args:
+            connection: The ASGI connection
+            _: The route handler (unused)
+
+        Raises:
+            AuthenticationRequiredError: If user is not authenticated
+            PermissionDeniedError: If user lacks required permissions
+        """
+        from neozen.core.authz.models import Permission  # noqa: PLC0415
+
+        state = connection.scope.get("state", {})
+        session = state.get("neozen_session")
+
+        if session is None:
+            raise AuthenticationRequiredError(detail="Authentication required")
+
+        # Get user from state
+        user = state.get("neozen_user")
+        if user is None:
+            raise AuthenticationRequiredError(detail="Authentication required")
+
+        # Check permissions
+        for perm_str in self.permissions:
+            required = Permission.parse(perm_str)
+            has_perm = False
+
+            # Try has_permission method first
+            if hasattr(user, "has_permission"):
+                has_perm = user.has_permission(required)
+            else:
+                # Fall back to checking permissions attribute
+                user_perms = getattr(user, "permissions", [])
+                for user_perm_str in user_perms:
+                    user_perm = Permission.parse(user_perm_str)
+                    if user_perm.matches(required):
+                        has_perm = True
+                        break
+
+            if not has_perm:
+                raise PermissionDeniedError(
+                    permission=perm_str,
+                    detail=f"Missing permission: {perm_str}",
+                )
+
+
+def roles_required(*roles: str) -> RolesRequiredGuard:
+    """Create a roles required guard.
+
+    Convenience function to create a RolesRequiredGuard.
+
+    Args:
+        *roles: Role names - user must have at least one of these
+
+    Returns:
+        A RolesRequiredGuard instance
+
+    Example:
+        @get("/admin", guards=[roles_required("admin", "superuser")])
+        async def admin_panel(current_user: CurrentUser) -> Template:
+            return Template("admin.html", context={"user": current_user})
+    """
+    return RolesRequiredGuard(*roles)
+
+
+def permissions_required(*permissions: str) -> PermissionsRequiredGuard:
+    """Create a permissions required guard.
+
+    Convenience function to create a PermissionsRequiredGuard.
+
+    Args:
+        *permissions: Permission strings - user must have ALL of these
+
+    Returns:
+        A PermissionsRequiredGuard instance
+
+    Example:
+        @get("/users", guards=[permissions_required("user:read")])
+        async def list_users(current_user: CurrentUser) -> list[dict]:
+            return [...]
+    """
+    return PermissionsRequiredGuard(*permissions)
+
+
+__all__ = [
+    "AuthenticationRequiredError",
+    "LoginRequiredGuard",
+    "PermissionDeniedError",
+    "PermissionsRequiredGuard",
+    "RolesRequiredGuard",
+    "login_required",
+    "permissions_required",
+    "roles_required",
+]
