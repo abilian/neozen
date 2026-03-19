@@ -45,6 +45,14 @@
                         {% endif %}
                     </td>
                 </tr>
+                <tr>
+                    <th scope="row">Roles</th>
+                    <td>
+                        {% for role in current_user.roles %}
+                        <span class="badge badge-{{ role }}">{{ role }}</span>
+                        {% endfor %}
+                    </td>
+                </tr>
                 {% if current_user.created_at %}
                 <tr>
                     <th scope="row">Member Since</th>
@@ -70,6 +78,24 @@
         </ul>
     </article>
 </section>
+
+{% if 'admin' in current_user.roles %}
+<section>
+    <h2>Admin Panel</h2>
+    <article class="admin-panel">
+        <header>Administrator Access</header>
+        <p>This section is only visible to users with the <strong>admin</strong> role.</p>
+        <p>As an administrator, you can:</p>
+        <ul>
+            <li>Manage user accounts</li>
+            <li>Configure system settings</li>
+            <li>View audit logs</li>
+            <li>Assign roles to other users</li>
+        </ul>
+        <p><small>This demonstrates role-based content visibility with NeoZen authorization.</small></p>
+    </article>
+</section>
+{% endif %}
 
 <section>
     <h2>Actions</h2>

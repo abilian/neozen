@@ -1,0 +1,76 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Create Role - NeoZen Admin{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ul>
+        <li><a href="/roles">Roles</a></li>
+        <li>Create</li>
+    </ul>
+</nav>
+
+<h1>Create Role</h1>
+
+<article>
+    <form method="post" action="/roles/create">
+        <label for="name">
+            Role Name
+            <input type="text" id="name" name="name" placeholder="e.g., editor, moderator" required>
+        </label>
+
+        <label for="description">
+            Description
+            <input type="text" id="description" name="description" placeholder="Brief description of the role">
+        </label>
+
+        <label for="permissions">
+            Permissions
+            <input type="text" id="permissions" name="permissions" placeholder="e.g., posts:read, posts:write, comments:*" required>
+            <small>Comma-separated list of permissions. Format: <code>resource:action</code> or <code>resource:action:scope</code></small>
+        </label>
+
+        <div class="grid">
+            <button type="submit">Create Role</button>
+            <a href="/roles" role="button" class="secondary outline">Cancel</a>
+        </div>
+    </form>
+</article>
+
+<article>
+    <h3>Permission Format</h3>
+    <p>Permissions follow the format <code>resource:action</code> or <code>resource:action:scope</code>.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Example</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>posts:read</code></td>
+                <td>Can read posts</td>
+            </tr>
+            <tr>
+                <td><code>posts:write</code></td>
+                <td>Can create/edit posts</td>
+            </tr>
+            <tr>
+                <td><code>posts:*</code></td>
+                <td>All actions on posts</td>
+            </tr>
+            <tr>
+                <td><code>*:read</code></td>
+                <td>Read access to all resources</td>
+            </tr>
+            <tr>
+                <td><code>*:*</code></td>
+                <td>Full access (superuser)</td>
+            </tr>
+        </tbody>
+    </table>
+</article>
+
+<p><a href="/roles">&larr; Back to Roles</a></p>
+{% endblock %}

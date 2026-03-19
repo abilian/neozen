@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}NeoZen Admin{% endblock %}</title>
+    <!-- Pico CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        :root {
+            --nav-height: 4rem;
+            --sidebar-width: 220px;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        nav.admin-nav {
+            background: var(--pico-primary-background);
+        }
+
+        nav.admin-nav ul {
+            margin-bottom: 0;
+        }
+
+        nav.admin-nav a {
+            color: var(--pico-primary-inverse);
+        }
+
+        nav.admin-nav .brand {
+            font-weight: bold;
+            font-size: 1.25rem;
+        }
+
+        .admin-layout {
+            display: flex;
+            flex: 1;
+        }
+
+        .admin-sidebar {
+            width: var(--sidebar-width);
+            background: var(--pico-card-background-color);
+            border-right: 1px solid var(--pico-muted-border-color);
+            padding: 1rem;
+        }
+
+        .admin-sidebar ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .admin-sidebar li {
+            margin-bottom: 0.25rem;
+        }
+
+        .admin-sidebar a {
+            display: block;
+            padding: 0.5rem 1rem;
+            border-radius: var(--pico-border-radius);
+            text-decoration: none;
+            color: var(--pico-color);
+        }
+
+        .admin-sidebar a:hover {
+            background: var(--pico-primary-focus);
+        }
+
+        .admin-sidebar a.active {
+            background: var(--pico-primary);
+            color: var(--pico-primary-inverse);
+        }
+
+        .admin-sidebar h4 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--pico-muted-color);
+            margin: 1rem 0 0.5rem 0;
+            padding: 0 1rem;
+        }
+
+        .admin-content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        footer {
+            padding: 1rem 0;
+            text-align: center;
+            color: var(--pico-muted-color);
+            font-size: 0.875rem;
+            border-top: 1px solid var(--pico-muted-border-color);
+        }
+
+        .flash-messages {
+            margin-bottom: 1rem;
+        }
+
+        .flash-message {
+            padding: 1rem;
+            border-radius: var(--pico-border-radius);
+            margin-bottom: 0.5rem;
+        }
+
+        .flash-success {
+            background: var(--pico-ins-color);
+            color: white;
+        }
+
+        .flash-error {
+            background: var(--pico-del-color);
+            color: white;
+        }
+
+        .flash-info {
+            background: var(--pico-primary);
+            color: white;
+        }
+
+        .stat-card {
+            background: var(--pico-card-background-color);
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: var(--pico-border-radius);
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .stat-card .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--pico-primary);
+        }
+
+        .stat-card .stat-label {
+            color: var(--pico-muted-color);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: var(--pico-border-radius);
+            font-size: 0.75rem;
+            background: var(--pico-primary);
+            color: var(--pico-primary-inverse);
+            margin-right: 0.25rem;
+        }
+
+        .badge-secondary {
+            background: var(--pico-secondary);
+            color: var(--pico-secondary-inverse);
+        }
+
+        .badge-muted {
+            background: var(--pico-muted-border-color);
+            color: var(--pico-color);
+        }
+
+        .actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .actions form {
+            margin: 0;
+        }
+
+        .actions button {
+            margin: 0;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.875rem;
+        }
+
+        table {
+            width: 100%;
+        }
+
+        th {
+            text-align: left;
+        }
+
+        .text-muted {
+            color: var(--pico-muted-color);
+        }
+
+        .text-success {
+            color: var(--pico-ins-color);
+        }
+
+        .text-danger {
+            color: var(--pico-del-color);
+        }
+    </style>
+</head>
+<body>
+    <nav class="admin-nav container-fluid">
+        <ul>
+            <li><a href="/" class="brand">NeoZen Admin</a></li>
+        </ul>
+        <ul>
+            <li><span class="text-muted">Administration Panel</span></li>
+        </ul>
+    </nav>
+
+    <div class="admin-layout">
+        <aside class="admin-sidebar">
+            <ul>
+                <li><a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Dashboard</a></li>
+            </ul>
+            <h4>Management</h4>
+            <ul>
+                <li><a href="/subjects" {% if '/subjects' in request.url.path %}class="active"{% endif %}>Subjects</a></li>
+                <li><a href="/roles" {% if '/roles' in request.url.path %}class="active"{% endif %}>Roles</a></li>
+                <li><a href="/sessions" {% if '/sessions' in request.url.path %}class="active"{% endif %}>Sessions</a></li>
+            </ul>
+        </aside>
+
+        <main class="admin-content">
+            {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                <div class="flash-message flash-{{ category }}">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <footer>
+        <p>NeoZen Admin &bull; Built with Litestar</p>
+    </footer>
+</body>
+</html>

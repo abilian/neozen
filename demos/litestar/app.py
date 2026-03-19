@@ -49,10 +49,17 @@ sessions_db: dict[str, dict] = {}
 class User:
     """Simple user model."""
 
-    def __init__(self, id: str, email: str, password_hash: str) -> None:
+    def __init__(
+        self,
+        id: str,
+        email: str,
+        password_hash: str,
+        roles: list[str] | None = None,
+    ) -> None:
         self.id = id
         self.email = email
         self.password_hash = password_hash
+        self.roles = roles or ["user"]
         self.is_active = True
         self.is_verified = False
 
@@ -71,6 +78,9 @@ class User:
     def check_password(self, password: str) -> bool:
         valid, _ = hasher.verify_and_update(password, self.password_hash)
         return valid
+
+    def has_role(self, role: str) -> bool:
+        return role in self.roles
 
 
 # =============================================================================
@@ -247,14 +257,24 @@ async def register_submit(request: Request) -> Response:
     elif User.get_by_email(email):
         flash(request, "Email already registered", "error")
     else:
-        # Create user
+        # Create user - first user gets admin role
         user_id = f"user_{secrets.token_hex(8)}"
+        is_first_user = len(users_db) == 0
+        roles = ["admin", "user"] if is_first_user else ["user"]
         users_db[user_id] = {
             "id": user_id,
             "email": email,
             "password_hash": hasher.hash(password),
+            "roles": roles,
         }
-        flash(request, "Registration successful! Please log in.", "success")
+        if is_first_user:
+            flash(
+                request,
+                "Registration successful! You are the first user and have been granted admin privileges.",
+                "success",
+            )
+        else:
+            flash(request, "Registration successful! Please log in.", "success")
         return Redirect(path="/login")
 
     return render_template(
@@ -298,12 +318,17 @@ async def api_register(request: Request) -> Response:
         return json_error("Email already registered", status_code=409)
 
     user_id = f"user_{secrets.token_hex(8)}"
+    is_first_user = len(users_db) == 0
+    roles = ["admin", "user"] if is_first_user else ["user"]
     users_db[user_id] = {
         "id": user_id,
         "email": email,
         "password_hash": hasher.hash(password),
+        "roles": roles,
     }
-    return json_response({"message": "Registered", "user_id": user_id}, status_code=201)
+    return json_response(
+        {"message": "Registered", "user_id": user_id, "roles": roles}, status_code=201
+    )
 
 
 @post("/api/login")

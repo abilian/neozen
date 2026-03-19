@@ -1,0 +1,103 @@
+{% extends "admin_base.html" %}
+
+{% block title %}{{ role.name }} - NeoZen Admin{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ul>
+        <li><a href="/roles">Roles</a></li>
+        <li>{{ role.name }}</li>
+    </ul>
+</nav>
+
+<h1>
+    {{ role.name }}
+    {% if role.is_system %}
+    <span class="badge badge-secondary">System</span>
+    {% endif %}
+</h1>
+
+<article>
+    <h3>Role Details</h3>
+    <table>
+        <tr>
+            <th>Name</th>
+            <td>{{ role.name }}</td>
+        </tr>
+        <tr>
+            <th>Description</th>
+            <td>{{ role.description or '-' }}</td>
+        </tr>
+        <tr>
+            <th>Type</th>
+            <td>
+                {% if role.is_system %}
+                <span class="badge badge-secondary">System Role</span>
+                <small class="text-muted">(cannot be deleted)</small>
+                {% else %}
+                <span class="badge badge-muted">Custom Role</span>
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <th>Created</th>
+            <td>{{ role.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') if role.created_at else '-' }}</td>
+        </tr>
+    </table>
+
+    {% if not role.is_system %}
+    <div class="actions">
+        <form method="post" action="/roles/{{ role.name }}/delete" onsubmit="return confirm('Are you sure you want to delete this role?');">
+            <button type="submit" class="secondary">Delete Role</button>
+        </form>
+    </div>
+    {% endif %}
+</article>
+
+<article>
+    <h3>Permissions</h3>
+    {% if role.permissions %}
+    <div>
+        {% for perm in role.permissions %}
+        <span class="badge">{{ perm }}</span>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted">No permissions assigned.</p>
+    {% endif %}
+</article>
+
+<article>
+    <h3>Assigned Subjects</h3>
+    {% if assignments %}
+    <table>
+        <thead>
+            <tr>
+                <th>Subject</th>
+                <th>Assigned At</th>
+                <th>Expires</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for assignment, subject in assignments %}
+            <tr>
+                <td>
+                    {% if subject %}
+                    <a href="/subjects/{{ subject.id }}">{{ subject.email }}</a>
+                    {% else %}
+                    <span class="text-muted">{{ assignment.subject_id }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ assignment.assigned_at.strftime('%Y-%m-%d %H:%M') if assignment.assigned_at else '-' }}</td>
+                <td>{{ assignment.expires_at.strftime('%Y-%m-%d %H:%M') if assignment.expires_at else 'Never' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No subjects assigned to this role.</p>
+    {% endif %}
+</article>
+
+<p><a href="/roles">&larr; Back to Roles</a></p>
+{% endblock %}

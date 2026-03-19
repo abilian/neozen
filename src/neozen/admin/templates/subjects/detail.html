@@ -1,0 +1,106 @@
+{% extends "admin_base.html" %}
+
+{% block title %}{{ subject.email }} - NeoZen Admin{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ul>
+        <li><a href="/subjects">Subjects</a></li>
+        <li>{{ subject.email }}</li>
+    </ul>
+</nav>
+
+<h1>{{ subject.email }}</h1>
+
+<article>
+    <h3>Subject Details</h3>
+    <table>
+        <tr>
+            <th>ID</th>
+            <td><code>{{ subject.id }}</code></td>
+        </tr>
+        <tr>
+            <th>Email</th>
+            <td>{{ subject.email }}</td>
+        </tr>
+        <tr>
+            <th>Username</th>
+            <td>{{ subject.username or '-' }}</td>
+        </tr>
+        <tr>
+            <th>Status</th>
+            <td>
+                {% if subject.is_active %}
+                <span class="badge">Active</span>
+                {% else %}
+                <span class="badge badge-muted">Inactive</span>
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <th>Verified</th>
+            <td>
+                {% if subject.is_verified %}
+                <span class="text-success">Yes</span>
+                {% else %}
+                <span class="text-muted">No</span>
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <th>Created</th>
+            <td>{{ subject.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') if subject.created_at else '-' }}</td>
+        </tr>
+        <tr>
+            <th>Last Login</th>
+            <td>{{ subject.last_login_at.strftime('%Y-%m-%d %H:%M:%S UTC') if subject.last_login_at else 'Never' }}</td>
+        </tr>
+    </table>
+
+    <div class="actions">
+        {% if subject.is_active %}
+        <form method="post" action="/subjects/{{ subject.id }}/deactivate">
+            <button type="submit" class="secondary">Deactivate</button>
+        </form>
+        {% else %}
+        <form method="post" action="/subjects/{{ subject.id }}/activate">
+            <button type="submit">Activate</button>
+        </form>
+        {% endif %}
+    </div>
+</article>
+
+<article>
+    <h3>Assigned Roles</h3>
+    {% if roles %}
+    <table>
+        <thead>
+            <tr>
+                <th>Role</th>
+                <th>Description</th>
+                <th>Type</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for role in roles %}
+            <tr>
+                <td><a href="/roles/{{ role.name }}">{{ role.name }}</a></td>
+                <td>{{ role.description or '-' }}</td>
+                <td>
+                    {% if role.is_system %}
+                    <span class="badge badge-secondary">System</span>
+                    {% else %}
+                    <span class="badge badge-muted">Custom</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No roles assigned.</p>
+    {% endif %}
+</article>
+
+<p><a href="/subjects">&larr; Back to Subjects</a></p>
+{% endblock %}

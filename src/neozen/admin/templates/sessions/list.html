@@ -1,0 +1,48 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Sessions - NeoZen Admin{% endblock %}
+
+{% block content %}
+<h1>Active Sessions</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>Subject</th>
+            <th>IP Address</th>
+            <th>User Agent</th>
+            <th>Created</th>
+            <th>Expires</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for session, subject in sessions %}
+        <tr>
+            <td>
+                {% if subject %}
+                <a href="/subjects/{{ subject.id }}">{{ subject.email }}</a>
+                {% else %}
+                <span class="text-muted">{{ session.subject_id }}</span>
+                {% endif %}
+            </td>
+            <td>{{ session.ip_address or '-' }}</td>
+            <td>
+                <small>{{ session.user_agent[:50] ~ '...' if session.user_agent and session.user_agent|length > 50 else session.user_agent or '-' }}</small>
+            </td>
+            <td>{{ session.created_at.strftime('%Y-%m-%d %H:%M') if session.created_at else '-' }}</td>
+            <td>{{ session.expires_at.strftime('%Y-%m-%d %H:%M') if session.expires_at else '-' }}</td>
+            <td>
+                <form method="post" action="/sessions/{{ session.token_hash }}/revoke" onsubmit="return confirm('Revoke this session?');">
+                    <button type="submit" class="secondary outline">Revoke</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6" class="text-muted">No active sessions.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

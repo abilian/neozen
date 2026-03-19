@@ -1,0 +1,53 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Roles - NeoZen Admin{% endblock %}
+
+{% block content %}
+<h1>Roles</h1>
+
+<p>
+    <a href="/roles/create" role="button">Create Role</a>
+</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Type</th>
+            <th>Permissions</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for role in roles %}
+        <tr>
+            <td><a href="/roles/{{ role.name }}">{{ role.name }}</a></td>
+            <td>{{ role.description or '-' }}</td>
+            <td>
+                {% if role.is_system %}
+                <span class="badge badge-secondary">System</span>
+                {% else %}
+                <span class="badge badge-muted">Custom</span>
+                {% endif %}
+            </td>
+            <td>
+                {% for perm in role.permissions[:3] %}
+                <span class="badge">{{ perm }}</span>
+                {% endfor %}
+                {% if role.permissions|length > 3 %}
+                <span class="text-muted">+{{ role.permissions|length - 3 }} more</span>
+                {% endif %}
+            </td>
+            <td>
+                <a href="/roles/{{ role.name }}" role="button" class="outline">View</a>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="5" class="text-muted">No roles found.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

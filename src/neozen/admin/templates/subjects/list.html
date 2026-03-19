@@ -1,0 +1,60 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Subjects - NeoZen Admin{% endblock %}
+
+{% block content %}
+<h1>Subjects</h1>
+
+<form method="get" action="/subjects">
+    <div class="grid">
+        <input type="search" name="search" placeholder="Search by email or username..." value="{{ search or '' }}">
+        <button type="submit">Search</button>
+        {% if search %}
+        <a href="/subjects" role="button" class="outline">Clear</a>
+        {% endif %}
+    </div>
+</form>
+
+<table>
+    <thead>
+        <tr>
+            <th>Email</th>
+            <th>Username</th>
+            <th>Status</th>
+            <th>Verified</th>
+            <th>Created</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for subject in subjects %}
+        <tr>
+            <td>{{ subject.email }}</td>
+            <td>{{ subject.username or '-' }}</td>
+            <td>
+                {% if subject.is_active %}
+                <span class="badge">Active</span>
+                {% else %}
+                <span class="badge badge-muted">Inactive</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if subject.is_verified %}
+                <span class="text-success">Yes</span>
+                {% else %}
+                <span class="text-muted">No</span>
+                {% endif %}
+            </td>
+            <td>{{ subject.created_at.strftime('%Y-%m-%d %H:%M') if subject.created_at else '-' }}</td>
+            <td>
+                <a href="/subjects/{{ subject.id }}" role="button" class="outline">View</a>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6" class="text-muted">No subjects found.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

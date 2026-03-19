@@ -92,10 +92,17 @@ users_db: dict[str, dict] = {}
 class User(UserMixin):
     """User model with NeoZen UserMixin."""
 
-    def __init__(self, id: str, email: str, password_hash: str) -> None:
+    def __init__(
+        self,
+        id: str,
+        email: str,
+        password_hash: str,
+        roles: list[str] | None = None,
+    ) -> None:
         self.id = id
         self.email = email
         self.password_hash = password_hash
+        self.roles = roles or ["user"]
         self.is_active = True
         self.is_verified = False
         self.created_at = None
@@ -115,6 +122,9 @@ class User(UserMixin):
     def check_password(self, password: str) -> bool:
         valid, _ = hasher.verify_and_update(password, self.password_hash)
         return valid
+
+    def has_role(self, role: str) -> bool:
+        return role in self.roles
 
 
 @neozen.subject_loader
@@ -178,14 +188,23 @@ def register():
         elif User.get_by_email(email):
             flash("Email already registered", "error")
         else:
-            # Create user
+            # Create user - first user gets admin role
             user_id = f"user_{secrets.token_hex(8)}"
+            is_first_user = len(users_db) == 0
+            roles = ["admin", "user"] if is_first_user else ["user"]
             users_db[user_id] = {
                 "id": user_id,
                 "email": email,
                 "password_hash": hasher.hash(password),
+                "roles": roles,
             }
-            flash("Registration successful! Please log in.", "success")
+            if is_first_user:
+                flash(
+                    "Registration successful! You are the first user and have been granted admin privileges.",
+                    "success",
+                )
+            else:
+                flash("Registration successful! Please log in.", "success")
             return redirect(url_for("login"))
 
     return render_template("register.html", current_user=None)
@@ -227,12 +246,15 @@ def api_register():
         return jsonify({"error": "Email already registered"}), 409
 
     user_id = f"user_{secrets.token_hex(8)}"
+    is_first_user = len(users_db) == 0
+    roles = ["admin", "user"] if is_first_user else ["user"]
     users_db[user_id] = {
         "id": user_id,
         "email": email,
         "password_hash": hasher.hash(password),
+        "roles": roles,
     }
-    return jsonify({"message": "Registered", "user_id": user_id}), 201
+    return jsonify({"message": "Registered", "user_id": user_id, "roles": roles}), 201
 
 
 @app.route("/api/login", methods=["POST"])

@@ -86,6 +86,37 @@
             max-width: 400px;
             margin: 0 auto;
         }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: var(--pico-border-radius);
+            font-size: 0.75rem;
+            background: var(--pico-primary);
+            color: var(--pico-primary-inverse);
+            margin-right: 0.25rem;
+        }
+
+        .badge-admin {
+            background: var(--pico-del-color);
+        }
+
+        .badge-user {
+            background: var(--pico-secondary);
+        }
+
+        .admin-panel {
+            border: 2px solid var(--pico-del-color);
+            border-radius: var(--pico-border-radius);
+        }
+
+        .admin-panel header {
+            background: var(--pico-del-color);
+            color: white;
+            padding: 0.5rem 1rem;
+            margin: -1rem -1rem 1rem -1rem;
+            border-radius: var(--pico-border-radius) var(--pico-border-radius) 0 0;
+        }
     </style>
 </head>
 <body>
@@ -123,7 +154,7 @@
     </main>
 
     <footer class="container">
-        <p>NeoZen Authentication Demo &bull; <a href="https://github.com/anthropics/neozen">GitHub</a></p>
+        <p>NeoZen Authentication Demo &bull; <a href="https://github.com/abilian/neozen">GitHub</a></p>
     </footer>
 </body>
 </html>

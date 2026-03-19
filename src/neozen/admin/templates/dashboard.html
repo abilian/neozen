@@ -1,0 +1,50 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Dashboard - NeoZen Admin{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_subjects }}</div>
+        <div class="stat-label">Total Subjects</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.active_subjects }}</div>
+        <div class="stat-label">Active</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.verified_subjects }}</div>
+        <div class="stat-label">Verified</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.recent_registrations }}</div>
+        <div class="stat-label">New (7 days)</div>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_roles }}</div>
+        <div class="stat-label">Total Roles</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.system_roles }}</div>
+        <div class="stat-label">System Roles</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.active_sessions }}</div>
+        <div class="stat-label">Active Sessions</div>
+    </div>
+</div>
+
+<article>
+    <h3>Quick Actions</h3>
+    <div class="actions">
+        <a href="/subjects" role="button">Manage Subjects</a>
+        <a href="/roles" role="button" class="secondary">Manage Roles</a>
+        <a href="/sessions" role="button" class="outline">View Sessions</a>
+    </div>
+</article>
+{% endblock %}
