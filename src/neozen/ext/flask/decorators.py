@@ -201,7 +201,7 @@ def permissions_required(*permissions: str) -> Callable[[F], F]:
 
                 # Try has_permission method first
                 if hasattr(current_user, "has_permission"):
-                    has_perm = current_user.has_permission(required)
+                    has_perm = current_user.has_permission(required)  # type: ignore[operator]
                 else:
                     # Fall back to checking permissions attribute
                     user_perms = getattr(current_user, "permissions", [])

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from neozen.admin.config import AdminConfig
 from neozen.admin.services import AdminService
 from neozen.storage.sqlalchemy.base import Base
+from neozen.storage.sqlalchemy.models import RoleAssignment, Session, Subject
 
 # Template directory
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -210,7 +211,7 @@ async def role_detail(request: Request, role_name: str) -> Response:
             assignments = await service.get_role_assignments(role_name)
 
             # Get subject info for each assignment
-            assignments_with_subjects = []
+            assignments_with_subjects: list[tuple[RoleAssignment, Subject | None]] = []
             for assignment in assignments:
                 try:
                     subject = await service.get_subject(assignment.subject_id)
@@ -260,7 +261,7 @@ async def list_sessions(request: Request) -> Response:
         sessions = await service.list_sessions(active_only=True)
 
         # Get subject info for each session
-        sessions_with_subjects = []
+        sessions_with_subjects: list[tuple[Session, Subject | None]] = []
         for sess in sessions:
             try:
                 subject = await service.get_subject(sess.subject_id)

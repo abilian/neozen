@@ -8,8 +8,8 @@ lint:
 	uv run ruff check
 	uv run ruff format --check
 	uv run ty check src
-	uv run mypy src
 	uv run pyrefly check src
+	uv run mypy src
 
 format:
 	uv run ruff format

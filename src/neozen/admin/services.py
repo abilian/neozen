@@ -7,16 +7,6 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
-def _ensure_aware(dt: datetime | None) -> datetime | None:
-    """Ensure datetime is timezone-aware (assumes UTC if naive)."""
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt
-
-
 from neozen.core.authz.services import RoleService
 from neozen.storage.sqlalchemy.models import Role, RoleAssignment, Session, Subject
 from neozen.storage.sqlalchemy.repositories import (
@@ -25,6 +15,15 @@ from neozen.storage.sqlalchemy.repositories import (
     SessionRepository,
     SubjectRepository,
 )
+
+
+def _ensure_aware(dt: datetime | None) -> datetime | None:
+    """Ensure datetime is timezone-aware (assumes UTC if naive)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
 
 
 @dataclass(frozen=True)
@@ -82,20 +81,20 @@ class AdminService:
         # Count active sessions (not expired, not revoked)
         now = datetime.now(UTC)
         all_sessions = await self.session_repo.get_many_by()
-        active_sessions = sum(
-            1
+        active_sessions = len([
+            s
             for s in all_sessions
             if s.revoked_at is None and _ensure_aware(s.expires_at) > now  # type: ignore[operator]
-        )
+        ])
 
         # Recent registrations (last 7 days)
         week_ago = now - timedelta(days=7)
         all_subjects = await self.subject_repo.get_many_by()
-        recent_registrations = sum(
-            1
+        recent_registrations = len([
+            s
             for s in all_subjects
             if s.created_at and _ensure_aware(s.created_at) > week_ago  # type: ignore[operator]
-        )
+        ])
 
         return DashboardStats(
             total_subjects=total_subjects,
