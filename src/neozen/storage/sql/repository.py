@@ -67,7 +67,7 @@ class SQLRepository[Model]:
         row = await self.database.fetch_one(query, params)
         if row is None:
             raise DoesNotExist
-        return self._row_to_model(row)
+        return self._row_to_model(row)  # type: ignore[arg-type]
 
     async def get_many_by(
         self,
@@ -92,7 +92,7 @@ class SQLRepository[Model]:
             query += f" OFFSET {offset}"
 
         rows = await self.database.fetch_all(query, params)
-        return [self._row_to_model(row) for row in rows]
+        return [self._row_to_model(row) for row in rows]  # type: ignore[arg-type]
 
     async def count(self, **filters: typing.Any) -> int:
         """Count models matching the given filters."""

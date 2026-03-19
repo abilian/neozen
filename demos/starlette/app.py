@@ -1,7 +1,7 @@
 """NeoZen Starlette Demo Application.
 
-A demo application using the NeoZen Starlette extension for authentication.
-Comparable in simplicity to Flask-Login demos.
+A demo application using the NeoZen Starlette extension for authentication
+with SQLAlchemy persistence.
 
 Run with: uvicorn demos.starlette.app:app --reload --port 8001
 """
@@ -13,13 +13,17 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 from pwdlib import PasswordHash
-from starlette.applications import Starlette
-from starlette.middleware import Middleware
-from starlette.middleware.sessions import SessionMiddleware
-from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from starlette.routing import Route
 
+from demos.shared.auth import (
+    RoleServiceFactory,
+    SessionServiceFactory,
+    create_subject_loader,
+    get_subject_roles,
+)
+from demos.shared.database import create_database, init_database
+from neozen.admin.app import create_admin_app
+from neozen.admin.config import AdminConfig
+from neozen.admin.services import AdminService
 from neozen.ext.starlette import (
     NeoZenBackend,
     NeoZenMiddleware,
@@ -29,6 +33,14 @@ from neozen.ext.starlette import (
     login_user,
     logout_user,
 )
+from neozen.storage.base import DoesNotExist
+from neozen.storage.sqlalchemy.repositories import SubjectRepository
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.routing import Mount, Route
 
 # =============================================================================
 # Application Setup
@@ -36,115 +48,35 @@ from neozen.ext.starlette import (
 
 SECRET_KEY = "demo-secret-key-change-in-production"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+DATA_DIR = Path(__file__).parent / "data"
+DB_PATH = DATA_DIR / "neozen.db"
+
+# Ensure data directory exists
+DATA_DIR.mkdir(exist_ok=True)
 
 templates = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
 hasher = PasswordHash.recommended()
 
-# =============================================================================
-# Simple In-Memory User Store
-# =============================================================================
+# Database setup
+engine, session_factory = create_database(str(DB_PATH))
 
-users_db: dict[str, dict] = {}
-sessions_db: dict[str, dict] = {}
+# Session service factory
+session_service = SessionServiceFactory(session_factory, SECRET_KEY)
 
-
-class User:
-    """Simple user model."""
-
-    def __init__(
-        self,
-        id: str,
-        email: str,
-        password_hash: str,
-        roles: list[str] | None = None,
-    ) -> None:
-        self.id = id
-        self.email = email
-        self.password_hash = password_hash
-        self.roles = roles or ["user"]
-        self.is_active = True
-        self.is_verified = False
-
-    @staticmethod
-    def get(user_id: str) -> User | None:
-        data = users_db.get(user_id)
-        return User(**data) if data else None
-
-    @staticmethod
-    def get_by_email(email: str) -> User | None:
-        for data in users_db.values():
-            if data["email"] == email.lower():
-                return User(**data)
-        return None
-
-    def check_password(self, password: str) -> bool:
-        valid, _ = hasher.verify_and_update(password, self.password_hash)
-        return valid
-
-    def has_role(self, role: str) -> bool:
-        return role in self.roles
-
-
-# =============================================================================
-# In-Memory Session Service (implements SessionService protocol)
-# =============================================================================
-
-
-class InMemorySession:
-    """Simple session object."""
-
-    def __init__(self, token: str, subject_id: str) -> None:
-        self.token = token
-        self.subject_id = subject_id
-        self.is_active = True
-
-
-class InMemorySessionService:
-    """Simple in-memory session service."""
-
-    async def create_session(
-        self,
-        subject_id: str,
-        *,
-        ip_address: str | None = None,
-        user_agent: str | None = None,
-    ) -> str:
-        token = secrets.token_urlsafe(32)
-        sessions_db[token] = {
-            "token": token,
-            "subject_id": subject_id,
-            "is_active": True,
-        }
-        return token
-
-    async def validate_session(self, token: str) -> InMemorySession | None:
-        data = sessions_db.get(token)
-        if data and data["is_active"]:
-            return InMemorySession(data["token"], data["subject_id"])
-        return None
-
-    async def revoke_session_by_token(self, token: str) -> None:
-        if token in sessions_db:
-            sessions_db[token]["is_active"] = False
+# Role service factory
+role_service = RoleServiceFactory(session_factory)
 
 
 # =============================================================================
 # NeoZen Backend Setup
 # =============================================================================
 
-session_service = InMemorySessionService()
-
-
-async def load_subject(subject_id: str) -> User | None:
-    """Load user by ID."""
-    return User.get(subject_id)
-
-
 backend = NeoZenBackend(
     session_service=session_service,
-    subject_loader=load_subject,
+    subject_loader=create_subject_loader(session_factory),
     cookie_secure=False,  # Allow HTTP for demo
 )
+
 
 # =============================================================================
 # Template Helpers
@@ -180,7 +112,12 @@ def flash(request: Request, message: str, category: str = "info") -> None:
 async def index(request: Request) -> Response:
     """Home page."""
     user = await get_current_user(request)
-    return render_template("index.html", request, {"current_user": user})
+    roles = []
+    if user:
+        roles = await get_subject_roles(session_factory, user.id)
+    return render_template(
+        "index.html", request, {"current_user": user, "roles": roles}
+    )
 
 
 async def login_page(request: Request) -> Response:
@@ -196,15 +133,22 @@ async def login_submit(request: Request) -> Response:
         return RedirectResponse(url="/dashboard", status_code=303)
 
     form = await request.form()
-    email = str(form.get("email", ""))
+    email = str(form.get("email", "")).lower()
     password = str(form.get("password", ""))
 
-    user = User.get_by_email(email)
-    if user and user.check_password(password):
-        response = RedirectResponse(url="/dashboard", status_code=303)
-        await login_user(request, response, user)
-        flash(request, "Login successful!", "success")
-        return response
+    async with session_factory() as db_session:
+        repo = SubjectRepository(session=db_session)
+        try:
+            subject = await repo.get_one_by(email=email)
+            if subject.hashed_password:
+                valid, _ = hasher.verify_and_update(password, subject.hashed_password)
+                if valid:
+                    response = RedirectResponse(url="/dashboard", status_code=303)
+                    await login_user(request, response, subject)
+                    flash(request, "Login successful!", "success")
+                    return response
+        except DoesNotExist:
+            pass
 
     flash(request, "Invalid email or password", "error")
     return render_template(
@@ -238,28 +182,40 @@ async def register_submit(request: Request) -> Response:
         flash(request, "Passwords do not match", "error")
     elif len(password) < 8:
         flash(request, "Password must be at least 8 characters", "error")
-    elif User.get_by_email(email):
-        flash(request, "Email already registered", "error")
     else:
-        # Create user - first user gets admin role
-        user_id = f"user_{secrets.token_hex(8)}"
-        is_first_user = len(users_db) == 0
-        roles = ["admin", "user"] if is_first_user else ["user"]
-        users_db[user_id] = {
-            "id": user_id,
-            "email": email,
-            "password_hash": hasher.hash(password),
-            "roles": roles,
-        }
-        if is_first_user:
-            flash(
-                request,
-                "Registration successful! You are the first user and have been granted admin privileges.",
-                "success",
-            )
-        else:
-            flash(request, "Registration successful! Please log in.", "success")
-        return RedirectResponse(url="/login", status_code=303)
+        async with session_factory() as db_session:
+            repo = SubjectRepository(session=db_session)
+
+            if await repo.exists(email=email):
+                flash(request, "Email already registered", "error")
+            else:
+                # Create subject
+                subject_id = f"user_{secrets.token_hex(8)}"
+                is_first_user = await repo.count() == 0
+
+                await repo.create(
+                    id=subject_id,
+                    email=email,
+                    hashed_password=hasher.hash(password),
+                    is_active=True,
+                    is_verified=False,
+                )
+                await db_session.commit()
+
+                # First user gets admin role
+                if is_first_user:
+                    await role_service.assign_role(subject_id, "admin")
+                    await role_service.assign_role(subject_id, "user")
+                    flash(
+                        request,
+                        "Registration successful! You are the first user and have been granted admin privileges.",
+                        "success",
+                    )
+                else:
+                    await role_service.assign_role(subject_id, "user")
+                    flash(request, "Registration successful! Please log in.", "success")
+
+                return RedirectResponse(url="/login", status_code=303)
 
     return render_template(
         "register.html", request, {"current_user": None, "email": email}
@@ -270,7 +226,10 @@ async def register_submit(request: Request) -> Response:
 async def dashboard(request: Request) -> Response:
     """Protected dashboard."""
     user = await get_current_user(request)
-    return render_template("dashboard.html", request, {"current_user": user})
+    roles = await get_subject_roles(session_factory, user.id)
+    return render_template(
+        "dashboard.html", request, {"current_user": user, "roles": roles}
+    )
 
 
 async def logout_submit(request: Request) -> Response:
@@ -296,34 +255,62 @@ async def api_register(request: Request) -> Response:
         return JSONResponse({"error": "email and password required"}, status_code=400)
     if "@" not in email:
         return JSONResponse({"error": "Invalid email"}, status_code=400)
-    if User.get_by_email(email):
-        return JSONResponse({"error": "Email already registered"}, status_code=409)
 
-    user_id = f"user_{secrets.token_hex(8)}"
-    is_first_user = len(users_db) == 0
-    roles = ["admin", "user"] if is_first_user else ["user"]
-    users_db[user_id] = {
-        "id": user_id,
-        "email": email,
-        "password_hash": hasher.hash(password),
-        "roles": roles,
-    }
-    return JSONResponse(
-        {"message": "Registered", "user_id": user_id, "roles": roles}, status_code=201
-    )
+    async with session_factory() as db_session:
+        repo = SubjectRepository(session=db_session)
+
+        if await repo.exists(email=email):
+            return JSONResponse({"error": "Email already registered"}, status_code=409)
+
+        subject_id = f"user_{secrets.token_hex(8)}"
+        is_first_user = await repo.count() == 0
+
+        await repo.create(
+            id=subject_id,
+            email=email,
+            hashed_password=hasher.hash(password),
+            is_active=True,
+            is_verified=False,
+        )
+        await db_session.commit()
+
+        # Assign roles
+        if is_first_user:
+            await role_service.assign_role(subject_id, "admin")
+            await role_service.assign_role(subject_id, "user")
+            roles = ["admin", "user"]
+        else:
+            await role_service.assign_role(subject_id, "user")
+            roles = ["user"]
+
+        return JSONResponse(
+            {"message": "Registered", "user_id": subject_id, "roles": roles},
+            status_code=201,
+        )
 
 
 async def api_login(request: Request) -> Response:
     """Login (JSON API)."""
     body = await request.json()
-    email = body.get("email", "")
+    email = body.get("email", "").lower()
     password = body.get("password", "")
 
-    user = User.get_by_email(email)
-    if user and user.check_password(password):
-        response = JSONResponse({"message": "Logged in", "user_id": user.id})
-        await login_user(request, response, user)
-        return response
+    async with session_factory() as db_session:
+        repo = SubjectRepository(session=db_session)
+        try:
+            subject = await repo.get_one_by(email=email)
+            if subject.hashed_password:
+                valid, _ = hasher.verify_and_update(password, subject.hashed_password)
+                if valid:
+                    response = JSONResponse({
+                        "message": "Logged in",
+                        "user_id": subject.id,
+                    })
+                    await login_user(request, response, subject)
+                    return response
+        except DoesNotExist:
+            pass
+
     return JSONResponse({"error": "Invalid credentials"}, status_code=401)
 
 
@@ -339,7 +326,8 @@ async def api_logout(request: Request) -> Response:
 async def api_me(request: Request) -> Response:
     """Current user (JSON API)."""
     user = await get_current_user(request)
-    return JSONResponse({"id": user.id, "email": user.email})
+    roles = await get_subject_roles(session_factory, user.id)
+    return JSONResponse({"id": user.id, "email": user.email, "roles": roles})
 
 
 # =============================================================================
@@ -347,8 +335,26 @@ async def api_me(request: Request) -> Response:
 # =============================================================================
 
 
+async def on_startup() -> None:
+    """Initialize database on startup."""
+    await init_database(engine)
+
+    # Ensure built-in roles exist
+    async with session_factory() as db_session:
+        service = AdminService(db_session)
+        await service.ensure_builtin_roles()
+        await db_session.commit()
+
+
 def create_app() -> Starlette:
     """Create the demo Starlette application."""
+    # Create admin app with same database URL
+    admin_config = AdminConfig(
+        db_url=f"sqlite+aiosqlite:///{DB_PATH}",
+        secret_key=SECRET_KEY,
+    )
+    admin_app = create_admin_app(admin_config)
+
     routes = [
         # HTML routes
         Route("/", index, methods=["GET"]),
@@ -363,6 +369,8 @@ def create_app() -> Starlette:
         Route("/api/login", api_login, methods=["POST"]),
         Route("/api/logout", api_logout, methods=["POST"]),
         Route("/api/me", api_me, methods=["GET"]),
+        # Admin UI (mounted as sub-application)
+        Mount("/admin", app=admin_app),
     ]
 
     middleware = [
@@ -370,7 +378,7 @@ def create_app() -> Starlette:
         Middleware(NeoZenMiddleware, backend=backend),
     ]
 
-    return Starlette(routes=routes, middleware=middleware)
+    return Starlette(routes=routes, middleware=middleware, on_startup=[on_startup])
 
 
 app = create_app()

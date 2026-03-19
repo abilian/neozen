@@ -1,7 +1,7 @@
 """NeoZen Litestar Demo Application.
 
-A demo application using the NeoZen Litestar extension for authentication.
-Comparable in simplicity to Flask-Login demos.
+A demo application using the NeoZen Litestar extension for authentication
+with SQLAlchemy persistence.
 
 Run with: uvicorn demos.litestar.app:app --reload --port 8003
 """
@@ -9,15 +9,29 @@ Run with: uvicorn demos.litestar.app:app --reload --port 8003
 from __future__ import annotations
 
 import secrets
+from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from jinja2 import Environment, FileSystemLoader
+from pwdlib import PasswordHash
+
+from demos.shared.auth import (
+    RoleServiceFactory,
+    SessionServiceFactory,
+    create_subject_loader,
+    get_subject_roles,
+)
+from demos.shared.database import create_database, init_database
 from litestar import Litestar, Request, Response, get, post
+from litestar.connection import ASGIConnection
+from litestar.datastructures import State
+from litestar.exceptions import NotAuthorizedException
+from litestar.handlers import BaseRouteHandler
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.response import Redirect
 from litestar.stores.memory import MemoryStore
-from pwdlib import PasswordHash
-
+from neozen.admin.services import AdminService
 from neozen.ext.litestar import (
     NeoZenConfig,
     NeoZenPlugin,
@@ -27,6 +41,13 @@ from neozen.ext.litestar import (
     login_user,
     logout_user,
 )
+from neozen.storage.base import DoesNotExist
+from neozen.storage.sqlalchemy.repositories import (
+    SubjectRepository,
+)
+
+if TYPE_CHECKING:
+    pass
 
 # =============================================================================
 # Application Setup
@@ -34,116 +55,36 @@ from neozen.ext.litestar import (
 
 SECRET_KEY = "demo-secret-key-change-in-production"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+DATA_DIR = Path(__file__).parent / "data"
+DB_PATH = DATA_DIR / "neozen.db"
+
+# Ensure data directory exists
+DATA_DIR.mkdir(exist_ok=True)
 
 templates = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
 hasher = PasswordHash.recommended()
 
-# =============================================================================
-# Simple In-Memory User Store
-# =============================================================================
+# Database setup
+engine, session_factory = create_database(str(DB_PATH))
 
-users_db: dict[str, dict] = {}
-sessions_db: dict[str, dict] = {}
+# Session service factory
+session_service = SessionServiceFactory(session_factory, SECRET_KEY)
 
-
-class User:
-    """Simple user model."""
-
-    def __init__(
-        self,
-        id: str,
-        email: str,
-        password_hash: str,
-        roles: list[str] | None = None,
-    ) -> None:
-        self.id = id
-        self.email = email
-        self.password_hash = password_hash
-        self.roles = roles or ["user"]
-        self.is_active = True
-        self.is_verified = False
-
-    @staticmethod
-    def get(user_id: str) -> User | None:
-        data = users_db.get(user_id)
-        return User(**data) if data else None
-
-    @staticmethod
-    def get_by_email(email: str) -> User | None:
-        for data in users_db.values():
-            if data["email"] == email.lower():
-                return User(**data)
-        return None
-
-    def check_password(self, password: str) -> bool:
-        valid, _ = hasher.verify_and_update(password, self.password_hash)
-        return valid
-
-    def has_role(self, role: str) -> bool:
-        return role in self.roles
-
-
-# =============================================================================
-# In-Memory Session Service (implements SessionService protocol)
-# =============================================================================
-
-
-class InMemorySession:
-    """Simple session object."""
-
-    def __init__(self, token: str, subject_id: str) -> None:
-        self.token = token
-        self.subject_id = subject_id
-        self.is_active = True
-
-
-class InMemorySessionService:
-    """Simple in-memory session service."""
-
-    async def create_session(
-        self,
-        subject_id: str,
-        *,
-        ip_address: str | None = None,
-        user_agent: str | None = None,
-    ) -> str:
-        token = secrets.token_urlsafe(32)
-        sessions_db[token] = {
-            "token": token,
-            "subject_id": subject_id,
-            "is_active": True,
-        }
-        return token
-
-    async def validate_session(self, token: str) -> InMemorySession | None:
-        data = sessions_db.get(token)
-        if data and data["is_active"]:
-            return InMemorySession(data["token"], data["subject_id"])
-        return None
-
-    async def revoke_session_by_token(self, token: str) -> None:
-        if token in sessions_db:
-            sessions_db[token]["is_active"] = False
+# Role service factory
+role_service = RoleServiceFactory(session_factory)
 
 
 # =============================================================================
 # NeoZen Config Setup
 # =============================================================================
 
-session_service = InMemorySessionService()
-
-
-async def load_subject(subject_id: str) -> User | None:
-    """Load user by ID."""
-    return User.get(subject_id)
-
-
 neozen_config = NeoZenConfig(
     session_service=session_service,
-    subject_loader=load_subject,
+    subject_loader=create_subject_loader(session_factory),
     cookie_secure=False,  # Allow HTTP for demo
     login_path="/login",
 )
+
 
 # =============================================================================
 # Template Helpers
@@ -183,6 +124,36 @@ def json_error(message: str, status_code: int = 400) -> Response:
     return json_response({"error": message}, status_code=status_code)
 
 
+def admin_required() -> Callable:
+    """Guard that requires admin role."""
+
+    async def guard(connection: ASGIConnection, _: BaseRouteHandler) -> None:
+        # Get user from NeoZen state
+        state = connection.scope.get("state", {})
+        user = state.get("neozen_user")
+
+        # If user not loaded yet, load it
+        if user is None and state.get("neozen_session"):
+            from neozen.ext.litestar import get_config  # noqa: PLC0415
+
+            config = get_config(connection)  # type: ignore[arg-type]
+            user = await config.get_subject(state["neozen_session"].subject_id)
+            state["neozen_user"] = user
+            state["neozen_user_loaded"] = True
+
+        if not user:
+            msg = "Admin access required"
+            raise NotAuthorizedException(msg)
+
+        # Check roles from database
+        roles = await get_subject_roles(session_factory, user.id)
+        if "admin" not in roles:
+            msg = "Admin access required"
+            raise NotAuthorizedException(msg)
+
+    return guard
+
+
 # =============================================================================
 # Routes
 # =============================================================================
@@ -192,11 +163,16 @@ def json_error(message: str, status_code: int = 400) -> Response:
 async def index(request: Request) -> Response:
     """Home page."""
     user = await get_current_user(request)
-    return render_template(request, "index.html", {"current_user": user})
+    roles = []
+    if user:
+        roles = await get_subject_roles(session_factory, user.id)
+    return render_template(
+        request, "index.html", {"current_user": user, "roles": roles}
+    )
 
 
-@get("/login")
-async def login_page(request: Request) -> Response:
+@get("/login", sync_to_thread=False)
+def login_page(request: Request) -> Response:
     """Login page (GET)."""
     if is_authenticated(request):
         return Redirect(path="/dashboard")
@@ -210,15 +186,22 @@ async def login_submit(request: Request) -> Response:
         return Redirect(path="/dashboard")
 
     form = await request.form()
-    email = str(form.get("email", ""))
+    email = str(form.get("email", "")).lower()
     password = str(form.get("password", ""))
 
-    user = User.get_by_email(email)
-    if user and user.check_password(password):
-        response = Redirect(path="/dashboard")
-        await login_user(request, response, user)
-        flash(request, "Login successful!", "success")
-        return response
+    async with session_factory() as db_session:
+        repo = SubjectRepository(session=db_session)
+        try:
+            subject = await repo.get_one_by(email=email)
+            if subject.hashed_password:
+                valid, _ = hasher.verify_and_update(password, subject.hashed_password)
+                if valid:
+                    response = Redirect(path="/dashboard")
+                    await login_user(request, response, subject)
+                    flash(request, "Login successful!", "success")
+                    return response
+        except DoesNotExist:
+            pass
 
     flash(request, "Invalid email or password", "error")
     return render_template(
@@ -226,8 +209,8 @@ async def login_submit(request: Request) -> Response:
     )
 
 
-@get("/register")
-async def register_page(request: Request) -> Response:
+@get("/register", sync_to_thread=False)
+def register_page(request: Request) -> Response:
     """Registration page (GET)."""
     if is_authenticated(request):
         return Redirect(path="/dashboard")
@@ -254,28 +237,43 @@ async def register_submit(request: Request) -> Response:
         flash(request, "Passwords do not match", "error")
     elif len(password) < 8:
         flash(request, "Password must be at least 8 characters", "error")
-    elif User.get_by_email(email):
-        flash(request, "Email already registered", "error")
     else:
-        # Create user - first user gets admin role
-        user_id = f"user_{secrets.token_hex(8)}"
-        is_first_user = len(users_db) == 0
-        roles = ["admin", "user"] if is_first_user else ["user"]
-        users_db[user_id] = {
-            "id": user_id,
-            "email": email,
-            "password_hash": hasher.hash(password),
-            "roles": roles,
-        }
-        if is_first_user:
-            flash(
-                request,
-                "Registration successful! You are the first user and have been granted admin privileges.",
-                "success",
-            )
-        else:
-            flash(request, "Registration successful! Please log in.", "success")
-        return Redirect(path="/login")
+        async with session_factory() as db_session:
+            repo = SubjectRepository(session=db_session)
+
+            # Check if email exists
+            if await repo.exists(email=email):
+                flash(request, "Email already registered", "error")
+            else:
+                # Create subject
+                subject_id = f"user_{secrets.token_hex(8)}"
+                is_first_user = await repo.count() == 0
+
+                await repo.create(
+                    id=subject_id,
+                    email=email,
+                    hashed_password=hasher.hash(password),
+                    is_active=True,
+                    is_verified=False,
+                )
+                await db_session.commit()
+
+                # First user gets admin role
+                if is_first_user:
+                    # Assign admin and user roles
+                    await role_service.assign_role(subject_id, "admin")
+                    await role_service.assign_role(subject_id, "user")
+                    flash(
+                        request,
+                        "Registration successful! You are the first user and have been granted admin privileges.",
+                        "success",
+                    )
+                else:
+                    # Assign user role
+                    await role_service.assign_role(subject_id, "user")
+                    flash(request, "Registration successful! Please log in.", "success")
+
+                return Redirect(path="/login")
 
     return render_template(
         request, "register.html", {"current_user": None, "email": email}
@@ -286,7 +284,10 @@ async def register_submit(request: Request) -> Response:
 async def dashboard(request: Request) -> Response:
     """Protected dashboard."""
     user = await get_current_user(request)
-    return render_template(request, "dashboard.html", {"current_user": user})
+    roles = await get_subject_roles(session_factory, user.id)
+    return render_template(
+        request, "dashboard.html", {"current_user": user, "roles": roles}
+    )
 
 
 @post("/logout")
@@ -296,6 +297,131 @@ async def logout_submit(request: Request) -> Response:
     await logout_user(request, response)
     flash(request, "You have been logged out.", "info")
     return response
+
+
+# =============================================================================
+# Admin Routes
+# =============================================================================
+
+
+@get("/admin", guards=[login_required(), admin_required()])
+async def admin_dashboard(request: Request) -> Response:
+    """Admin dashboard."""
+    user = await get_current_user(request)
+    roles = await get_subject_roles(session_factory, user.id)
+    async with session_factory() as db_session:
+        service = AdminService(db_session)
+        stats = await service.get_dashboard_stats()
+    return render_template(
+        request,
+        "admin/dashboard.html",
+        {"current_user": user, "stats": stats, "roles": roles},
+    )
+
+
+@get("/admin/users", guards=[login_required(), admin_required()])
+async def admin_users(request: Request) -> Response:
+    """List all users."""
+    user = await get_current_user(request)
+    roles = await get_subject_roles(session_factory, user.id)
+    async with session_factory() as db_session:
+        service = AdminService(db_session)
+        users = await service.list_subjects()
+    return render_template(
+        request,
+        "admin/users.html",
+        {"current_user": user, "users": users, "roles": roles},
+    )
+
+
+@get("/admin/users/{user_id:str}", guards=[login_required(), admin_required()])
+async def admin_user_detail(request: Request, user_id: str) -> Response:
+    """View user details."""
+    current = await get_current_user(request)
+    roles = await get_subject_roles(session_factory, current.id)
+    async with session_factory() as db_session:
+        service = AdminService(db_session)
+        try:
+            target_user = await service.get_subject(user_id)
+            user_roles = await service.get_subject_roles(user_id)
+        except Exception:
+            flash(request, f"User not found: {user_id}", "error")
+            return Redirect(path="/admin/users")
+    return render_template(
+        request,
+        "admin/user_detail.html",
+        {
+            "current_user": current,
+            "target_user": target_user,
+            "user_roles": user_roles,
+            "roles": roles,
+        },
+    )
+
+
+@post(
+    "/admin/users/{user_id:str}/toggle-role/{role:str}",
+    guards=[login_required(), admin_required()],
+)
+async def admin_toggle_role(request: Request, user_id: str, role: str) -> Response:
+    """Toggle a role for a user."""
+    current = await get_current_user(request)
+
+    # Don't allow removing admin from yourself
+    if role == "admin" and user_id == current.id:
+        flash(request, "Cannot remove admin role from yourself", "error")
+        return Redirect(path=f"/admin/users/{user_id}")
+
+    user_roles = await get_subject_roles(session_factory, user_id)
+    if role in user_roles:
+        await role_service.revoke_role(user_id, role)
+        flash(request, f"Removed '{role}' role from user", "success")
+    else:
+        await role_service.assign_role(user_id, role)
+        flash(request, f"Added '{role}' role to user", "success")
+
+    return Redirect(path=f"/admin/users/{user_id}")
+
+
+@get("/admin/sessions", guards=[login_required(), admin_required()])
+async def admin_sessions(request: Request) -> Response:
+    """List all sessions."""
+    user = await get_current_user(request)
+    roles = await get_subject_roles(session_factory, user.id)
+    async with session_factory() as db_session:
+        service = AdminService(db_session)
+        sessions = await service.list_sessions(active_only=True)
+
+        sessions_with_subjects = []
+        for sess in sessions:
+            try:
+                subject = await service.get_subject(sess.subject_id)
+                sessions_with_subjects.append((sess, subject))
+            except Exception:
+                sessions_with_subjects.append((sess, None))
+
+    return render_template(
+        request,
+        "admin/sessions.html",
+        {"current_user": user, "sessions": sessions_with_subjects, "roles": roles},
+    )
+
+
+@post(
+    "/admin/sessions/{token_hash:str}/revoke",
+    guards=[login_required(), admin_required()],
+)
+async def admin_revoke_session(request: Request, token_hash: str) -> Response:
+    """Revoke a session."""
+    try:
+        async with session_factory() as db_session:
+            service = AdminService(db_session)
+            await service.revoke_session(token_hash)
+            await db_session.commit()
+        flash(request, "Session revoked", "success")
+    except Exception as e:
+        flash(request, f"Error revoking session: {e}", "error")
+    return Redirect(path="/admin/sessions")
 
 
 # =============================================================================
@@ -314,35 +440,63 @@ async def api_register(request: Request) -> Response:
         return json_error("email and password required")
     if "@" not in email:
         return json_error("Invalid email")
-    if User.get_by_email(email):
-        return json_error("Email already registered", status_code=409)
 
-    user_id = f"user_{secrets.token_hex(8)}"
-    is_first_user = len(users_db) == 0
-    roles = ["admin", "user"] if is_first_user else ["user"]
-    users_db[user_id] = {
-        "id": user_id,
-        "email": email,
-        "password_hash": hasher.hash(password),
-        "roles": roles,
-    }
-    return json_response(
-        {"message": "Registered", "user_id": user_id, "roles": roles}, status_code=201
-    )
+    async with session_factory() as db_session:
+        repo = SubjectRepository(session=db_session)
+
+        if await repo.exists(email=email):
+            return json_error("Email already registered", status_code=409)
+
+        subject_id = f"user_{secrets.token_hex(8)}"
+        is_first_user = await repo.count() == 0
+
+        await repo.create(
+            id=subject_id,
+            email=email,
+            hashed_password=hasher.hash(password),
+            is_active=True,
+            is_verified=False,
+        )
+        await db_session.commit()
+
+        # Assign roles
+        if is_first_user:
+            await role_service.assign_role(subject_id, "admin")
+            await role_service.assign_role(subject_id, "user")
+            roles = ["admin", "user"]
+        else:
+            await role_service.assign_role(subject_id, "user")
+            roles = ["user"]
+
+        return json_response(
+            {"message": "Registered", "user_id": subject_id, "roles": roles},
+            status_code=201,
+        )
 
 
 @post("/api/login")
 async def api_login(request: Request) -> Response:
     """Login (JSON API)."""
     body = await request.json()
-    email = body.get("email", "")
+    email = body.get("email", "").lower()
     password = body.get("password", "")
 
-    user = User.get_by_email(email)
-    if user and user.check_password(password):
-        response = json_response({"message": "Logged in", "user_id": user.id})
-        await login_user(request, response, user)
-        return response
+    async with session_factory() as db_session:
+        repo = SubjectRepository(session=db_session)
+        try:
+            subject = await repo.get_one_by(email=email)
+            if subject.hashed_password:
+                valid, _ = hasher.verify_and_update(password, subject.hashed_password)
+                if valid:
+                    response = json_response({
+                        "message": "Logged in",
+                        "user_id": subject.id,
+                    })
+                    await login_user(request, response, subject)
+                    return response
+        except DoesNotExist:
+            pass
+
     return json_error("Invalid credentials", status_code=401)
 
 
@@ -358,12 +512,24 @@ async def api_logout(request: Request) -> Response:
 async def api_me(request: Request) -> Response:
     """Current user (JSON API)."""
     user = await get_current_user(request)
-    return json_response({"id": user.id, "email": user.email})
+    roles = await get_subject_roles(session_factory, user.id)
+    return json_response({"id": user.id, "email": user.email, "roles": roles})
 
 
 # =============================================================================
 # Application Factory
 # =============================================================================
+
+
+async def on_startup() -> None:
+    """Initialize database on startup."""
+    await init_database(engine)
+
+    # Ensure built-in roles exist
+    async with session_factory() as db_session:
+        service = AdminService(db_session)
+        await service.ensure_builtin_roles()
+        await db_session.commit()
 
 
 def create_app() -> Litestar:
@@ -383,6 +549,13 @@ def create_app() -> Litestar:
             register_submit,
             dashboard,
             logout_submit,
+            # Admin routes
+            admin_dashboard,
+            admin_users,
+            admin_user_detail,
+            admin_toggle_role,
+            admin_sessions,
+            admin_revoke_session,
             # JSON API routes
             api_register,
             api_login,
@@ -392,6 +565,8 @@ def create_app() -> Litestar:
         plugins=[NeoZenPlugin(neozen_config)],
         middleware=[session_config.middleware],
         stores={"sessions": MemoryStore()},
+        on_startup=[on_startup],
+        state=State({"session_factory": session_factory}),
     )
 
 

@@ -1,11 +1,12 @@
 """Integration tests for the NeoZen demo application.
 
 Tests both the web UI endpoints and JSON API endpoints.
-Uses the simplified Starlette demo with in-memory storage.
+Uses the simplified Starlette demo with SQLAlchemy storage.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -17,22 +18,103 @@ project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from demos.starlette.app import create_app, sessions_db, users_db
-
 
 @pytest.fixture
 async def app():
-    """Create a fresh demo app for each test with cleared in-memory storage."""
-    # Clear in-memory storage before each test
-    users_db.clear()
-    sessions_db.clear()
+    """Create a fresh demo app for each test with cleared database."""
+    # Import here to avoid import-time execution issues
+    from demos.shared.database import create_database, init_database
+    from neozen.admin.services import AdminService
 
-    app = create_app()
+    # Use a test-specific database path
+    test_db_path = Path(__file__).parent / "test_demo.db"
+    if test_db_path.exists():
+        os.remove(test_db_path)
+
+    # Create database
+    engine, session_factory = create_database(str(test_db_path))
+
+    # Initialize database
+    await init_database(engine)
+
+    # Ensure built-in roles exist
+    async with session_factory() as db_session:
+        service = AdminService(db_session)
+        await service.ensure_builtin_roles()
+        await db_session.commit()
+
+    # Create app with patched database path
+    import demos.starlette.app as starlette_app
+
+    # Store original values
+    orig_engine = starlette_app.engine
+    orig_session_factory = starlette_app.session_factory
+    orig_session_service = starlette_app.session_service
+    orig_role_service = starlette_app.role_service
+    orig_backend = starlette_app.backend
+
+    # Patch module globals
+    starlette_app.engine = engine
+    starlette_app.session_factory = session_factory
+
+    from demos.shared.auth import (
+        RoleServiceFactory,
+        SessionServiceFactory,
+        create_subject_loader,
+    )
+    from neozen.ext.starlette import NeoZenBackend
+
+    starlette_app.session_service = SessionServiceFactory(
+        session_factory, starlette_app.SECRET_KEY
+    )
+    starlette_app.role_service = RoleServiceFactory(session_factory)
+    starlette_app.backend = NeoZenBackend(
+        session_service=starlette_app.session_service,
+        subject_loader=create_subject_loader(session_factory),
+        cookie_secure=False,
+    )
+
+    # Create app
+    from starlette.applications import Starlette
+    from starlette.middleware import Middleware
+    from starlette.middleware.sessions import SessionMiddleware
+    from starlette.routing import Route
+
+    from neozen.ext.starlette import NeoZenMiddleware
+
+    routes = [
+        Route("/", starlette_app.index, methods=["GET"]),
+        Route("/login", starlette_app.login_page, methods=["GET"]),
+        Route("/login", starlette_app.login_submit, methods=["POST"]),
+        Route("/register", starlette_app.register_page, methods=["GET"]),
+        Route("/register", starlette_app.register_submit, methods=["POST"]),
+        Route("/dashboard", starlette_app.dashboard, methods=["GET"]),
+        Route("/logout", starlette_app.logout_submit, methods=["POST"]),
+        Route("/api/register", starlette_app.api_register, methods=["POST"]),
+        Route("/api/login", starlette_app.api_login, methods=["POST"]),
+        Route("/api/logout", starlette_app.api_logout, methods=["POST"]),
+        Route("/api/me", starlette_app.api_me, methods=["GET"]),
+    ]
+
+    middleware = [
+        Middleware(SessionMiddleware, secret_key=starlette_app.SECRET_KEY),
+        Middleware(NeoZenMiddleware, backend=starlette_app.backend),
+    ]
+
+    app = Starlette(routes=routes, middleware=middleware)
     yield app
 
+    # Restore original values
+    starlette_app.engine = orig_engine
+    starlette_app.session_factory = orig_session_factory
+    starlette_app.session_service = orig_session_service
+    starlette_app.role_service = orig_role_service
+    starlette_app.backend = orig_backend
+
     # Cleanup
-    users_db.clear()
-    sessions_db.clear()
+    await engine.dispose()
+    if test_db_path.exists():
+        os.remove(test_db_path)
 
 
 @pytest.fixture

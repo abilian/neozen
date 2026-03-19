@@ -48,7 +48,7 @@
                 <tr>
                     <th scope="row">Roles</th>
                     <td>
-                        {% for role in current_user.roles %}
+                        {% for role in roles %}
                         <span class="badge badge-{{ role }}">{{ role }}</span>
                         {% endfor %}
                     </td>
@@ -79,7 +79,7 @@
     </article>
 </section>
 
-{% if 'admin' in current_user.roles %}
+{% if 'admin' in roles %}
 <section>
     <h2>Admin Panel</h2>
     <article class="admin-panel">

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - NeoZen{% endblock %}
+
+{% block content %}
+<h1>Admin Dashboard</h1>
+
+<div class="grid">
+    <article>
+        <header>Total Users</header>
+        <p style="font-size: 2.5rem; font-weight: bold; color: var(--pico-primary);">{{ stats.total_subjects }}</p>
+    </article>
+    <article>
+        <header>Active Users</header>
+        <p style="font-size: 2.5rem; font-weight: bold; color: var(--pico-ins-color);">{{ stats.active_subjects }}</p>
+    </article>
+    <article>
+        <header>Active Sessions</header>
+        <p style="font-size: 2.5rem; font-weight: bold; color: var(--pico-secondary);">{{ stats.active_sessions }}</p>
+    </article>
+</div>
+
+<div class="grid">
+    <article>
+        <header>Verified Users</header>
+        <p style="font-size: 2.5rem; font-weight: bold; color: var(--pico-ins-color);">{{ stats.verified_subjects }}</p>
+    </article>
+    <article>
+        <header>Total Roles</header>
+        <p style="font-size: 2.5rem; font-weight: bold; color: var(--pico-primary);">{{ stats.total_roles }}</p>
+    </article>
+    <article>
+        <header>Recent Registrations (7d)</header>
+        <p style="font-size: 2.5rem; font-weight: bold; color: var(--pico-secondary);">{{ stats.recent_registrations }}</p>
+    </article>
+</div>
+
+<section>
+    <h2>Quick Actions</h2>
+    <div class="grid">
+        <a href="{{ url_for('admin_users') }}" role="button">Manage Users</a>
+        <a href="{{ url_for('admin_sessions') }}" role="button" class="secondary">View Sessions</a>
+        <a href="{{ url_for('dashboard') }}" role="button" class="outline">Back to Dashboard</a>
+    </div>
+</section>
+{% endblock %}

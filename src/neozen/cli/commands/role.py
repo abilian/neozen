@@ -27,8 +27,8 @@ async def _create_role(
     role_repo = RoleRepository(session=session)
     assignment_repo = RoleAssignmentRepository(session=session)
     service = RoleService(
-        role_repository=role_repo,
-        role_assignment_repository=assignment_repo,
+        role_repository=role_repo,  # type: ignore[arg-type]
+        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]
     )
 
     role = await service.create_role(
@@ -57,8 +57,8 @@ async def _list_roles(session: AsyncSession) -> list[dict]:
     role_repo = RoleRepository(session=session)
     assignment_repo = RoleAssignmentRepository(session=session)
     service = RoleService(
-        role_repository=role_repo,
-        role_assignment_repository=assignment_repo,
+        role_repository=role_repo,  # type: ignore[arg-type]
+        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]
     )
 
     roles = await service.list_roles()
@@ -86,8 +86,8 @@ async def _delete_role(session: AsyncSession, name: str) -> None:
     role_repo = RoleRepository(session=session)
     assignment_repo = RoleAssignmentRepository(session=session)
     service = RoleService(
-        role_repository=role_repo,
-        role_assignment_repository=assignment_repo,
+        role_repository=role_repo,  # type: ignore[arg-type]
+        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]
     )
 
     await service.delete_role(name)
@@ -111,8 +111,8 @@ async def _assign_role(
     role_repo = RoleRepository(session=session)
     assignment_repo = RoleAssignmentRepository(session=session)
     service = RoleService(
-        role_repository=role_repo,
-        role_assignment_repository=assignment_repo,
+        role_repository=role_repo,  # type: ignore[arg-type]
+        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]
     )
 
     st = ScopeType(scope_type) if scope_type else ScopeType.GLOBAL
@@ -151,8 +151,8 @@ async def _revoke_role(
     role_repo = RoleRepository(session=session)
     assignment_repo = RoleAssignmentRepository(session=session)
     service = RoleService(
-        role_repository=role_repo,
-        role_assignment_repository=assignment_repo,
+        role_repository=role_repo,  # type: ignore[arg-type]
+        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]
     )
 
     st = ScopeType(scope_type) if scope_type else ScopeType.GLOBAL
@@ -176,8 +176,8 @@ async def _list_subject_roles(session: AsyncSession, subject_id: str) -> list[di
     role_repo = RoleRepository(session=session)
     assignment_repo = RoleAssignmentRepository(session=session)
     service = RoleService(
-        role_repository=role_repo,
-        role_assignment_repository=assignment_repo,
+        role_repository=role_repo,  # type: ignore[arg-type]
+        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]
     )
 
     roles = await service.get_subject_roles(subject_id)
@@ -204,8 +204,8 @@ async def _init_builtin_roles(session: AsyncSession) -> list[str]:
     role_repo = RoleRepository(session=session)
     assignment_repo = RoleAssignmentRepository(session=session)
     service = RoleService(
-        role_repository=role_repo,
-        role_assignment_repository=assignment_repo,
+        role_repository=role_repo,  # type: ignore[arg-type]
+        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]
     )
 
     await service.ensure_builtin_roles()

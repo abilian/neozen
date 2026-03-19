@@ -1,16 +1,7 @@
 """neozen - Litestar application."""
 
-from litestar import Litestar
+from __future__ import annotations
 
-from .routes import routes
+from .app import app, create_app
 
-
-def create_app() -> Litestar:
-    """Application factory."""
-    return Litestar(
-        route_handlers=routes,
-        debug=True,
-    )
-
-
-app = create_app()
+__all__ = ["app", "create_app"]

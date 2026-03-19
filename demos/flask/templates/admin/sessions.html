@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Sessions - NeoZen Admin{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ul>
+        <li><a href="{{ url_for('admin_dashboard') }}">Admin</a></li>
+        <li>Sessions</li>
+    </ul>
+</nav>
+
+<h1>Active Sessions</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>Token</th>
+            <th>User</th>
+            <th>Created</th>
+            <th>Expires</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for session, subject in sessions %}
+        <tr>
+            <td><code>{{ session.token_hash[:16] }}...</code></td>
+            <td>{{ subject.email if subject else 'Unknown' }}</td>
+            <td>{{ session.created_at.strftime('%Y-%m-%d %H:%M') if session.created_at else '-' }}</td>
+            <td>{{ session.expires_at.strftime('%Y-%m-%d %H:%M') if session.expires_at else '-' }}</td>
+            <td>
+                {% if not session.revoked_at %}
+                <form action="{{ url_for('admin_revoke_session', token_hash=session.token_hash) }}" method="post" style="margin: 0;">
+                    <button type="submit" class="secondary outline" onclick="return confirm('Revoke this session?')">Revoke</button>
+                </form>
+                {% else %}
+                <span style="color: var(--pico-muted-color);">Revoked</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="5" style="color: var(--pico-muted-color);">No active sessions found.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<p><a href="{{ url_for('admin_dashboard') }}">&larr; Back to Admin Dashboard</a></p>
+{% endblock %}

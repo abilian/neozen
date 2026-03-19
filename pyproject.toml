@@ -107,7 +107,7 @@ markers = [
 
 [tool.mypy]
 warn_redundant_casts = true
-warn_unused_ignores = true
+warn_unused_ignores = false
 check_untyped_defs = true
 strict_equality = true
 

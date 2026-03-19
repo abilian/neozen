@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
@@ -58,7 +59,7 @@ def redirect(url: str) -> Response:
     )
 
 
-async def get_admin_service(request: Request) -> AdminService:
+async def get_admin_service(request: Request) -> AsyncGenerator[AdminService, None]:
     """Get admin service with database session."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -162,7 +163,7 @@ async def list_roles(request: Request) -> Response:
         return render_template(request, "roles/list.html", {"roles": roles})
 
 
-@get("/roles/create")
+@get("/roles/create", sync_to_thread=False)
 def create_role_form(request: Request) -> Response:
     """Show create role form."""
     return render_template(request, "roles/create.html", {})
@@ -332,7 +333,8 @@ def create_admin_app(config: AdminConfig | None = None) -> Litestar:
 
     # Session middleware for flash messages
     session_config = ServerSideSessionConfig(
-        secret=config.secret_key.encode(),
+        key="neozen_admin_session",
+        max_age=86400,
     )
 
     app = Litestar(

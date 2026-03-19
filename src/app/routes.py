@@ -1,17 +1,18 @@
 """Application routes."""
 
+from __future__ import annotations
+
 from litestar import get
-from litestar.response import Response
 
 
 @get("/")
-async def index() -> dict:
+def index() -> dict:
     """Home page."""
     return {"message": "Welcome!"}
 
 
 @get("/health")
-async def health() -> dict:
+def health() -> dict:
     """Health check endpoint."""
     return {"status": "ok"}
 

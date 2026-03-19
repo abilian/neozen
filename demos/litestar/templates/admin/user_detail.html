@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}{{ target_user.email }} - NeoZen Admin{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ul>
+        <li><a href="/admin">Admin</a></li>
+        <li><a href="/admin/users">Users</a></li>
+        <li>{{ target_user.email }}</li>
+    </ul>
+</nav>
+
+<h1>User Details</h1>
+
+<article>
+    <table>
+        <tr>
+            <th>ID</th>
+            <td><code>{{ target_user.id }}</code></td>
+        </tr>
+        <tr>
+            <th>Email</th>
+            <td>{{ target_user.email }}</td>
+        </tr>
+        <tr>
+            <th>Status</th>
+            <td>
+                {% if target_user.is_active %}
+                <span style="color: var(--pico-ins-color);">Active</span>
+                {% else %}
+                <span style="color: var(--pico-del-color);">Inactive</span>
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <th>Verified</th>
+            <td>
+                {% if target_user.is_verified %}
+                <span style="color: var(--pico-ins-color);">Yes</span>
+                {% else %}
+                <span style="color: var(--pico-muted-color);">No</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% if target_user.created_at %}
+        <tr>
+            <th>Created</th>
+            <td>{{ target_user.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        </tr>
+        {% endif %}
+    </table>
+</article>
+
+<article>
+    <h3>Roles</h3>
+    <p>Current roles:
+        {% for role in user_roles %}
+        <span class="badge badge-{{ role.name }}">{{ role.name }}</span>
+        {% else %}
+        <span style="color: var(--pico-muted-color);">No roles assigned</span>
+        {% endfor %}
+    </p>
+
+    <h4>Toggle Roles</h4>
+    <div class="grid">
+        {% set role_names = user_roles | map(attribute='name') | list %}
+        {% if 'admin' in role_names %}
+        <form action="/admin/users/{{ target_user.id }}/toggle-role/admin" method="post">
+            <button type="submit" class="secondary outline">Remove Admin</button>
+        </form>
+        {% else %}
+        <form action="/admin/users/{{ target_user.id }}/toggle-role/admin" method="post">
+            <button type="submit">Grant Admin</button>
+        </form>
+        {% endif %}
+
+        {% if 'user' in role_names %}
+        <form action="/admin/users/{{ target_user.id }}/toggle-role/user" method="post">
+            <button type="submit" class="secondary outline">Remove User</button>
+        </form>
+        {% else %}
+        <form action="/admin/users/{{ target_user.id }}/toggle-role/user" method="post">
+            <button type="submit" class="secondary">Grant User</button>
+        </form>
+        {% endif %}
+    </div>
+</article>
+
+<p><a href="/admin/users">&larr; Back to Users</a></p>
+{% endblock %}
