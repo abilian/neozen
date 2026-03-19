@@ -1133,6 +1133,7 @@ sqlalchemy = [
     { name = "sqlalchemy" },
 ]
 tortoise = [
+    { name = "aiosqlite" },
     { name = "tortoise-orm", extra = ["asyncpg"] },
 ]
 
@@ -1165,14 +1166,16 @@ dev = [
     { name = "tortoise-orm" },
     { name = "trio" },
     { name = "ty" },
+    { name = "types-peewee" },
     { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "advanced-alchemy", specifier = ">=1.8.2" },
     { name = "advanced-alchemy", marker = "extra == 'sqlalchemy'", specifier = ">=0.30.0" },
-    { name = "advanced-alchemy", extras = ["litestar"], specifier = ">=1.8.2" },
     { name = "aiosqlite", marker = "extra == 'peewee'", specifier = ">=0.21.0" },
+    { name = "aiosqlite", marker = "extra == 'tortoise'", specifier = ">=0.21.0" },
     { name = "anyio", specifier = ">=4.0.0" },
     { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "databases", extras = ["aiosqlite"], marker = "extra == 'databases'", specifier = ">=0.9.0" },
@@ -1191,7 +1194,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.45" },
     { name = "sqlalchemy", marker = "extra == 'sqlalchemy'", specifier = ">=2.0.0" },
     { name = "starlette", marker = "extra == 'demo'", specifier = ">=0.40.0" },
-    { name = "tortoise-orm", extras = ["asyncpg", "aiosqlite"], marker = "extra == 'tortoise'", specifier = ">=0.22.0" },
+    { name = "tortoise-orm", extras = ["asyncpg"], marker = "extra == 'tortoise'", specifier = ">=0.22.0" },
     { name = "uvicorn", specifier = ">=0.40.0" },
     { name = "uvicorn", marker = "extra == 'demo'", specifier = ">=0.30.0" },
 ]
@@ -1223,9 +1226,10 @@ dev = [
     { name = "ruff", specifier = ">=0.14.11" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0" },
     { name = "starlette", specifier = ">=0.40.0" },
-    { name = "tortoise-orm", extras = ["aiosqlite"], specifier = ">=0.22.0" },
+    { name = "tortoise-orm", specifier = ">=0.22.0" },
     { name = "trio", specifier = ">=0.27.0" },
     { name = "ty", specifier = ">=0.0.11" },
+    { name = "types-peewee", specifier = ">=4.0.0.20260223" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 
@@ -1819,6 +1823,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/94/a009ad9d8b359933cfea8721c689c0331189be28650d74dcc6add4d5bb09/ty-0.0.11-py3-none-win32.whl", hash = "sha256:44cfb7bb2d6784bd7ffe7b5d9ea90851d9c4723729c50b5f0732d4b9a2013cfc", size = 9040448, upload-time = "2026-01-09T21:06:32.241Z" },
     { url = "https://files.pythonhosted.org/packages/df/04/5a5dfd0aec0ea99ead1e824ee6e347fb623c464da7886aa1e3660fb0f36c/ty-0.0.11-py3-none-win_amd64.whl", hash = "sha256:1bb205db92715d4a13343bfd5b0c59ce8c0ca0daa34fb220ec9120fc66ccbda7", size = 9780112, upload-time = "2026-01-09T21:06:04.69Z" },
     { url = "https://files.pythonhosted.org/packages/ad/07/47d4fccd7bcf5eea1c634d518d6cb233f535a85d0b63fcd66815759e2fa0/ty-0.0.11-py3-none-win_arm64.whl", hash = "sha256:4688bd87b2dc5c85da277bda78daba14af2e66f3dda4d98f3604e3de75519eba", size = 9194038, upload-time = "2026-01-09T21:06:10.152Z" },
+]
+
+[[package]]
+name = "types-peewee"
+version = "4.0.0.20260223"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/13/f6/6006506f35813719d269e761000d7250d651dd19d3db3cc2694a29c37b9b/types_peewee-4.0.0.20260223.tar.gz", hash = "sha256:67e3c67f181d697fe38912d910812b7306d39f62adf17ca8b8c187873c5102ef", size = 22012, upload-time = "2026-02-23T04:11:36.431Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d8/d6/e098745c89bdfe8d263fe07b2e2c35e8048dca1317bf6871719c53a3552a/types_peewee-4.0.0.20260223-py3-none-any.whl", hash = "sha256:8f90db80ea7568e4b44c6558b26d9790ed2e15bf48f799e46b27cb5ec0446dcc", size = 19971, upload-time = "2026-02-23T04:11:35.435Z" },
 ]
 
 [[package]]
