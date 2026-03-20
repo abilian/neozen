@@ -83,7 +83,7 @@ def users_db():
 
 @pytest.fixture
 def backend(session_service, users_db):
-    async def load_subject(subject_id: str) -> DemoUser | None:
+    async def load_subject(subject_id: str) -> DemoUser | None:  # noqa: RUF029
         return users_db.get(subject_id)
 
     return NeoZenBackend(
@@ -108,10 +108,10 @@ def app(backend):
         return JSONResponse({"user_id": user.id})
 
     @login_required(redirect_url="/login")
-    async def protected_redirect(request: Request) -> Response:
+    def protected_redirect(request: Request) -> Response:
         return JSONResponse({"status": "ok"})
 
-    async def login_route(request: Request) -> Response:
+    def login_route(request: Request) -> Response:
         return JSONResponse({"page": "login"})
 
     routes = [

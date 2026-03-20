@@ -81,7 +81,7 @@ def users_db():
 
 @pytest.fixture
 def config(session_service, users_db):
-    async def load_subject(subject_id: str) -> DemoUser | None:
+    async def load_subject(subject_id: str) -> DemoUser | None:  # noqa: RUF029
         return users_db.get(subject_id)
 
     return NeoZenConfig(
@@ -112,12 +112,12 @@ def app(config):
             media_type="application/json",
         )
 
-    @get("/protected-redirect", guards=[login_required()])
-    async def protected_redirect(request: Request) -> Response:
+    @get("/protected-redirect", guards=[login_required()], sync_to_thread=False)
+    def protected_redirect(request: Request) -> Response:
         return Response(content={"status": "ok"}, media_type="application/json")
 
-    @get("/login")
-    async def login_route(request: Request) -> Response:
+    @get("/login", sync_to_thread=False)
+    def login_route(request: Request) -> Response:
         return Response(content={"page": "login"}, media_type="application/json")
 
     # Exception handler for authentication redirects
