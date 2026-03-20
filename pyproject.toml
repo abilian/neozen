@@ -113,34 +113,34 @@ warn_unused_ignores = false
 check_untyped_defs = true
 strict_equality = true
 
-[tool.ruff]
-target-version = "py312"
+# [tool.ruff]
+# target-version = "py312"
 
-[tool.ruff.lint]
-select = ["ALL"]
-extend-ignore = [
-    "CPY",      # Copyright
-    "S101",     # Use of assert
-    "D203",     # one-blank-line-before-class
-    "D213",     # multi-line-summary-second-line
-    "COM812",   # trailing comma
-    "T201",     # print
-    "ANN",      # annotations (handled by type checkers)
-    "D",        # docstrings (for now)
-]
+# [tool.ruff.lint]
+# select = ["ALL"]
+# extend-ignore = [
+#     "CPY",      # Copyright
+#     "S101",     # Use of assert
+#     "D203",     # one-blank-line-before-class
+#     "D213",     # multi-line-summary-second-line
+#     "COM812",   # trailing comma
+#     "T201",     # print
+#     "ANN",      # annotations (handled by type checkers)
+#     "D",        # docstrings (for now)
+# ]
 
-[tool.ruff.lint.extend-per-file-ignores]
-"tests/**/*.py" = [
-    "S101",     # assert
-    "PLR2004",  # magic values
-    "D",        # docstrings
-    "ANN",      # annotations
-]
+# [tool.ruff.lint.extend-per-file-ignores]
+# "tests/**/*.py" = [
+#     "S101",     # assert
+#     "PLR2004",  # magic values
+#     "D",        # docstrings
+#     "ANN",      # annotations
+# ]
 
-[tool.ruff.lint.isort]
-combine-as-imports = true
-required-imports = ["from __future__ import annotations"]
-known-first-party = ["neozen"]
+# [tool.ruff.lint.isort]
+# combine-as-imports = true
+# required-imports = ["from __future__ import annotations"]
+# known-first-party = ["neozen"]
 
 [tool.ty.rules]
 unused-ignore-comment = "ignore"

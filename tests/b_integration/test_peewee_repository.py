@@ -6,7 +6,6 @@ using a real Peewee database (file-based SQLite for thread safety).
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import peewee
@@ -14,7 +13,6 @@ import pytest
 
 from neozen.core.repository import DoesNotExist
 from neozen.storage.peewee import PeeweeRepository
-
 
 # Use a deferred database that gets bound per test
 _proxy_db = peewee.Proxy()

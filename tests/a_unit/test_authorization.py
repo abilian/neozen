@@ -16,7 +16,6 @@ from neozen.core.authz.models import (
 )
 from neozen.core.authz.policy import (
     OwnerPolicy,
-    Policy,
     PolicyChain,
     PolicyResult,
     RolePolicy,

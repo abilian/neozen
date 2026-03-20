@@ -6,7 +6,6 @@ Uses the simplified Starlette demo with SQLAlchemy storage.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -29,7 +28,7 @@ async def app():
     # Use a test-specific database path
     test_db_path = Path(__file__).parent / "test_demo.db"
     if test_db_path.exists():
-        os.remove(test_db_path)
+        test_db_path.unlink()
 
     # Create database
     engine, session_factory = create_database(str(test_db_path))
@@ -114,7 +113,7 @@ async def app():
     # Cleanup
     await engine.dispose()
     if test_db_path.exists():
-        os.remove(test_db_path)
+        test_db_path.unlink()
 
 
 @pytest.fixture
