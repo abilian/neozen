@@ -207,8 +207,9 @@ class TestNeoZenMiddleware:
         token = secrets.token_urlsafe(32)
         session_service.sessions[token] = {"subject_id": user.id}
 
-        # Make request with cookie
-        response = client.get("/", cookies={"neozen_session": token})
+        # Set cookie on client and make request
+        client.cookies.set("neozen_session", token)
+        response = client.get("/")
         data = response.json()
         assert data["authenticated"] is True
         assert data["user_id"] == "user_1"
@@ -232,7 +233,9 @@ class TestLoginRequired:
         token = secrets.token_urlsafe(32)
         session_service.sessions[token] = {"subject_id": user.id}
 
-        response = client.get("/protected", cookies={"neozen_session": token})
+        # Set cookie on client and make request
+        client.cookies.set("neozen_session", token)
+        response = client.get("/protected")
         assert response.status_code == 200
         data = response.json()
         assert data["user_id"] == "user_1"
@@ -252,6 +255,8 @@ class TestHelpers:
         token = secrets.token_urlsafe(32)
         session_service.sessions[token] = {"subject_id": user.id}
 
-        response = client.get("/", cookies={"neozen_session": token})
+        # Set cookie on client and make request
+        client.cookies.set("neozen_session", token)
+        response = client.get("/")
         data = response.json()
         assert data["authenticated"] is True

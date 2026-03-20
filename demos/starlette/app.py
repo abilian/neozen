@@ -9,6 +9,8 @@ Run with: uvicorn demos.starlette.app:app --reload --port 8001
 from __future__ import annotations
 
 import secrets
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
@@ -335,8 +337,10 @@ async def api_me(request: Request) -> Response:
 # =============================================================================
 
 
-async def on_startup() -> None:
-    """Initialize database on startup."""
+@asynccontextmanager
+async def lifespan(app: Starlette) -> AsyncGenerator[None, None]:
+    """Application lifespan context manager."""
+    # Startup
     await init_database(engine)
 
     # Ensure built-in roles exist
@@ -344,6 +348,9 @@ async def on_startup() -> None:
         service = AdminService(db_session)
         await service.ensure_builtin_roles()
         await db_session.commit()
+
+    yield
+    # Shutdown (nothing to do)
 
 
 def create_app() -> Starlette:
@@ -378,7 +385,7 @@ def create_app() -> Starlette:
         Middleware(NeoZenMiddleware, backend=backend),
     ]
 
-    return Starlette(routes=routes, middleware=middleware, on_startup=[on_startup])
+    return Starlette(routes=routes, middleware=middleware, lifespan=lifespan)
 
 
 app = create_app()
