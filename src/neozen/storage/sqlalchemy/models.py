@@ -6,6 +6,12 @@ This module contains all SQLAlchemy ORM models used by NeoZen:
 - EmailVerificationToken: Email verification tokens
 - Role: Authorization roles
 - RoleAssignment: Role assignments to subjects
+- PasswordHistory: Password history for reuse prevention
+- BackupCode: TOTP backup codes
+- SocialAccount: OAuth social login accounts
+- OAuthState: OAuth authorization state for PKCE
+- WebAuthnCredential: WebAuthn/Passkey credentials
+- WebAuthnChallenge: WebAuthn challenge storage
 """
 
 from __future__ import annotations
@@ -39,8 +45,17 @@ class Subject(AuditColumns, Base):
         String(32), unique=True, nullable=True, index=True
     )
     hashed_password: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
+    # TOTP fields
+    totp_secret: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
+    totp_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     def __repr__(self) -> str:
         return f"<Subject id={self.id} email={self.email}>"
@@ -205,10 +220,198 @@ class RoleAssignment(Base):
         return f"<RoleAssignment subject={self.subject_id} role={self.role_id}>"
 
 
+class PasswordHistory(Base):
+    """SQLAlchemy model for password history.
+
+    Tracks previously used passwords to prevent reuse.
+    """
+
+    __tablename__ = "password_history"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    subject_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    hashed_password: Mapped[str] = mapped_column(Text(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        return f"<PasswordHistory id={self.id} subject_id={self.subject_id}>"
+
+
+class BackupCode(Base):
+    """SQLAlchemy model for TOTP backup codes.
+
+    One-time use codes for account recovery when TOTP device is unavailable.
+    """
+
+    __tablename__ = "backup_codes"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    subject_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    code_hash: Mapped[str] = mapped_column(Text(), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        return f"<BackupCode id={self.id} subject_id={self.subject_id}>"
+
+
+class SocialAccount(AuditColumns, Base):
+    """SQLAlchemy model for OAuth social login accounts.
+
+    Links a subject to an external OAuth provider account.
+    """
+
+    __tablename__ = "social_accounts"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    subject_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider_id: Mapped[str] = mapped_column(
+        String(32), nullable=False, index=True
+    )  # e.g., "google", "github"
+    provider_user_id: Mapped[str] = mapped_column(
+        String(255), nullable=False, index=True
+    )
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    access_token: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    refresh_token: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<SocialAccount provider={self.provider_id} subject_id={self.subject_id}>"
+        )
+
+
+class OAuthState(Base):
+    """SQLAlchemy model for OAuth authorization state.
+
+    Stores temporary state for OAuth flows with PKCE support.
+    """
+
+    __tablename__ = "oauth_states"
+
+    state: Mapped[str] = mapped_column(String(64), primary_key=True)
+    code_verifier: Mapped[str] = mapped_column(String(128), nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(Text(), nullable=False)
+    provider_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    existing_subject_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<OAuthState state={self.state[:8]}... provider={self.provider_id}>"
+
+
+class WebAuthnCredential(Base):
+    """SQLAlchemy model for WebAuthn/Passkey credentials.
+
+    Stores public keys for passwordless authentication.
+    """
+
+    __tablename__ = "webauthn_credentials"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    subject_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    credential_id: Mapped[str] = mapped_column(
+        String(255), unique=True, nullable=False, index=True
+    )
+    public_key: Mapped[str] = mapped_column(Text(), nullable=False)
+    sign_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    transports: Mapped[str] = mapped_column(
+        String(255), nullable=False, default=""
+    )  # Comma-separated
+    device_type: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    backed_up: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<WebAuthnCredential id={self.id} subject_id={self.subject_id}>"
+
+
+class WebAuthnChallenge(Base):
+    """SQLAlchemy model for WebAuthn challenges.
+
+    Temporary storage for registration/authentication challenges.
+    """
+
+    __tablename__ = "webauthn_challenges"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    challenge: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    subject_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    operation: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )  # "registration" or "authentication"
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<WebAuthnChallenge id={self.id} operation={self.operation}>"
+
+
 __all__ = [
+    "BackupCode",
     "EmailVerificationToken",
+    "OAuthState",
+    "PasswordHistory",
     "Role",
     "RoleAssignment",
     "Session",
+    "SocialAccount",
     "Subject",
+    "WebAuthnChallenge",
+    "WebAuthnCredential",
 ]

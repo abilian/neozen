@@ -12,11 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from neozen.storage.base import DoesNotExist
 from neozen.storage.sqlalchemy.models import (
+    BackupCode,
     EmailVerificationToken,
+    OAuthState,
+    PasswordHistory,
     Role,
     RoleAssignment,
     Session,
+    SocialAccount,
     Subject,
+    WebAuthnChallenge,
+    WebAuthnCredential,
 )
 
 
@@ -134,16 +140,99 @@ def get_role_assignment_repository(session: AsyncSession) -> RoleAssignmentRepos
     return RoleAssignmentRepository(session=session)
 
 
+class PasswordHistoryRepository(NeoZenRepository[PasswordHistory]):
+    """Repository for PasswordHistory model."""
+
+    model_type = PasswordHistory
+
+
+def get_password_history_repository(session: AsyncSession) -> PasswordHistoryRepository:
+    """Factory function for PasswordHistoryRepository."""
+    return PasswordHistoryRepository(session=session)
+
+
+class BackupCodeRepository(NeoZenRepository[BackupCode]):
+    """Repository for BackupCode model."""
+
+    model_type = BackupCode
+
+
+def get_backup_code_repository(session: AsyncSession) -> BackupCodeRepository:
+    """Factory function for BackupCodeRepository."""
+    return BackupCodeRepository(session=session)
+
+
+class SocialAccountRepository(NeoZenRepository[SocialAccount]):
+    """Repository for SocialAccount model."""
+
+    model_type = SocialAccount
+
+
+def get_social_account_repository(session: AsyncSession) -> SocialAccountRepository:
+    """Factory function for SocialAccountRepository."""
+    return SocialAccountRepository(session=session)
+
+
+class OAuthStateRepository(NeoZenRepository[OAuthState]):
+    """Repository for OAuthState model."""
+
+    model_type = OAuthState
+    id_attribute = "state"
+
+
+def get_oauth_state_repository(session: AsyncSession) -> OAuthStateRepository:
+    """Factory function for OAuthStateRepository."""
+    return OAuthStateRepository(session=session)
+
+
+class WebAuthnCredentialRepository(NeoZenRepository[WebAuthnCredential]):
+    """Repository for WebAuthnCredential model."""
+
+    model_type = WebAuthnCredential
+
+
+def get_webauthn_credential_repository(
+    session: AsyncSession,
+) -> WebAuthnCredentialRepository:
+    """Factory function for WebAuthnCredentialRepository."""
+    return WebAuthnCredentialRepository(session=session)
+
+
+class WebAuthnChallengeRepository(NeoZenRepository[WebAuthnChallenge]):
+    """Repository for WebAuthnChallenge model."""
+
+    model_type = WebAuthnChallenge
+
+
+def get_webauthn_challenge_repository(
+    session: AsyncSession,
+) -> WebAuthnChallengeRepository:
+    """Factory function for WebAuthnChallengeRepository."""
+    return WebAuthnChallengeRepository(session=session)
+
+
 __all__ = [
+    "BackupCodeRepository",
     "EmailVerificationTokenRepository",
     "NeoZenRepository",
+    "OAuthStateRepository",
+    "PasswordHistoryRepository",
     "RoleAssignmentRepository",
     "RoleRepository",
     "SessionRepository",
+    "SocialAccountRepository",
     "SubjectRepository",
+    "WebAuthnChallengeRepository",
+    "WebAuthnCredentialRepository",
+    "get_backup_code_repository",
     "get_email_verification_token_repository",
+    "get_oauth_state_repository",
+    "get_password_history_repository",
     "get_role_assignment_repository",
     "get_role_repository",
     "get_session_repository",
+    "get_social_account_repository",
     "get_subject_repository",
+    "get_webauthn_challenge_repository",
+    "get_webauthn_credential_repository",
 ]
