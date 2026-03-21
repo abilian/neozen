@@ -21,20 +21,20 @@ if str(project_root) not in sys.path:
 @pytest.fixture
 async def app():
     """Create a fresh demo app for each test with cleared database."""
-    # Import here to avoid import-time execution issues
-    from demos.shared.database import create_database, init_database
     from neozen.admin.services import AdminService
+
+    from .conftest import create_test_database, init_test_database
 
     # Use a test-specific database path
     test_db_path = Path(__file__).parent / "test_demo.db"
     if test_db_path.exists():
         test_db_path.unlink()
 
-    # Create database
-    engine, session_factory = create_database(str(test_db_path))
+    # Create database with NullPool to avoid thread cleanup issues
+    engine, session_factory = create_test_database(str(test_db_path))
 
     # Initialize database
-    await init_database(engine)
+    await init_test_database(engine)
 
     # Ensure built-in roles exist
     async with session_factory() as db_session:

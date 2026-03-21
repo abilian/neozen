@@ -35,9 +35,14 @@ class SampleRepository(NeoZenRepository[SampleModel]):
 @pytest.fixture
 async def db_session():
     """Create an in-memory SQLite database and session."""
+    from sqlalchemy.pool import StaticPool
+
+    # Use StaticPool for in-memory SQLite to maintain single connection
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         echo=False,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
     )
 
     async with engine.begin() as conn:

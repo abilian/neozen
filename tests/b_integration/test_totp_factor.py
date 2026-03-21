@@ -34,9 +34,14 @@ pytest.importorskip("pyotp")
 @pytest.fixture
 async def async_engine():
     """Create async SQLite engine for tests."""
+    from sqlalchemy.pool import StaticPool
+
+    # Use StaticPool for in-memory SQLite to maintain single connection
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         echo=False,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

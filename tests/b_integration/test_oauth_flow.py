@@ -31,9 +31,11 @@ TOKEN_HASH_KEY = "test_secret_key_for_oauth_flow"
 @pytest.fixture
 async def engine(tmp_path):
     """Create a fresh database engine for each test."""
+    from sqlalchemy.pool import NullPool
+
     db_path = tmp_path / "oauth_test.db"
     db_url = f"sqlite+aiosqlite:///{db_path}"
-    engine = create_async_engine(db_url)
+    engine = create_async_engine(db_url, poolclass=NullPool)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
