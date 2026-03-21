@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from neozen.core.authz.models import ScopeType
 from neozen.core.session.service import SessionService
 from neozen.storage.base import DoesNotExist
-from neozen.storage.sqlalchemy.models import Role, RoleAssignment, Session, Subject
+from neozen.storage.sqlalchemy.models import RoleAssignment, Session, Subject
 from neozen.storage.sqlalchemy.repositories import (
     RoleAssignmentRepository,
     RoleRepository,

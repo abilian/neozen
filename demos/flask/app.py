@@ -513,7 +513,7 @@ def admin_toggle_role(user_id: str, role: str):
         flash("Cannot remove admin role from yourself", "error")
         return redirect(url_for("admin_user_detail", user_id=user_id))
 
-    async def toggle():
+    async def toggle() -> bool:
         roles = await get_subject_roles(session_factory, user_id)
         if role in roles:
             await role_service.revoke_role(user_id, role)
@@ -562,7 +562,7 @@ def admin_sessions():
 def admin_revoke_session(token_hash: str):
     """Revoke a session."""
 
-    async def revoke():
+    async def revoke() -> None:
         async with session_factory() as db_session:
             service = AdminService(db_session)
             await service.revoke_session(token_hash)
@@ -917,7 +917,7 @@ def security_disable_totp():
         flash("TOTP is not available", "error")
         return redirect(url_for("security_settings"))
 
-    async def disable_totp():
+    async def disable_totp() -> None:
         async with session_factory() as db_session:
             repo = SubjectRepository(session=db_session)
             subject = await repo.get_one_by(id=current_user.id)
@@ -1054,7 +1054,7 @@ def security_delete_passkey(credential_id: str):
         flash("WebAuthn is not available", "error")
         return redirect(url_for("security_settings"))
 
-    async def delete_credential():
+    async def delete_credential() -> None:
         async with session_factory() as db_session:
             repo = SubjectRepository(session=db_session)
             subject = await repo.get_one_by(id=current_user.id)
@@ -1380,7 +1380,7 @@ def security_unlink_account(provider_id: str):
             )
             return redirect(url_for("security_settings"))
 
-    async def unlink():
+    async def unlink() -> None:
         async with session_factory() as db_session:
             repo = SocialAccountRepository(session=db_session)
             try:

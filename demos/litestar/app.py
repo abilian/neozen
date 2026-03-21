@@ -134,7 +134,7 @@ def admin_required() -> Callable:
 
         # If user not loaded yet, load it
         if user is None and state.get("neozen_session"):
-            from neozen.ext.litestar import get_config  # noqa: PLC0415
+            from neozen.ext.litestar import get_config
 
             config = get_config(connection)  # type: ignore[arg-type]
             user = await config.get_subject(state["neozen_session"].subject_id)

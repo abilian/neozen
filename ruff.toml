@@ -8,6 +8,7 @@ lint.select = [
 include = [
     "src/**/*.py",
     "tests/**/*.py",
+    "demos/**/*.py",
 ]
 
 lint.extend-ignore = [
@@ -85,6 +86,13 @@ lint.extend-ignore = [
 ]
 "**/__init__.py" = [
     "RUF022", # Sort __all__
+]
+"demos/**/*.py" = [
+    "ANN",     # Missing type annotations - demos prioritize readability
+    "FBT",     # Boolean trap - acceptable in demo User class
+    "PLC0415", # Import outside top-level - lazy imports for optional deps
+    "RUF029",  # Unused async - template functions may not await
+    "C901",    # Too complex - demo callbacks combine multiple concerns
 ]
 
 [lint.isort]
