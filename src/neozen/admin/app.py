@@ -365,4 +365,4 @@ def create_admin_app(config: AdminConfig | None = None) -> Litestar:
     return app
 
 
-__all__ = ["create_admin_app", "AdminConfig"]
+__all__ = ["AdminConfig", "create_admin_app"]

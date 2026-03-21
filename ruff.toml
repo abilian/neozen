@@ -31,7 +31,8 @@ lint.extend-ignore = [
     "D213", # multi-line-summary-second-line
     "COM812", # ...
     "T201", # Print...
-    "RUF022", # Sort __all__
+    "PLW1514",
+    "PLC1901",
 
     # Fix later (or not)
     "ANN401",
@@ -81,6 +82,9 @@ lint.extend-ignore = [
     # "E501", # line too long in test assertions
     # "N802", # naming
     # "S", # security
+]
+"**/__init__.py" = [
+    "RUF022", # Sort __all__
 ]
 
 [lint.isort]

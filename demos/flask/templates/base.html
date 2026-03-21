@@ -127,6 +127,7 @@
         <ul>
             {% if current_user %}
                 <li><a href="/dashboard">Dashboard</a></li>
+                <li><a href="/security">Security</a></li>
                 {% if roles and 'admin' in roles %}
                 <li><a href="/admin" style="color: #ff6b6b;">Admin</a></li>
                 {% endif %}

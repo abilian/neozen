@@ -167,13 +167,19 @@ class WebAuthnFactor[S: Subject]:
     challenge_repository: WebAuthnChallengeRepositoryProtocol[typing.Any]
     id_generator: typing.Callable[[], str] | None = None
     _webauthn: typing.Any = field(default=None, repr=False)
+    _webauthn_structs: typing.Any = field(default=None, repr=False)
+    _webauthn_helpers: typing.Any = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """Import webauthn lazily."""
         try:
             import webauthn  # noqa: PLC0415
+            from webauthn import helpers as webauthn_helpers  # noqa: PLC0415
+            from webauthn.helpers import structs as webauthn_structs  # noqa: PLC0415
 
-            self._webauthn = webauthn
+            object.__setattr__(self, "_webauthn", webauthn)
+            object.__setattr__(self, "_webauthn_structs", webauthn_structs)
+            object.__setattr__(self, "_webauthn_helpers", webauthn_helpers)
         except ImportError:
             pass
 
@@ -226,18 +232,18 @@ class WebAuthnFactor[S: Subject]:
             user_name=user_name or subject.id,
             user_display_name=user_display_name or user_name or subject.id,
             exclude_credentials=[
-                self._webauthn.PublicKeyCredentialDescriptor(id=cred_id)
+                self._webauthn_structs.PublicKeyCredentialDescriptor(id=cred_id)
                 for cred_id in exclude_credentials
             ],
-            authenticator_selection=self._webauthn.AuthenticatorSelectionCriteria(
-                user_verification=self._webauthn.UserVerificationRequirement(
+            authenticator_selection=self._webauthn_structs.AuthenticatorSelectionCriteria(
+                user_verification=self._webauthn_structs.UserVerificationRequirement(
                     self.config.user_verification
                 ),
             ),
         )
 
         # Store challenge
-        challenge_b64 = self._webauthn.bytes_to_base64url(options.challenge)
+        challenge_b64 = self._webauthn_helpers.bytes_to_base64url(options.challenge)
         expires_at = datetime.now(UTC) + __import__("datetime").timedelta(
             seconds=self.config.challenge_timeout_seconds
         )
@@ -299,7 +305,9 @@ class WebAuthnFactor[S: Subject]:
 
         try:
             # Parse the registration response
-            credential = self._webauthn.RegistrationCredential.model_validate(response)
+            credential = self._webauthn_structs.RegistrationCredential.model_validate(
+                response
+            )
 
             # Verify the registration
             verification = self._webauthn.verify_registration_response(
@@ -315,10 +323,10 @@ class WebAuthnFactor[S: Subject]:
             credential_record = await self.credential_repository.create(
                 id=self._generate_id(),
                 subject_id=subject.id,
-                credential_id=self._webauthn.bytes_to_base64url(
+                credential_id=self._webauthn_helpers.bytes_to_base64url(
                     verification.credential_id
                 ),
-                public_key=self._webauthn.bytes_to_base64url(
+                public_key=self._webauthn_helpers.bytes_to_base64url(
                     verification.credential_public_key
                 ),
                 sign_count=verification.sign_count,
@@ -371,10 +379,10 @@ class WebAuthnFactor[S: Subject]:
                 subject_id=subject.id
             )
             allow_credentials = [
-                self._webauthn.PublicKeyCredentialDescriptor(
+                self._webauthn_structs.PublicKeyCredentialDescriptor(
                     id=self._webauthn.base64url_to_bytes(cred.credential_id),
                     transports=[
-                        self._webauthn.AuthenticatorTransport(t)
+                        self._webauthn_structs.AuthenticatorTransport(t)
                         for t in cred.transports.split(",")
                         if t
                     ],
@@ -385,13 +393,13 @@ class WebAuthnFactor[S: Subject]:
         options = self._webauthn.generate_authentication_options(
             rp_id=self.config.rp_id,
             allow_credentials=allow_credentials or None,
-            user_verification=self._webauthn.UserVerificationRequirement(
+            user_verification=self._webauthn_structs.UserVerificationRequirement(
                 self.config.user_verification
             ),
         )
 
         # Store challenge
-        challenge_b64 = self._webauthn.bytes_to_base64url(options.challenge)
+        challenge_b64 = self._webauthn_helpers.bytes_to_base64url(options.challenge)
         expires_at = datetime.now(UTC) + __import__("datetime").timedelta(
             seconds=self.config.challenge_timeout_seconds
         )
@@ -451,12 +459,14 @@ class WebAuthnFactor[S: Subject]:
 
         try:
             # Parse the authentication response
-            credential = self._webauthn.AuthenticationCredential.model_validate(
+            credential = self._webauthn_structs.AuthenticationCredential.model_validate(
                 response
             )
 
             # Find the credential in storage
-            credential_id_b64 = self._webauthn.bytes_to_base64url(credential.raw_id)
+            credential_id_b64 = self._webauthn_helpers.bytes_to_base64url(
+                credential.raw_id
+            )
 
             try:
                 cred_record = await self.credential_repository.get_one_by(

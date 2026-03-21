@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Backup Codes - NeoZen{% endblock %}
+
+{% block content %}
+<div class="auth-form">
+    <h1>New Backup Codes</h1>
+
+    <article>
+        <p><strong>Important:</strong> Your old backup codes have been invalidated. Save these new codes in a secure location.</p>
+
+        <div style="background: var(--pico-code-background); padding: 1rem; border-radius: var(--pico-border-radius); margin: 1rem 0;">
+            <ul style="list-style: none; padding: 0; margin: 0; font-family: monospace; columns: 2;">
+                {% for code in backup_codes %}
+                <li style="padding: 0.25rem 0;">{{ code }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <p style="color: var(--pico-del-color);">
+            <small>You will not see these codes again. Store them somewhere safe!</small>
+        </p>
+
+        <a href="{{ url_for('security_settings') }}" role="button">Done</a>
+    </article>
+
+    <p><a href="{{ url_for('security_settings') }}">&larr; Back to Security Settings</a></p>
+</div>
+{% endblock %}

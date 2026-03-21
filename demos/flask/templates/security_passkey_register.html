@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Register Passkey - NeoZen{% endblock %}
+
+{% block content %}
+<div class="auth-form">
+    <h1>Register Passkey</h1>
+
+    <article>
+        <p>Add a passkey to enable passwordless sign-in. You can use your device's biometrics (fingerprint, Face ID) or a security key.</p>
+
+        <form id="passkey-form">
+            <label for="passkey-name">
+                Passkey Name
+                <input type="text" id="passkey-name" name="name" placeholder="e.g., MacBook Pro Touch ID" required>
+                <small>A name to help you identify this passkey later.</small>
+            </label>
+
+            <button type="submit" id="register-btn">Register Passkey</button>
+        </form>
+
+        <div id="status" style="display: none; padding: 1rem; margin-top: 1rem; border-radius: var(--pico-border-radius);"></div>
+    </article>
+
+    <p><a href="{{ url_for('security_settings') }}">&larr; Back to Security Settings</a></p>
+</div>
+
+<script>
+// WebAuthn registration script
+const registrationOptions = {{ registration_options | tojson | safe }};
+
+document.getElementById('passkey-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const statusDiv = document.getElementById('status');
+    const registerBtn = document.getElementById('register-btn');
+    const passkeyName = document.getElementById('passkey-name').value;
+
+    statusDiv.style.display = 'block';
+    statusDiv.textContent = 'Please follow the prompts from your browser or device...';
+    statusDiv.style.background = 'var(--pico-primary-background)';
+    statusDiv.style.color = 'var(--pico-primary-inverse)';
+    registerBtn.disabled = true;
+
+    try {
+        // Convert base64url to ArrayBuffer
+        function base64urlToBuffer(base64url) {
+            const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+            const padding = '='.repeat((4 - base64.length % 4) % 4);
+            const binary = atob(base64 + padding);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // Convert ArrayBuffer to base64url
+        function bufferToBase64url(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            const base64 = btoa(binary);
+            return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+
+        // Prepare options for WebAuthn API
+        const options = {
+            publicKey: {
+                challenge: base64urlToBuffer(registrationOptions.challenge),
+                rp: registrationOptions.rp,
+                user: {
+                    id: base64urlToBuffer(registrationOptions.user.id),
+                    name: registrationOptions.user.name,
+                    displayName: registrationOptions.user.displayName
+                },
+                pubKeyCredParams: registrationOptions.pubKeyCredParams,
+                timeout: registrationOptions.timeout,
+                attestation: registrationOptions.attestation || 'none',
+                authenticatorSelection: registrationOptions.authenticatorSelection
+            }
+        };
+
+        if (registrationOptions.excludeCredentials) {
+            options.publicKey.excludeCredentials = registrationOptions.excludeCredentials.map(cred => ({
+                id: base64urlToBuffer(cred.id),
+                type: cred.type,
+                transports: cred.transports
+            }));
+        }
+
+        // Call WebAuthn API
+        const credential = await navigator.credentials.create(options);
+
+        // Prepare response for server
+        const response = {
+            id: credential.id,
+            rawId: bufferToBase64url(credential.rawId),
+            type: credential.type,
+            response: {
+                clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                attestationObject: bufferToBase64url(credential.response.attestationObject)
+            }
+        };
+
+        if (credential.response.getTransports) {
+            response.response.transports = credential.response.getTransports();
+        }
+
+        // Send to server
+        const verifyResponse = await fetch('{{ url_for("security_register_passkey_complete") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                credential: response,
+                name: passkeyName,
+                challenge: registrationOptions.challenge
+            })
+        });
+
+        const result = await verifyResponse.json();
+
+        if (result.success) {
+            statusDiv.textContent = 'Passkey registered successfully! Redirecting...';
+            statusDiv.style.background = 'var(--pico-ins-color)';
+            setTimeout(() => {
+                window.location.href = '{{ url_for("security_settings") }}';
+            }, 1500);
+        } else {
+            throw new Error(result.error || 'Registration failed');
+        }
+
+    } catch (error) {
+        console.error('WebAuthn error:', error);
+        statusDiv.textContent = 'Error: ' + error.message;
+        statusDiv.style.background = 'var(--pico-del-color)';
+        statusDiv.style.color = 'white';
+        registerBtn.disabled = false;
+    }
+});
+</script>
+{% endblock %}

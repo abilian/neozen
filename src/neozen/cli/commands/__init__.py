@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from neozen.cli.commands import client, subject
+from neozen.cli.commands import client, config, subject
 
-__all__ = ["client", "subject"]
+__all__ = ["client", "config", "subject"]

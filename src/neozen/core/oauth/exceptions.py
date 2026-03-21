@@ -221,7 +221,7 @@ class ScopeExceedsGrantError(OAuthError):
         super().__init__("Requested scope exceeds original grant scope.")
 
 
-__all__ = [
+__all__ = [  # noqa: RUF022
     # Base
     "OAuthError",
     # Authorization

@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from neozen.cli.commands import client, role, subject
+from neozen.cli.commands import client, config, role, subject
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -29,6 +29,9 @@ Examples:
   neozen role create -n editor -p post:read -p post:write
   neozen role assign -s user123 -r editor
   neozen role show-subject user123
+  neozen config init
+  neozen config validate
+  neozen config show
 """,
     )
 
@@ -289,6 +292,89 @@ Examples:
     )
     role_init.set_defaults(func=role.init)
 
+    # Config command
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Configuration management",
+        description="Validate, show, and generate configuration files.",
+    )
+    config_subparsers = config_parser.add_subparsers(
+        dest="subcommand",
+        title="subcommands",
+    )
+
+    # config validate
+    config_validate = config_subparsers.add_parser(
+        "validate",
+        help="Validate configuration file",
+    )
+    config_validate.add_argument(
+        "--config",
+        "-c",
+        dest="config_file",
+        help="Path to configuration file",
+    )
+    config_validate.add_argument(
+        "--skip-secret",
+        action="store_true",
+        help="Skip secret_key validation (for development)",
+    )
+    config_validate.set_defaults(func=config.validate_command)
+
+    # config show
+    config_show = config_subparsers.add_parser(
+        "show",
+        help="Show effective configuration",
+    )
+    config_show.add_argument(
+        "--config",
+        "-c",
+        dest="config_file",
+        help="Path to configuration file",
+    )
+    config_show.add_argument(
+        "--section",
+        "-s",
+        help="Show only this section",
+    )
+    config_show.add_argument(
+        "--show-secrets",
+        action="store_true",
+        help="Show secret values (not masked)",
+    )
+    config_show.set_defaults(func=config.show_command)
+
+    # config path
+    config_path = config_subparsers.add_parser(
+        "path",
+        help="Show configuration file path",
+    )
+    config_path.set_defaults(func=config.path_command)
+
+    # config init
+    config_init = config_subparsers.add_parser(
+        "init",
+        help="Generate template configuration file",
+    )
+    config_init.add_argument(
+        "--output",
+        "-o",
+        default="neozen.toml",
+        help="Output file path (default: neozen.toml)",
+    )
+    config_init.add_argument(
+        "--minimal",
+        action="store_true",
+        help="Generate minimal configuration",
+    )
+    config_init.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Overwrite existing file",
+    )
+    config_init.set_defaults(func=config.init_command)
+
     return parser
 
 
@@ -302,16 +388,11 @@ def main(args: list[str] | None = None) -> int:
         return 0
 
     # Handle commands with subcommands
-    if parsed.command in ("subject", "client", "role") and not getattr(
+    if parsed.command in ("subject", "client", "role", "config") and not getattr(
         parsed, "subcommand", None
     ):
         # Print help for the specific command
-        if parsed.command == "subject":
-            parser.parse_args(["subject", "--help"])
-        elif parsed.command == "client":
-            parser.parse_args(["client", "--help"])
-        elif parsed.command == "role":
-            parser.parse_args(["role", "--help"])
+        parser.parse_args([parsed.command, "--help"])
         return 0
 
     # Execute the command function

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Enable Two-Factor Authentication - NeoZen{% endblock %}
+
+{% block content %}
+<div class="auth-form">
+    <h1>Enable Two-Factor Authentication</h1>
+
+    {% if step == 'scan' %}
+    <article>
+        <h3>Step 1: Scan QR Code</h3>
+        <p>Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password, etc.):</p>
+
+        <div style="text-align: center; padding: 1rem; background: white; border-radius: var(--pico-border-radius); margin: 1rem 0;">
+            <img src="{{ qr_code_url }}" alt="TOTP QR Code" style="max-width: 200px;">
+        </div>
+
+        <details>
+            <summary>Can't scan? Enter manually</summary>
+            <p>Enter this secret key in your authenticator app:</p>
+            <code style="word-break: break-all; display: block; padding: 0.5rem; background: var(--pico-code-background);">{{ secret }}</code>
+        </details>
+
+        <form action="{{ url_for('security_setup_totp') }}" method="post">
+            <input type="hidden" name="step" value="verify">
+            <label for="code">
+                Enter the 6-digit code from your authenticator:
+                <input type="text" id="code" name="code" placeholder="000000"
+                       pattern="[0-9]{6}" maxlength="6" required autofocus
+                       inputmode="numeric" autocomplete="one-time-code">
+            </label>
+            <button type="submit">Verify and Enable</button>
+        </form>
+    </article>
+
+    {% elif step == 'backup_codes' %}
+    <article>
+        <h3>Step 2: Save Backup Codes</h3>
+        <p><strong>Important:</strong> Save these backup codes in a secure location. Each code can only be used once.</p>
+
+        <div style="background: var(--pico-code-background); padding: 1rem; border-radius: var(--pico-border-radius); margin: 1rem 0;">
+            <ul style="list-style: none; padding: 0; margin: 0; font-family: monospace; columns: 2;">
+                {% for code in backup_codes %}
+                <li style="padding: 0.25rem 0;">{{ code }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <p style="color: var(--pico-del-color);">
+            <small>You will not see these codes again. Store them somewhere safe!</small>
+        </p>
+
+        <a href="{{ url_for('security_settings') }}" role="button">Done</a>
+    </article>
+    {% endif %}
+
+    <p><a href="{{ url_for('security_settings') }}">&larr; Back to Security Settings</a></p>
+</div>
+{% endblock %}

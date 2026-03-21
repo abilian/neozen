@@ -36,8 +36,145 @@
         <button type="submit">Login</button>
     </form>
 
+    {% if oauth_providers %}
+    <div style="margin: 2rem 0; text-align: center;">
+        <p style="color: var(--pico-muted-color); margin-bottom: 1rem;">
+            <small>Or continue with</small>
+        </p>
+        <div class="grid" style="gap: 0.5rem;">
+            {% if 'google' in oauth_providers %}
+            <a href="{{ url_for('oauth_begin', provider='google') }}" role="button" class="outline">
+                Google
+            </a>
+            {% endif %}
+            {% if 'github' in oauth_providers %}
+            <a href="{{ url_for('oauth_begin', provider='github') }}" role="button" class="outline">
+                GitHub
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if webauthn_enabled %}
+    <div style="margin: 2rem 0; text-align: center;">
+        <p style="color: var(--pico-muted-color); margin-bottom: 1rem;">
+            <small>Or sign in with</small>
+        </p>
+        <button type="button" id="passkey-login" class="outline" style="width: 100%;">
+            Use Passkey
+        </button>
+    </div>
+    {% endif %}
+
     <p style="text-align: center; margin-top: 1rem;">
         Don't have an account? <a href="/register">Register here</a>
     </p>
 </div>
+
+{% if webauthn_enabled %}
+<script>
+document.getElementById('passkey-login').addEventListener('click', async () => {
+    try {
+        // Get authentication options from server
+        const optionsResponse = await fetch('{{ url_for("webauthn_begin_auth") }}');
+        const optionsData = await optionsResponse.json();
+
+        if (!optionsData.success) {
+            throw new Error(optionsData.error || 'Failed to get authentication options');
+        }
+
+        const options = optionsData.options;
+
+        // Convert base64url to ArrayBuffer
+        function base64urlToBuffer(base64url) {
+            const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+            const padding = '='.repeat((4 - base64.length % 4) % 4);
+            const binary = atob(base64 + padding);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // Convert ArrayBuffer to base64url
+        function bufferToBase64url(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            const base64 = btoa(binary);
+            return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+
+        // Prepare options for WebAuthn API
+        const publicKeyOptions = {
+            publicKey: {
+                challenge: base64urlToBuffer(options.challenge),
+                timeout: options.timeout,
+                rpId: options.rpId,
+                userVerification: options.userVerification || 'preferred'
+            }
+        };
+
+        if (options.allowCredentials) {
+            publicKeyOptions.publicKey.allowCredentials = options.allowCredentials.map(cred => ({
+                id: base64urlToBuffer(cred.id),
+                type: cred.type,
+                transports: cred.transports
+            }));
+        }
+
+        // Call WebAuthn API
+        const credential = await navigator.credentials.get(publicKeyOptions);
+
+        // Prepare response for server
+        const response = {
+            id: credential.id,
+            rawId: bufferToBase64url(credential.rawId),
+            type: credential.type,
+            response: {
+                clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                authenticatorData: bufferToBase64url(credential.response.authenticatorData),
+                signature: bufferToBase64url(credential.response.signature)
+            }
+        };
+
+        if (credential.response.userHandle) {
+            response.response.userHandle = bufferToBase64url(credential.response.userHandle);
+        }
+
+        // Send to server
+        const verifyResponse = await fetch('{{ url_for("webauthn_complete_auth") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                credential: response,
+                challenge: options.challenge
+            })
+        });
+
+        const result = await verifyResponse.json();
+
+        if (result.success) {
+            window.location.href = result.redirect || '{{ url_for("dashboard") }}';
+        } else {
+            alert('Authentication failed: ' + (result.error || 'Unknown error'));
+        }
+
+    } catch (error) {
+        console.error('WebAuthn error:', error);
+        if (error.name === 'NotAllowedError') {
+            alert('Authentication was cancelled or not allowed.');
+        } else {
+            alert('Error: ' + error.message);
+        }
+    }
+});
+</script>
+{% endif %}
 {% endblock %}

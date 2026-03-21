@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Security Settings - NeoZen{% endblock %}
+
+{% block content %}
+<h1>Security Settings</h1>
+<p>Manage your account security options including two-factor authentication and passkeys.</p>
+
+<!-- Two-Factor Authentication (TOTP) -->
+<section>
+    <h2>Two-Factor Authentication</h2>
+    <article>
+        {% if totp_enabled %}
+        <p style="color: var(--pico-ins-color);">
+            <strong>Enabled</strong> - Your account is protected with 2FA.
+        </p>
+        <p>You have <strong>{{ backup_codes_remaining }}</strong> backup codes remaining.</p>
+        <div class="grid">
+            <form action="{{ url_for('security_regenerate_backup_codes') }}" method="post">
+                <button type="submit" class="outline">Regenerate Backup Codes</button>
+            </form>
+            <form action="{{ url_for('security_disable_totp') }}" method="post"
+                  onsubmit="return confirm('Are you sure you want to disable 2FA? This will make your account less secure.');">
+                <button type="submit" class="secondary outline">Disable 2FA</button>
+            </form>
+        </div>
+        {% else %}
+        <p style="color: var(--pico-muted-color);">
+            <strong>Not enabled</strong> - Add an extra layer of security to your account.
+        </p>
+        <p>Two-factor authentication adds an additional layer of security by requiring a code from your authenticator app when logging in.</p>
+        <a href="{{ url_for('security_setup_totp') }}" role="button">Enable 2FA</a>
+        {% endif %}
+    </article>
+</section>
+
+<!-- Passkeys / WebAuthn -->
+<section>
+    <h2>Passkeys</h2>
+    <article>
+        <p>Passkeys provide a secure, passwordless way to sign in using your device's biometrics or security key.</p>
+
+        {% if passkeys %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Created</th>
+                    <th>Last Used</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for passkey in passkeys %}
+                <tr>
+                    <td>{{ passkey.name }}</td>
+                    <td>{{ passkey.created_at.strftime('%b %d, %Y') if passkey.created_at else 'Unknown' }}</td>
+                    <td>{{ passkey.last_used_at.strftime('%b %d, %Y') if passkey.last_used_at else 'Never' }}</td>
+                    <td>
+                        <form action="{{ url_for('security_delete_passkey', credential_id=passkey.credential_id) }}"
+                              method="post" style="margin: 0;"
+                              onsubmit="return confirm('Delete this passkey?');">
+                            <button type="submit" class="secondary outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--pico-muted-color);">No passkeys registered.</p>
+        {% endif %}
+
+        <a href="{{ url_for('security_register_passkey') }}" role="button" class="outline">Add Passkey</a>
+    </article>
+</section>
+
+<!-- Linked Accounts (Social Login) -->
+<section>
+    <h2>Linked Accounts</h2>
+    <article>
+        <p>Connect social accounts to enable quick sign-in options.</p>
+
+        {% if social_accounts %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Provider</th>
+                    <th>Email</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for account in social_accounts %}
+                <tr>
+                    <td>
+                        <span class="badge" style="text-transform: capitalize;">{{ account.provider_id }}</span>
+                    </td>
+                    <td>{{ account.email or 'N/A' }}</td>
+                    <td>
+                        <form action="{{ url_for('security_unlink_account', provider_id=account.provider_id) }}"
+                              method="post" style="margin: 0;"
+                              onsubmit="return confirm('Unlink this account?');">
+                            <button type="submit" class="secondary outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">Unlink</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--pico-muted-color);">No linked accounts.</p>
+        {% endif %}
+
+        <div class="grid">
+            {% if not has_google %}
+            <a href="{{ url_for('oauth_begin', provider='google') }}" role="button" class="outline">
+                Link Google Account
+            </a>
+            {% endif %}
+            {% if not has_github %}
+            <a href="{{ url_for('oauth_begin', provider='github') }}" role="button" class="outline">
+                Link GitHub Account
+            </a>
+            {% endif %}
+        </div>
+    </article>
+</section>
+
+<section>
+    <a href="{{ url_for('dashboard') }}">&larr; Back to Dashboard</a>
+</section>
+{% endblock %}
