@@ -6,6 +6,7 @@ without HTTP/web concerns. These services are used by web adapters.
 
 from __future__ import annotations
 
+import typing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -365,6 +366,131 @@ class OAuthTokenService[
             result.new_refresh_token = new_refresh
             result.new_refresh_token_hash = new_refresh_hash
             result.new_refresh_expires_at = new_refresh_expires_at
+
+        return result
+
+    async def revoke_access_token(self, token: str) -> bool:
+        """Revoke an access token.
+
+        Args:
+            token: The access token to revoke.
+
+        Returns:
+            True if token was found and revoked, False if not found.
+        """
+        token_hash = get_token_hash(token, key=self.token_hash_key)
+
+        try:
+            stored = await self.access_token_repository.get_one_by(
+                token_hash=token_hash
+            )
+        except DoesNotExist:
+            return False
+
+        if stored.revoked_at is None:
+            await self.access_token_repository.update_obj(
+                stored, revoked_at=datetime.now(UTC)
+            )
+        return True
+
+    async def revoke_refresh_token(self, token: str) -> bool:
+        """Revoke a refresh token.
+
+        Args:
+            token: The refresh token to revoke.
+
+        Returns:
+            True if token was found and revoked, False if not found.
+        """
+        token_hash = get_token_hash(token, key=self.token_hash_key)
+
+        try:
+            stored = await self.refresh_token_repository.get_one_by(
+                token_hash=token_hash
+            )
+        except DoesNotExist:
+            return False
+
+        if stored.revoked_at is None:
+            await self.refresh_token_repository.update_obj(
+                stored, revoked_at=datetime.now(UTC)
+            )
+        return True
+
+    async def introspect_access_token(self, token: str) -> dict[str, typing.Any] | None:
+        """Introspect an access token.
+
+        Args:
+            token: The access token to introspect.
+
+        Returns:
+            Introspection response dict, or None if token not found.
+        """
+        token_hash = get_token_hash(token, key=self.token_hash_key)
+
+        try:
+            stored = await self.access_token_repository.get_one_by(
+                token_hash=token_hash
+            )
+        except DoesNotExist:
+            return None
+
+        # Check if active
+        now = datetime.now(UTC)
+        is_active = stored.revoked_at is None and ensure_utc(stored.expires_at) > now
+
+        if not is_active:
+            return {"active": False}
+
+        return {
+            "active": True,
+            "scope": stored.scope,
+            "client_id": stored.client_id,
+            "sub": stored.subject_id,
+            "exp": int(ensure_utc(stored.expires_at).timestamp()),
+            "iat": int(ensure_utc(stored.created_at).timestamp()),
+            "token_type": "access_token",
+        }
+
+    async def introspect_refresh_token(
+        self, token: str
+    ) -> dict[str, typing.Any] | None:
+        """Introspect a refresh token.
+
+        Args:
+            token: The refresh token to introspect.
+
+        Returns:
+            Introspection response dict, or None if token not found.
+        """
+        token_hash = get_token_hash(token, key=self.token_hash_key)
+
+        try:
+            stored = await self.refresh_token_repository.get_one_by(
+                token_hash=token_hash
+            )
+        except DoesNotExist:
+            return None
+
+        # Check if active
+        now = datetime.now(UTC)
+        is_active = stored.revoked_at is None
+        if stored.expires_at:
+            is_active = is_active and ensure_utc(stored.expires_at) > now
+
+        if not is_active:
+            return {"active": False}
+
+        result: dict[str, typing.Any] = {
+            "active": True,
+            "scope": stored.scope,
+            "client_id": stored.client_id,
+            "sub": stored.subject_id,
+            "iat": int(ensure_utc(stored.created_at).timestamp()),
+            "token_type": "refresh_token",
+        }
+        if stored.expires_at:
+            result["exp"] = int(ensure_utc(stored.expires_at).timestamp())
 
         return result
 

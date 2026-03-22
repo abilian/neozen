@@ -109,6 +109,8 @@ class TestOAuthAuthorizationCodeFlow:
         # 1. Create an OAuth client
         client = OAuthClient()
         client.client_id = "test_client_app"
+        client.client_name = "Test Client App"
+        client.redirect_uris = '["https://example.com/callback"]'
         await client_repo.add(client)
         await session.commit()
 
@@ -164,6 +166,8 @@ class TestOAuthAuthorizationCodeFlow:
         # 1. Create OAuth client
         client = OAuthClient()
         client.client_id = "refresh_test_client"
+        client.client_name = "Refresh Test Client"
+        client.redirect_uris = "[]"
         await client_repo.add(client)
         await session.commit()
 
@@ -229,6 +233,8 @@ class TestOAuthAuthorizationCodeFlow:
         # Setup
         client = OAuthClient()
         client.client_id = "scope_test_client"
+        client.client_name = "Scope Test Client"
+        client.redirect_uris = "[]"
         await client_repo.add(client)
 
         code_verifier = "scope_verifier_43_chars_xxxxxxxxxxxxxxxxxxxxx"
@@ -292,6 +298,8 @@ class TestOAuthErrorHandling:
 
         client = OAuthClient()
         client.client_id = "expired_test_client"
+        client.client_name = "Expired Test Client"
+        client.redirect_uris = "[]"
         await client_repo.add(client)
 
         code_verifier = "expired_verifier_43_chars_xxxxxxxxxxxxxxxxx"
@@ -329,6 +337,8 @@ class TestOAuthErrorHandling:
 
         client = OAuthClient()
         client.client_id = "revoked_test_client"
+        client.client_name = "Revoked Test Client"
+        client.redirect_uris = "[]"
         await client_repo.add(client)
 
         # Create a revoked refresh token
@@ -365,6 +375,8 @@ class TestOAuthErrorHandling:
 
         client = OAuthClient()
         client.client_id = "pkce_test_client"
+        client.client_name = "PKCE Test Client"
+        client.redirect_uris = "[]"
         await client_repo.add(client)
 
         correct_verifier = "correct_verifier_43_chars_xxxxxxxxxxxxxxxxx"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import typing
 from datetime import datetime
 
@@ -10,9 +11,68 @@ from neozen.core.oauth.types import CodeChallengeMethod
 
 
 class OAuthClientModel(NeoZenModel):
-    """Base model for OAuth client implementations."""
+    """Base model for OAuth client implementations.
+
+    Attributes:
+        client_id: Unique identifier for the client.
+        client_name: Human-readable name for the client.
+        client_secret_hash: Hashed client secret (None for public clients).
+        client_type: "public" or "confidential".
+        redirect_uris: JSON array of allowed redirect URIs.
+        allowed_scopes: Space-separated list of allowed scopes.
+        allowed_grant_types: Space-separated list of allowed grant types.
+        token_endpoint_auth_method: Authentication method for token endpoint.
+        is_active: Whether the client is active.
+        created_at: When the client was created.
+        updated_at: When the client was last updated.
+    """
 
     client_id: str
+    client_name: str
+    client_secret_hash: str | None
+    client_type: str  # "public" | "confidential"
+    redirect_uris: str  # JSON array
+    allowed_scopes: str  # Space-separated
+    allowed_grant_types: str  # Space-separated
+    token_endpoint_auth_method: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime | None
+
+    def get_redirect_uris(self) -> list[str]:
+        """Parse and return the list of allowed redirect URIs."""
+        if not self.redirect_uris:
+            return []
+        try:
+            return json.loads(self.redirect_uris)
+        except json.JSONDecodeError:
+            return []
+
+    def is_redirect_uri_allowed(self, uri: str) -> bool:
+        """Check if a redirect URI is allowed for this client."""
+        return uri in self.get_redirect_uris()
+
+    def is_scope_allowed(self, scope: str) -> bool:
+        """Check if a scope is allowed for this client."""
+        if not self.allowed_scopes:
+            return True  # No restrictions
+        allowed = set(self.allowed_scopes.split())
+        requested = set(scope.split())
+        return requested <= allowed
+
+    def is_grant_type_allowed(self, grant_type: str) -> bool:
+        """Check if a grant type is allowed for this client."""
+        if not self.allowed_grant_types:
+            return True  # No restrictions
+        return grant_type in self.allowed_grant_types.split()
+
+    def is_public_client(self) -> bool:
+        """Check if this is a public client (no secret)."""
+        return self.client_type == "public"
+
+    def is_confidential_client(self) -> bool:
+        """Check if this is a confidential client (has secret)."""
+        return self.client_type == "confidential"
 
 
 class OAuthGrantModel(NeoZenModel):

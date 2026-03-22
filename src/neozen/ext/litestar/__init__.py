@@ -59,6 +59,7 @@ from .helpers import (
     logout_user,
 )
 from .middleware import NeoZenMiddleware
+from .oauth import create_oauth_router
 from .plugin import NeoZenPlugin
 
 __all__ = [
@@ -85,4 +86,6 @@ __all__ = [
     "is_authenticated",
     "login_user",
     "logout_user",
+    # OAuth
+    "create_oauth_router",
 ]

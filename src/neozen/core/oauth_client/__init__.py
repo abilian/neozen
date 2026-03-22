@@ -33,6 +33,11 @@ from neozen.core.oauth_client.providers import (
 )
 from neozen.core.oauth_client.providers.github import create_github_config
 from neozen.core.oauth_client.providers.google import create_google_config
+from neozen.core.oauth_client.registry import (
+    OAuthProviderRegistry,
+    ProviderAlreadyRegisteredError,
+    ProviderNotFoundError,
+)
 from neozen.core.oauth_client.service import OAuthClientService
 
 __all__ = [
@@ -43,6 +48,8 @@ __all__ = [
     "OAuthStateError",
     "OAuthTokenError",
     "OAuthUserInfoError",
+    "ProviderAlreadyRegisteredError",
+    "ProviderNotFoundError",
     "SocialAccountNotFoundError",
     # Models
     "AuthorizationResult",
@@ -60,6 +67,8 @@ __all__ = [
     "OAuthProvider",
     "create_github_config",
     "create_google_config",
+    # Registry
+    "OAuthProviderRegistry",
     # Service
     "OAuthClientService",
 ]

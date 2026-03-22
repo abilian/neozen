@@ -221,6 +221,53 @@ class ScopeExceedsGrantError(OAuthError):
         super().__init__("Requested scope exceeds original grant scope.")
 
 
+class ClientNotFoundError(OAuthError):
+    """OAuth client not found."""
+
+    def __init__(self, client_id: str) -> None:
+        self.client_id = client_id
+        super().__init__(f"Client '{client_id}' not found.")
+
+
+class ClientInactiveError(OAuthError):
+    """OAuth client is not active."""
+
+    def __init__(self, client_id: str) -> None:
+        self.client_id = client_id
+        super().__init__(f"Client '{client_id}' is inactive.")
+
+
+class ClientAuthenticationError(OAuthError):
+    """OAuth client authentication failed."""
+
+    def __init__(self, message: str = "Client authentication failed.") -> None:
+        super().__init__(message)
+
+
+class InvalidRedirectUriError(OAuthError):
+    """Redirect URI is not registered for this client."""
+
+    def __init__(self, redirect_uri: str) -> None:
+        self.redirect_uri = redirect_uri
+        super().__init__(f"Redirect URI '{redirect_uri}' is not registered.")
+
+
+class InvalidScopeError(OAuthError):
+    """Requested scope is not allowed for this client."""
+
+    def __init__(self, scope: str) -> None:
+        self.scope = scope
+        super().__init__(f"Scope '{scope}' is not allowed for this client.")
+
+
+class InvalidGrantTypeError(OAuthError):
+    """Grant type is not allowed for this client."""
+
+    def __init__(self, grant_type: str) -> None:
+        self.grant_type = grant_type
+        super().__init__(f"Grant type '{grant_type}' is not allowed for this client.")
+
+
 __all__ = [  # noqa: RUF022
     # Base
     "OAuthError",
@@ -249,4 +296,11 @@ __all__ = [  # noqa: RUF022
     "RefreshTokenNotFoundError",
     "RefreshTokenRevokedError",
     "ScopeExceedsGrantError",
+    # Client errors
+    "ClientNotFoundError",
+    "ClientInactiveError",
+    "ClientAuthenticationError",
+    "InvalidRedirectUriError",
+    "InvalidScopeError",
+    "InvalidGrantTypeError",
 ]

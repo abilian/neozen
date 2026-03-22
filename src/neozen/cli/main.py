@@ -23,8 +23,11 @@ def create_parser() -> argparse.ArgumentParser:
 Examples:
   neozen subject create -e user@example.com -p secret
   neozen subject list
-  neozen client create --name myapp
+  neozen client create --name myapp -r https://app.com/callback -c
   neozen client list
+  neozen client show <client_id>
+  neozen client rotate-secret <client_id>
+  neozen client deactivate <client_id>
   neozen role init
   neozen role create -n editor -p post:read -p post:write
   neozen role assign -s user123 -r editor
@@ -130,6 +133,20 @@ Examples:
         action="store_true",
         help="Create a confidential client (with client secret)",
     )
+    client_create.add_argument(
+        "--scope",
+        "-s",
+        action="append",
+        dest="scopes",
+        help="Allowed scope (can be specified multiple times)",
+    )
+    client_create.add_argument(
+        "--grant-type",
+        "-g",
+        action="append",
+        dest="grant_types",
+        help="Allowed grant type (default: authorization_code refresh_token)",
+    )
     client_create.set_defaults(func=client.create)
 
     # client list
@@ -145,6 +162,50 @@ Examples:
         help="Output format (default: table)",
     )
     client_list.set_defaults(func=client.list_clients)
+
+    # client show
+    client_show = client_subparsers.add_parser(
+        "show",
+        help="Show OAuth client details",
+    )
+    client_show.add_argument(
+        "client_id",
+        help="Client ID to show",
+    )
+    client_show.set_defaults(func=client.show)
+
+    # client rotate-secret
+    client_rotate = client_subparsers.add_parser(
+        "rotate-secret",
+        help="Rotate client secret",
+    )
+    client_rotate.add_argument(
+        "client_id",
+        help="Client ID to rotate secret for",
+    )
+    client_rotate.set_defaults(func=client.rotate_secret)
+
+    # client deactivate
+    client_deactivate = client_subparsers.add_parser(
+        "deactivate",
+        help="Deactivate an OAuth client",
+    )
+    client_deactivate.add_argument(
+        "client_id",
+        help="Client ID to deactivate",
+    )
+    client_deactivate.set_defaults(func=client.deactivate)
+
+    # client activate
+    client_activate = client_subparsers.add_parser(
+        "activate",
+        help="Activate an OAuth client",
+    )
+    client_activate.add_argument(
+        "client_id",
+        help="Client ID to activate",
+    )
+    client_activate.set_defaults(func=client.activate)
 
     # Role command
     role_parser = subparsers.add_parser(

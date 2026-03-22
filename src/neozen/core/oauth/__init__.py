@@ -14,13 +14,23 @@ from neozen.core.oauth.authorization_code import (
     AuthorizationCodeGrantRequest,
     MissingOrInvalidClientIDError,
 )
+from neozen.core.oauth.client_service import (
+    ClientCredentials,
+    OAuthClientService,
+)
 from neozen.core.oauth.exceptions import (
     AuthorizationCodeExpiredError,
     AuthorizationCodeNotFoundError,
     AuthorizationError,
     AuthorizationRedirectError,
+    ClientAuthenticationError,
+    ClientInactiveError,
     ClientMismatchError,
+    ClientNotFoundError,
     InvalidClientError,
+    InvalidGrantTypeError,
+    InvalidRedirectUriError,
+    InvalidScopeError,
     OAuthError,
     PKCEVerificationFailedError,
     RedirectUriMismatchError,
@@ -63,6 +73,8 @@ __all__ = [
     "OAuthRefreshTokenModel",
     # Services
     "AccessTokenResult",
+    "ClientCredentials",
+    "OAuthClientService",
     "OAuthTokenService",
     "TokenPair",
     # PKCE
@@ -101,4 +113,11 @@ __all__ = [
     "RefreshTokenNotFoundError",
     "RefreshTokenRevokedError",
     "ScopeExceedsGrantError",
+    # Exceptions - Client
+    "ClientAuthenticationError",
+    "ClientInactiveError",
+    "ClientNotFoundError",
+    "InvalidGrantTypeError",
+    "InvalidRedirectUriError",
+    "InvalidScopeError",
 ]

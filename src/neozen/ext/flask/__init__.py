@@ -63,6 +63,7 @@ from .helpers import (
     logout_user,
 )
 from .mixins import AnonymousUser, UserMixin
+from .oauth import create_oauth_blueprint
 
 __all__ = [
     # Extension
@@ -82,4 +83,6 @@ __all__ = [
     # Mixins
     "AnonymousUser",
     "UserMixin",
+    # OAuth
+    "create_oauth_blueprint",
 ]

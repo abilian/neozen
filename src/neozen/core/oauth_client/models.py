@@ -13,6 +13,7 @@ class OAuthProviderConfig:
 
     Attributes:
         provider_id: Unique identifier for the provider (e.g., "google", "github").
+        display_name: Human-readable name for the provider.
         client_id: OAuth client ID.
         client_secret: OAuth client secret.
         authorization_endpoint: URL for authorization.
@@ -28,6 +29,7 @@ class OAuthProviderConfig:
     client_secret: str
     authorization_endpoint: str
     token_endpoint: str
+    display_name: str | None = None
     userinfo_endpoint: str | None = None
     scopes: list[str] = field(default_factory=list)
     use_pkce: bool = True

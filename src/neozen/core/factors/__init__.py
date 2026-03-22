@@ -11,8 +11,20 @@ from neozen.core.factors.password import (
     PasswordHasherProtocol,
     PasswordSubjectModel,
 )
+from neozen.core.factors.protocol import (
+    AuthenticatingFactorProtocol,
+    ChallengingFactorProtocol,
+    EnrollableFactorProtocol,
+    FactorProtocol,
+)
+from neozen.core.factors.registry import (
+    FactorAlreadyRegisteredError,
+    FactorNotFoundError,
+    FactorRegistry,
+)
 
 __all__ = [
+    # Password factor
     "InvalidCredentialsError",
     "PasswordAuthenticateRequest",
     "PasswordEnrollRequest",
@@ -20,4 +32,13 @@ __all__ = [
     "PasswordFactorError",
     "PasswordHasherProtocol",
     "PasswordSubjectModel",
+    # Protocols
+    "AuthenticatingFactorProtocol",
+    "ChallengingFactorProtocol",
+    "EnrollableFactorProtocol",
+    "FactorProtocol",
+    # Registry
+    "FactorAlreadyRegisteredError",
+    "FactorNotFoundError",
+    "FactorRegistry",
 ]
