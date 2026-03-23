@@ -1,0 +1,142 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+
+{% block title %}Email Templates - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header("Email Templates", subtitle="Customize email notifications", breadcrumbs=[{"label": "Settings", "href": "/settings"}, {"label": "Email Templates"}]) %}
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="{ activeTemplate: 'welcome' }">
+    <!-- Template Selector -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <label for="template" class="block text-sm font-medium text-gray-700">Select Template</label>
+            <select id="template" x-model="activeTemplate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                <option value="welcome">Welcome Email</option>
+                <option value="verify">Email Verification</option>
+                <option value="reset">Password Reset</option>
+                <option value="mfa">MFA Enabled</option>
+                <option value="login">New Login Alert</option>
+                <option value="lockout">Account Lockout</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Template Editor -->
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <!-- Editor -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900">Edit Template</h3>
+                <div class="mt-4 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Subject Line</label>
+                        <input type="text" x-show="activeTemplate === 'welcome'" value="Welcome to {{app_name}}!" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <input type="text" x-show="activeTemplate === 'verify'" value="Verify your email address" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" x-cloak>
+                        <input type="text" x-show="activeTemplate === 'reset'" value="Reset your password" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" x-cloak>
+                        <input type="text" x-show="activeTemplate === 'mfa'" value="Two-factor authentication enabled" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" x-cloak>
+                        <input type="text" x-show="activeTemplate === 'login'" value="New sign-in to your account" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" x-cloak>
+                        <input type="text" x-show="activeTemplate === 'lockout'" value="Your account has been locked" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" x-cloak>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Email Body (HTML)</label>
+                        <textarea rows="12" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono text-xs">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;style&gt;
+    body { font-family: sans-serif; }
+    .button { background: #4F46E5; color: white; padding: 12px 24px; }
+  &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;h1&gt;Welcome, {{user_name}}!&lt;/h1&gt;
+  &lt;p&gt;Thanks for signing up for {{app_name}}.&lt;/p&gt;
+  &lt;a href="{{action_url}}" class="button"&gt;Get Started&lt;/a&gt;
+&lt;/body&gt;
+&lt;/html&gt;</textarea>
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                            Reset to Default
+                        </button>
+                        <button type="button" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                            Save Template
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preview -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-base font-semibold leading-6 text-gray-900">Preview</h3>
+                    <button type="button" class="text-sm text-indigo-600 hover:text-indigo-500">
+                        Send Test Email
+                    </button>
+                </div>
+                <div class="border rounded-lg overflow-hidden bg-gray-50">
+                    <div class="bg-gray-200 px-4 py-2 border-b flex items-center gap-2">
+                        <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                        <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                        <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                    </div>
+                    <div class="p-6 bg-white">
+                        <div class="max-w-md mx-auto">
+                            <h1 class="text-2xl font-bold text-gray-900 mb-4">Welcome, John!</h1>
+                            <p class="text-gray-600 mb-6">Thanks for signing up for NeoZen.</p>
+                            <a href="#" class="inline-block bg-indigo-600 text-white px-6 py-3 rounded-md font-semibold hover:bg-indigo-500">Get Started</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Available Variables -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-base font-semibold leading-6 text-gray-900">Available Variables</h3>
+            <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                <div class="rounded-md bg-gray-50 px-3 py-2">
+                    <code class="text-sm text-indigo-600">{{user_name}}</code>
+                    <p class="text-xs text-gray-500 mt-1">User's full name</p>
+                </div>
+                <div class="rounded-md bg-gray-50 px-3 py-2">
+                    <code class="text-sm text-indigo-600">{{user_email}}</code>
+                    <p class="text-xs text-gray-500 mt-1">User's email address</p>
+                </div>
+                <div class="rounded-md bg-gray-50 px-3 py-2">
+                    <code class="text-sm text-indigo-600">{{app_name}}</code>
+                    <p class="text-xs text-gray-500 mt-1">Application name</p>
+                </div>
+                <div class="rounded-md bg-gray-50 px-3 py-2">
+                    <code class="text-sm text-indigo-600">{{action_url}}</code>
+                    <p class="text-xs text-gray-500 mt-1">Primary action link</p>
+                </div>
+                <div class="rounded-md bg-gray-50 px-3 py-2">
+                    <code class="text-sm text-indigo-600">{{support_email}}</code>
+                    <p class="text-xs text-gray-500 mt-1">Support email</p>
+                </div>
+                <div class="rounded-md bg-gray-50 px-3 py-2">
+                    <code class="text-sm text-indigo-600">{{expires_at}}</code>
+                    <p class="text-xs text-gray-500 mt-1">Link expiration time</p>
+                </div>
+                <div class="rounded-md bg-gray-50 px-3 py-2">
+                    <code class="text-sm text-indigo-600">{{ip_address}}</code>
+                    <p class="text-xs text-gray-500 mt-1">Client IP address</p>
+                </div>
+                <div class="rounded-md bg-gray-50 px-3 py-2">
+                    <code class="text-sm text-indigo-600">{{device}}</code>
+                    <p class="text-xs text-gray-500 mt-1">Device/browser info</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

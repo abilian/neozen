@@ -1,0 +1,490 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+
+{% block title %}Security Policies - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header("Security Policies", subtitle="Configure authentication and security settings", breadcrumbs=[{"label": "Security", "href": "/security"}, {"label": "Policies"}]) %}
+    <div class="flex gap-2">
+        {{ button("Back to Dashboard", variant="secondary", href="/security") }}
+    </div>
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="{ activeTab: 'password' }">
+    <!-- Tabs -->
+    <div class="border-b border-gray-200">
+        <nav class="-mb-px flex space-x-8" aria-label="Policy categories">
+            <button @click="activeTab = 'password'"
+                    :class="activeTab === 'password' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'"
+                    class="whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium">
+                Password Policy
+            </button>
+            <button @click="activeTab = 'session'"
+                    :class="activeTab === 'session' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'"
+                    class="whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium">
+                Session Policy
+            </button>
+            <button @click="activeTab = 'mfa'"
+                    :class="activeTab === 'mfa' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'"
+                    class="whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium">
+                MFA Policy
+            </button>
+            <button @click="activeTab = 'lockout'"
+                    :class="activeTab === 'lockout' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'"
+                    class="whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium">
+                Account Lockout
+            </button>
+        </nav>
+    </div>
+
+    <!-- Password Policy Tab -->
+    <div x-show="activeTab === 'password'" class="space-y-6">
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">Password Requirements</h3>
+                <div class="space-y-6">
+                    <!-- Minimum Length -->
+                    <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                        <div class="sm:col-span-3">
+                            <label for="min_length" class="block text-sm font-medium leading-6 text-gray-900">
+                                Minimum Password Length
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="min_length" id="min_length" value="12" min="8" max="128"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                            <p class="mt-2 text-sm text-gray-500">Recommended: 12+ characters</p>
+                        </div>
+                    </div>
+
+                    <!-- Character Requirements -->
+                    <fieldset>
+                        <legend class="text-sm font-medium leading-6 text-gray-900">Required Character Types</legend>
+                        <div class="mt-4 space-y-4">
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="require_uppercase" name="require_uppercase" type="checkbox" checked
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="require_uppercase" class="text-sm font-medium text-gray-900">Uppercase letters (A-Z)</label>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="require_lowercase" name="require_lowercase" type="checkbox" checked
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="require_lowercase" class="text-sm font-medium text-gray-900">Lowercase letters (a-z)</label>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="require_numbers" name="require_numbers" type="checkbox" checked
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="require_numbers" class="text-sm font-medium text-gray-900">Numbers (0-9)</label>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="require_special" name="require_special" type="checkbox" checked
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="require_special" class="text-sm font-medium text-gray-900">Special characters (!@#$%^&*)</label>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Password Expiry -->
+                    <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                        <div class="sm:col-span-3">
+                            <label for="password_expiry" class="block text-sm font-medium leading-6 text-gray-900">
+                                Password Expiry (days)
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="password_expiry" id="password_expiry" value="90" min="0" max="365"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                            <p class="mt-2 text-sm text-gray-500">Set to 0 to disable password expiry</p>
+                        </div>
+                        <div class="sm:col-span-3">
+                            <label for="password_history" class="block text-sm font-medium leading-6 text-gray-900">
+                                Password History Count
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="password_history" id="password_history" value="5" min="0" max="24"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                            <p class="mt-2 text-sm text-gray-500">Number of previous passwords to remember</p>
+                        </div>
+                    </div>
+
+                    <!-- Breached Password Check -->
+                    <div class="flex items-start">
+                        <div class="flex h-6 items-center">
+                            <input id="check_breached" name="check_breached" type="checkbox" checked
+                                   class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                        </div>
+                        <div class="ml-3">
+                            <label for="check_breached" class="text-sm font-medium text-gray-900">Check against breached password database</label>
+                            <p class="text-sm text-gray-500">Uses Have I Been Pwned API (k-anonymity, secure)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Policy Tab -->
+    <div x-show="activeTab === 'session'" class="space-y-6">
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">Session Settings</h3>
+                <div class="space-y-6">
+                    <!-- Session Duration -->
+                    <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                        <div class="sm:col-span-3">
+                            <label for="session_duration" class="block text-sm font-medium leading-6 text-gray-900">
+                                Session Duration (hours)
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="session_duration" id="session_duration" value="24" min="1" max="720"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                            <p class="mt-2 text-sm text-gray-500">Maximum session lifetime</p>
+                        </div>
+                        <div class="sm:col-span-3">
+                            <label for="idle_timeout" class="block text-sm font-medium leading-6 text-gray-900">
+                                Idle Timeout (minutes)
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="idle_timeout" id="idle_timeout" value="30" min="5" max="1440"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                            <p class="mt-2 text-sm text-gray-500">Session expires after inactivity</p>
+                        </div>
+                    </div>
+
+                    <!-- Session Options -->
+                    <fieldset>
+                        <legend class="text-sm font-medium leading-6 text-gray-900">Session Security</legend>
+                        <div class="mt-4 space-y-4">
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="single_session" name="single_session" type="checkbox"
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="single_session" class="text-sm font-medium text-gray-900">Single session per user</label>
+                                    <p class="text-sm text-gray-500">Logging in terminates other active sessions</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="bind_ip" name="bind_ip" type="checkbox"
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="bind_ip" class="text-sm font-medium text-gray-900">Bind session to IP address</label>
+                                    <p class="text-sm text-gray-500">Session invalidated if IP changes</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="rotate_tokens" name="rotate_tokens" type="checkbox" checked
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="rotate_tokens" class="text-sm font-medium text-gray-900">Rotate session tokens</label>
+                                    <p class="text-sm text-gray-500">Generate new token on each request</p>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Max Sessions -->
+                    <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                        <div class="sm:col-span-3">
+                            <label for="max_sessions" class="block text-sm font-medium leading-6 text-gray-900">
+                                Maximum Concurrent Sessions
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="max_sessions" id="max_sessions" value="5" min="1" max="50"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                            <p class="mt-2 text-sm text-gray-500">Per user limit</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MFA Policy Tab -->
+    <div x-show="activeTab === 'mfa'" class="space-y-6">
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">Multi-Factor Authentication</h3>
+                <div class="space-y-6">
+                    <!-- MFA Requirement -->
+                    <div>
+                        <label class="block text-sm font-medium leading-6 text-gray-900">MFA Requirement</label>
+                        <div class="mt-2 space-y-4">
+                            <div class="flex items-center">
+                                <input id="mfa_disabled" name="mfa_requirement" type="radio" value="disabled"
+                                       class="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                <label for="mfa_disabled" class="ml-3 block text-sm font-medium leading-6 text-gray-900">
+                                    Disabled
+                                    <span class="font-normal text-gray-500">- Users cannot enable MFA</span>
+                                </label>
+                            </div>
+                            <div class="flex items-center">
+                                <input id="mfa_optional" name="mfa_requirement" type="radio" value="optional" checked
+                                       class="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                <label for="mfa_optional" class="ml-3 block text-sm font-medium leading-6 text-gray-900">
+                                    Optional
+                                    <span class="font-normal text-gray-500">- Users can choose to enable MFA</span>
+                                </label>
+                            </div>
+                            <div class="flex items-center">
+                                <input id="mfa_encouraged" name="mfa_requirement" type="radio" value="encouraged"
+                                       class="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                <label for="mfa_encouraged" class="ml-3 block text-sm font-medium leading-6 text-gray-900">
+                                    Encouraged
+                                    <span class="font-normal text-gray-500">- Prompt users to enable MFA on login</span>
+                                </label>
+                            </div>
+                            <div class="flex items-center">
+                                <input id="mfa_required" name="mfa_requirement" type="radio" value="required"
+                                       class="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                <label for="mfa_required" class="ml-3 block text-sm font-medium leading-6 text-gray-900">
+                                    Required
+                                    <span class="font-normal text-gray-500">- All users must enable MFA</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MFA Methods -->
+                    <fieldset>
+                        <legend class="text-sm font-medium leading-6 text-gray-900">Allowed MFA Methods</legend>
+                        <div class="mt-4 space-y-4">
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="allow_totp" name="allow_totp" type="checkbox" checked
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="allow_totp" class="text-sm font-medium text-gray-900">TOTP Authenticator App</label>
+                                    <p class="text-sm text-gray-500">Google Authenticator, Authy, etc.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="allow_webauthn" name="allow_webauthn" type="checkbox" checked
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="allow_webauthn" class="text-sm font-medium text-gray-900">WebAuthn / Passkeys</label>
+                                    <p class="text-sm text-gray-500">Hardware keys, biometrics, platform authenticators</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="allow_recovery_codes" name="allow_recovery_codes" type="checkbox" checked
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="allow_recovery_codes" class="text-sm font-medium text-gray-900">Recovery Codes</label>
+                                    <p class="text-sm text-gray-500">One-time backup codes for account recovery</p>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Recovery Codes Count -->
+                    <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                        <div class="sm:col-span-3">
+                            <label for="recovery_code_count" class="block text-sm font-medium leading-6 text-gray-900">
+                                Recovery Codes Count
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="recovery_code_count" id="recovery_code_count" value="10" min="5" max="20"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                            <p class="mt-2 text-sm text-gray-500">Number of recovery codes to generate</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account Lockout Tab -->
+    <div x-show="activeTab === 'lockout'" class="space-y-6">
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">Account Lockout Settings</h3>
+                <div class="space-y-6">
+                    <!-- Enable Lockout -->
+                    <div class="flex items-start">
+                        <div class="flex h-6 items-center">
+                            <input id="enable_lockout" name="enable_lockout" type="checkbox" checked
+                                   class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                        </div>
+                        <div class="ml-3">
+                            <label for="enable_lockout" class="text-sm font-medium text-gray-900">Enable account lockout</label>
+                            <p class="text-sm text-gray-500">Lock accounts after failed login attempts</p>
+                        </div>
+                    </div>
+
+                    <!-- Lockout Parameters -->
+                    <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                        <div class="sm:col-span-2">
+                            <label for="max_attempts" class="block text-sm font-medium leading-6 text-gray-900">
+                                Max Failed Attempts
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="max_attempts" id="max_attempts" value="5" min="3" max="20"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label for="lockout_duration" class="block text-sm font-medium leading-6 text-gray-900">
+                                Lockout Duration (min)
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="lockout_duration" id="lockout_duration" value="30" min="1" max="1440"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label for="attempt_window" class="block text-sm font-medium leading-6 text-gray-900">
+                                Attempt Window (min)
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="attempt_window" id="attempt_window" value="15" min="1" max="60"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Lockout Options -->
+                    <fieldset>
+                        <legend class="text-sm font-medium leading-6 text-gray-900">Lockout Options</legend>
+                        <div class="mt-4 space-y-4">
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="progressive_delay" name="progressive_delay" type="checkbox" checked
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="progressive_delay" class="text-sm font-medium text-gray-900">Progressive delay</label>
+                                    <p class="text-sm text-gray-500">Increase delay between attempts exponentially</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="notify_user" name="notify_user" type="checkbox" checked
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="notify_user" class="text-sm font-medium text-gray-900">Notify user on lockout</label>
+                                    <p class="text-sm text-gray-500">Send email when account is locked</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div class="flex h-6 items-center">
+                                    <input id="notify_admin" name="notify_admin" type="checkbox"
+                                           class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                                </div>
+                                <div class="ml-3">
+                                    <label for="notify_admin" class="text-sm font-medium text-gray-900">Notify admin on lockout</label>
+                                    <p class="text-sm text-gray-500">Alert administrators when accounts are locked</p>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+
+        <!-- IP-based Rate Limiting -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">IP-based Rate Limiting</h3>
+                <div class="space-y-6">
+                    <div class="flex items-start">
+                        <div class="flex h-6 items-center">
+                            <input id="enable_ip_rate_limit" name="enable_ip_rate_limit" type="checkbox" checked
+                                   class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600">
+                        </div>
+                        <div class="ml-3">
+                            <label for="enable_ip_rate_limit" class="text-sm font-medium text-gray-900">Enable IP rate limiting</label>
+                            <p class="text-sm text-gray-500">Limit login attempts per IP address</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                        <div class="sm:col-span-3">
+                            <label for="ip_max_attempts" class="block text-sm font-medium leading-6 text-gray-900">
+                                Max Attempts per IP
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="ip_max_attempts" id="ip_max_attempts" value="100" min="10" max="1000"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                        </div>
+                        <div class="sm:col-span-3">
+                            <label for="ip_window" class="block text-sm font-medium leading-6 text-gray-900">
+                                Time Window (minutes)
+                            </label>
+                            <div class="mt-2">
+                                <input type="number" name="ip_window" id="ip_window" value="60" min="1" max="1440"
+                                       class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Button -->
+    <div class="flex justify-end gap-3">
+        <button type="button"
+                class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            Reset to Defaults
+        </button>
+        <button type="submit"
+                class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+            Save Policies
+        </button>
+    </div>
+
+    <!-- Info Box -->
+    <div class="rounded-md bg-blue-50 p-4">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-blue-800">Policy Changes</h3>
+                <div class="mt-2 text-sm text-blue-700">
+                    <p>Changes to security policies take effect immediately for new sessions. Existing sessions are not affected until they expire or are regenerated.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

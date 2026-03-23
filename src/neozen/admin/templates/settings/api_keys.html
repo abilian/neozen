@@ -1,0 +1,103 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+
+{% block title %}API Keys - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header("API Keys", subtitle="Manage API keys for service accounts", breadcrumbs=[{"label": "Settings", "href": "/settings"}, {"label": "API Keys"}]) %}
+    {{ button("Create API Key", variant="primary") }}
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Warning -->
+    <div class="rounded-md bg-yellow-50 p-4">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-yellow-800">Security Notice</h3>
+                <div class="mt-2 text-sm text-yellow-700">
+                    <p>API keys grant full access to your account. Keep them secure and never share them publicly. Rotate keys regularly.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Keys List -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <div class="text-center py-12">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+                </svg>
+                <h3 class="mt-2 text-sm font-semibold text-gray-900">No API keys</h3>
+                <p class="mt-1 text-sm text-gray-500">Create an API key to enable programmatic access.</p>
+                <div class="mt-6">
+                    <button type="button" class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                        <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                        </svg>
+                        Create API Key
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Usage Guide -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-base font-semibold leading-6 text-gray-900">Using API Keys</h3>
+            <div class="mt-4 prose prose-sm max-w-none text-gray-500">
+                <p>Include your API key in the <code>Authorization</code> header:</p>
+                <pre class="bg-gray-800 text-gray-100 rounded-md p-4 overflow-x-auto"><code>curl -H "Authorization: Bearer YOUR_API_KEY" \
+     https://api.example.com/v1/users</code></pre>
+                <p class="mt-4">Or use the <code>X-API-Key</code> header:</p>
+                <pre class="bg-gray-800 text-gray-100 rounded-md p-4 overflow-x-auto"><code>curl -H "X-API-Key: YOUR_API_KEY" \
+     https://api.example.com/v1/users</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Key Scopes -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-base font-semibold leading-6 text-gray-900">Available Scopes</h3>
+            <div class="mt-4">
+                <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div class="border rounded-lg p-4">
+                        <dt class="font-medium text-gray-900">users:read</dt>
+                        <dd class="mt-1 text-sm text-gray-500">Read user information</dd>
+                    </div>
+                    <div class="border rounded-lg p-4">
+                        <dt class="font-medium text-gray-900">users:write</dt>
+                        <dd class="mt-1 text-sm text-gray-500">Create, update, and delete users</dd>
+                    </div>
+                    <div class="border rounded-lg p-4">
+                        <dt class="font-medium text-gray-900">roles:read</dt>
+                        <dd class="mt-1 text-sm text-gray-500">Read roles and permissions</dd>
+                    </div>
+                    <div class="border rounded-lg p-4">
+                        <dt class="font-medium text-gray-900">roles:write</dt>
+                        <dd class="mt-1 text-sm text-gray-500">Manage roles and assignments</dd>
+                    </div>
+                    <div class="border rounded-lg p-4">
+                        <dt class="font-medium text-gray-900">sessions:read</dt>
+                        <dd class="mt-1 text-sm text-gray-500">Read session information</dd>
+                    </div>
+                    <div class="border rounded-lg p-4">
+                        <dt class="font-medium text-gray-900">sessions:revoke</dt>
+                        <dd class="mt-1 text-sm text-gray-500">Revoke user sessions</dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,7 +1,13 @@
-"""Admin UI Litestar application."""
+"""Admin UI Litestar application.
+
+Enterprise-grade admin console built with HTMX + Alpine.js + Tailwind CSS.
+"""
 
 from __future__ import annotations
 
+import contextlib
+import csv
+import io
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -14,8 +20,18 @@ from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.status_codes import HTTP_303_SEE_OTHER
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from neozen.admin.auth import (
+    AdminRole,
+    AdminUser,
+    clear_current_admin,
+    get_current_admin,
+    get_impersonation,
+    set_current_admin,
+    start_impersonation,
+    stop_impersonation,
+)
 from neozen.admin.config import AdminConfig
-from neozen.admin.services import AdminService
+from neozen.admin.services import AdminService, UserListFilters
 from neozen.storage.sqlalchemy.base import Base
 from neozen.storage.sqlalchemy.models import RoleAssignment, Session, Subject
 
@@ -24,9 +40,10 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
 def get_templates(config: AdminConfig) -> Environment:
-    """Create Jinja2 environment."""
+    """Create Jinja2 environment with component macros."""
     templates_dir = config.templates_dir or TEMPLATES_DIR
-    return Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=True)
+    env = Environment(loader=FileSystemLoader(str(templates_dir)), autoescape=True)
+    return env
 
 
 def render_template(
@@ -40,6 +57,8 @@ def render_template(
     ctx = context or {}
     ctx["messages"] = request.session.pop("messages", [])
     ctx["request"] = request
+    ctx["current_admin"] = get_current_admin(request)
+    ctx["impersonation"] = get_impersonation(request)
     content = templates.get_template(template_name).render(**ctx)
     return Response(content=content, status_code=status_code, media_type="text/html")
 
@@ -68,6 +87,61 @@ async def get_admin_service(request: Request) -> AsyncGenerator[AdminService, No
 
 
 # -----------------------------------------------------------------------------
+# Authentication
+# -----------------------------------------------------------------------------
+
+
+@get("/login", sync_to_thread=False)
+def login_page(request: Request) -> Response:
+    """Show login page."""
+    # If already logged in, redirect to dashboard
+    if get_current_admin(request):
+        return redirect("/")
+    return render_template(request, "auth/login.html")
+
+
+@post("/login")
+async def login(request: Request) -> Response:
+    """Process login form."""
+    form_data = await request.form()
+    email = form_data.get("email", "").strip()
+    password = form_data.get("password", "")
+
+    # Demo authentication - accepts any @admin.local email with password "admin123"
+    # In production, this would validate against a real admin user database
+    if email.endswith("@admin.local") and password == "admin123":
+        # Determine role from email prefix
+        role = AdminRole.SUPERADMIN
+        if "support@" in email:
+            role = AdminRole.SUPPORT
+        elif "auditor@" in email:
+            role = AdminRole.AUDITOR
+        elif "admin@" in email:
+            role = AdminRole.ADMIN
+
+        admin = AdminUser(
+            id=email.split("@")[0],
+            email=email,
+            name=email.split("@")[0].replace(".", " ").title(),
+            role=role,
+        )
+        set_current_admin(request, admin)
+        flash(request, f"Welcome back, {admin.name}!", "success")
+        return redirect("/")
+
+    flash(request, "Invalid email or password.", "error")
+    return redirect("/login")
+
+
+@get("/logout", sync_to_thread=False)
+def logout(request: Request) -> Response:
+    """Log out the current admin user."""
+    clear_current_admin(request)
+    flash(request, "You have been logged out.", "info")
+    return redirect("/login")
+
+
+# -----------------------------------------------------------------------------
 # Dashboard
 # -----------------------------------------------------------------------------
 
@@ -79,74 +153,360 @@ async def dashboard(request: Request) -> Response:
     async with session_factory() as session:
         service = AdminService(session)
         stats = await service.get_dashboard_stats()
-        return render_template(request, "dashboard.html", {"stats": stats})
+        recent_users = await service.list_subjects(limit=5)
 
+        # Prepare stats dict for new template
+        stats_dict = {
+            "total_users": stats.total_subjects,
+            "active_sessions": stats.active_sessions,
+            "total_roles": stats.total_roles,
+            "total_assignments": stats.total_subjects,  # Placeholder
+        }
 
-# -----------------------------------------------------------------------------
-# Subject Management
-# -----------------------------------------------------------------------------
+        # Recent activity placeholder (would come from audit log)
+        recent_activity: list[dict[str, Any]] = []
 
-
-@get("/subjects")
-async def list_subjects(request: Request) -> Response:
-    """List all subjects."""
-    search = request.query_params.get("search")
-    session_factory: async_sessionmaker = request.app.state.session_factory
-    async with session_factory() as session:
-        service = AdminService(session)
-        subjects = await service.list_subjects(search=search)
         return render_template(
-            request, "subjects/list.html", {"subjects": subjects, "search": search}
+            request,
+            "dashboard/index.html",
+            {
+                "stats": stats_dict,
+                "recent_users": recent_users,
+                "recent_activity": recent_activity,
+            },
         )
 
 
-@get("/subjects/{subject_id:str}")
-async def subject_detail(request: Request, subject_id: str) -> Response:
-    """View subject details."""
+# -----------------------------------------------------------------------------
+# User Management (formerly Subject Management)
+# -----------------------------------------------------------------------------
+
+
+@get("/users")
+async def list_users(request: Request) -> Response:
+    """List all users with search, filters, and pagination."""
+    # Parse query parameters
+    search = request.query_params.get("search")
+    status = request.query_params.get("status")
+    mfa = request.query_params.get("mfa")
+    verified = request.query_params.get("verified")
+    sort_by = request.query_params.get("sort", "created_at")
+    sort_order = request.query_params.get("order", "desc")
+    page = int(request.query_params.get("page", "1"))
+    per_page = int(request.query_params.get("per_page", "50"))
+
+    # Build filters
+    status_list = [status] if status else None
+    filters = UserListFilters(
+        search=search,
+        status=status_list,
+        mfa_enabled=mfa == "enabled" if mfa else None,
+        is_verified=verified == "yes" if verified else None,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        page=page,
+        per_page=per_page,
+    )
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        result = await service.list_subjects_paginated(filters)
+
+        return render_template(
+            request,
+            "users/list.html",
+            {
+                "users": result.items,
+                "search": search,
+                "status": status,
+                "mfa": mfa,
+                "verified": verified,
+                "sort": sort_by,
+                "order": sort_order,
+                "page": result.page,
+                "per_page": result.per_page,
+                "total_items": result.total,
+                "total_pages": result.total_pages,
+            },
+        )
+
+
+@get("/users/{user_id:str}")
+async def user_detail(request: Request, user_id: str) -> Response:
+    """View user details with tabs."""
+    tab = request.query_params.get("tab", "profile")
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
         service = AdminService(session)
         try:
-            subject = await service.get_subject(subject_id)
-            roles = await service.get_subject_roles(subject_id)
+            user = await service.get_subject(user_id)
+            roles = await service.get_subject_roles(user_id)
+            sessions = await service.get_subject_sessions(user_id, active_only=True)
+            all_roles = await service.list_roles()
+
             return render_template(
                 request,
-                "subjects/detail.html",
-                {"subject": subject, "roles": roles},
+                "users/detail.html",
+                {
+                    "user": user,
+                    "roles": roles,
+                    "sessions": sessions,
+                    "all_roles": all_roles,
+                    "active_tab": tab,
+                },
             )
         except Exception:
-            flash(request, f"Subject not found: {subject_id}", "error")
-            return redirect("/subjects")
+            flash(request, f"User not found: {user_id}", "error")
+            return redirect("/users")
 
 
-@post("/subjects/{subject_id:str}/activate")
-async def activate_subject(request: Request, subject_id: str) -> Response:
-    """Activate a subject."""
+@post("/users/{user_id:str}/activate")
+async def activate_user(request: Request, user_id: str) -> Response:
+    """Activate a user."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
         service = AdminService(session)
         try:
-            await service.activate_subject(subject_id)
+            await service.activate_subject(user_id)
             await session.commit()
-            flash(request, "Subject activated successfully.", "success")
+            flash(request, "User activated successfully.", "success")
         except Exception as e:
-            flash(request, f"Error activating subject: {e}", "error")
-        return redirect(f"/subjects/{subject_id}")
+            flash(request, f"Error activating user: {e}", "error")
+        return redirect(f"/users/{user_id}")
 
 
-@post("/subjects/{subject_id:str}/deactivate")
-async def deactivate_subject(request: Request, subject_id: str) -> Response:
-    """Deactivate a subject."""
+@post("/users/{user_id:str}/deactivate")
+async def deactivate_user(request: Request, user_id: str) -> Response:
+    """Deactivate a user."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
         service = AdminService(session)
         try:
-            await service.deactivate_subject(subject_id)
+            await service.deactivate_subject(user_id)
             await session.commit()
-            flash(request, "Subject deactivated successfully.", "success")
+            flash(request, "User deactivated successfully.", "success")
         except Exception as e:
-            flash(request, f"Error deactivating subject: {e}", "error")
-        return redirect(f"/subjects/{subject_id}")
+            flash(request, f"Error deactivating user: {e}", "error")
+        return redirect(f"/users/{user_id}")
+
+
+@get("/users/create", sync_to_thread=False)
+def create_user_form(request: Request) -> Response:
+    """Show create user form."""
+    return render_template(request, "users/create.html", {})
+
+
+@post("/users/create")
+async def create_user(request: Request) -> Response:
+    """Create a new user."""
+    form_data = await request.form()
+    email = form_data.get("email", "").strip()
+    username = form_data.get("username", "").strip() or None
+
+    if not email:
+        flash(request, "Email is required.", "error")
+        return redirect("/users/create")
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            user = await service.create_subject(
+                email=email,
+                username=username,
+                is_active=form_data.get("is_active") == "on",
+                is_verified=form_data.get("is_verified") == "on",
+            )
+            await session.commit()
+            flash(request, f"User '{email}' created successfully.", "success")
+            return redirect(f"/users/{user.id}")
+        except Exception as e:
+            flash(request, f"Error creating user: {e}", "error")
+            return redirect("/users/create")
+
+
+@post("/users/{user_id:str}/delete")
+async def delete_user(request: Request, user_id: str) -> Response:
+    """Delete a user."""
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            await service.delete_subject(user_id)
+            await session.commit()
+            flash(request, "User deleted successfully.", "success")
+        except Exception as e:
+            flash(request, f"Error deleting user: {e}", "error")
+        return redirect("/users")
+
+
+@post("/users/{user_id:str}/revoke-sessions")
+async def revoke_user_sessions(request: Request, user_id: str) -> Response:
+    """Revoke all sessions for a user."""
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            count = await service.revoke_all_subject_sessions(user_id)
+            await session.commit()
+            flash(request, f"Revoked {count} session(s) successfully.", "success")
+        except Exception as e:
+            flash(request, f"Error revoking sessions: {e}", "error")
+        return redirect(f"/users/{user_id}?tab=sessions")
+
+
+@post("/users/{user_id:str}/roles/add")
+async def add_user_role(request: Request, user_id: str) -> Response:
+    """Add a role to a user."""
+    form_data = await request.form()
+    role_name = form_data.get("role_name", "").strip()
+
+    if not role_name:
+        flash(request, "Role name is required.", "error")
+        return redirect(f"/users/{user_id}?tab=roles")
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        admin = get_current_admin(request)
+        try:
+            await service.assign_role_to_subject(
+                user_id, role_name, granted_by=admin.id if admin else None
+            )
+            await session.commit()
+            flash(request, f"Role '{role_name}' assigned successfully.", "success")
+        except Exception as e:
+            flash(request, f"Error assigning role: {e}", "error")
+        return redirect(f"/users/{user_id}?tab=roles")
+
+
+@post("/users/{user_id:str}/roles/{role_name:str}/remove")
+async def remove_user_role(request: Request, user_id: str, role_name: str) -> Response:
+    """Remove a role from a user."""
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            await service.remove_role_from_subject(user_id, role_name)
+            await session.commit()
+            flash(request, f"Role '{role_name}' removed successfully.", "success")
+        except Exception as e:
+            flash(request, f"Error removing role: {e}", "error")
+        return redirect(f"/users/{user_id}?tab=roles")
+
+
+@get("/users/import", sync_to_thread=False)
+def import_users_form(request: Request) -> Response:
+    """Show bulk import form."""
+    return render_template(request, "users/import.html", {})
+
+
+@post("/users/import")
+async def import_users(request: Request) -> Response:
+    """Process bulk user import from CSV."""
+    form_data = await request.form()
+    csv_file = form_data.get("csv_file")
+
+    if not csv_file or not hasattr(csv_file, "read"):
+        flash(request, "Please upload a CSV file.", "error")
+        return redirect("/users/import")
+
+    try:
+        # Read and parse CSV
+        content = (await csv_file.read()).decode("utf-8")
+        reader = csv.DictReader(io.StringIO(content))
+
+        session_factory: async_sessionmaker = request.app.state.session_factory
+        async with session_factory() as session:
+            service = AdminService(session)
+
+            imported = 0
+            errors = []
+
+            for row_num, row in enumerate(
+                reader, start=2
+            ):  # Start at 2 (header is row 1)
+                email = row.get("email", "").strip()
+                username = row.get("username", "").strip() or None
+                is_active = row.get("is_active", "true").lower() in ("true", "1", "yes")
+                is_verified = row.get("is_verified", "false").lower() in (
+                    "true",
+                    "1",
+                    "yes",
+                )
+
+                if not email:
+                    errors.append(f"Row {row_num}: Missing email")
+                    continue
+
+                try:
+                    await service.create_subject(
+                        email=email,
+                        username=username,
+                        is_active=is_active,
+                        is_verified=is_verified,
+                    )
+                    imported += 1
+                except Exception as e:
+                    errors.append(f"Row {row_num} ({email}): {e}")
+
+            await session.commit()
+
+            if imported > 0:
+                flash(request, f"Successfully imported {imported} user(s).", "success")
+            if errors:
+                flash(
+                    request,
+                    f"Errors: {'; '.join(errors[:5])}"
+                    + (f" (+{len(errors) - 5} more)" if len(errors) > 5 else ""),
+                    "error",
+                )
+
+            return redirect("/users")
+
+    except Exception as e:
+        flash(request, f"Error processing CSV: {e}", "error")
+        return redirect("/users/import")
+
+
+@post("/users/{user_id:str}/impersonate")
+async def impersonate_user(request: Request, user_id: str) -> Response:
+    """Start impersonating a user."""
+    admin = get_current_admin(request)
+    if not admin or not admin.is_superadmin:
+        flash(request, "Only superadmins can impersonate users.", "error")
+        return redirect(f"/users/{user_id}")
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            user = await service.get_subject(user_id)
+            start_impersonation(request, user.id, user.email, user.username)
+            flash(
+                request,
+                f"Now impersonating {user.email}. Click 'Stop Impersonation' to return.",
+                "success",
+            )
+        except Exception as e:
+            flash(request, f"Error starting impersonation: {e}", "error")
+        return redirect(f"/users/{user_id}")
+
+
+@post("/stop-impersonation", sync_to_thread=False)
+def end_impersonation(request: Request) -> Response:
+    """Stop impersonating a user."""
+    stop_impersonation(request)
+    flash(request, "Stopped impersonation.", "success")
+    return redirect("/")
+
+
+# Legacy routes for backwards compatibility
+@get("/subjects", sync_to_thread=False)
+def list_subjects(request: Request) -> Response:
+    """Redirect to users list."""
+    return redirect("/users")
 
 
 # -----------------------------------------------------------------------------
@@ -290,6 +650,689 @@ async def revoke_session(request: Request, token_hash: str) -> Response:
 
 
 # -----------------------------------------------------------------------------
+# Group Management
+# -----------------------------------------------------------------------------
+
+
+@get("/groups")
+async def list_groups(request: Request) -> Response:
+    """List all groups."""
+    search = request.query_params.get("search")
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        groups = await service.list_groups(search=search)
+        return render_template(
+            request, "groups/list.html", {"groups": groups, "search": search}
+        )
+
+
+@get("/groups/create", sync_to_thread=False)
+def create_group_form(request: Request) -> Response:
+    """Show create group form."""
+    return render_template(request, "groups/create.html", {})
+
+
+@post("/groups/create")
+async def create_group(request: Request) -> Response:
+    """Create a new group."""
+    form_data = await request.form()
+    name = form_data.get("name", "").strip()
+    description = form_data.get("description", "").strip()
+
+    if not name:
+        flash(request, "Group name is required.", "error")
+        return redirect("/groups/create")
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            group = await service.create_group(name=name, description=description)
+            await session.commit()
+            flash(request, f"Group '{name}' created successfully.", "success")
+            return redirect(f"/groups/{group.id}")
+        except Exception as e:
+            flash(request, f"Error creating group: {e}", "error")
+            return redirect("/groups/create")
+
+
+@get("/groups/{group_id:str}")
+async def group_detail(request: Request, group_id: str) -> Response:
+    """View group details."""
+    tab = request.query_params.get("tab", "members")
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            group = await service.get_group(group_id)
+            members = await service.get_group_members(group_id)
+            roles = await service.get_group_roles(group_id)
+            all_roles = await service.list_roles()
+            all_users = await service.list_subjects(limit=100)
+
+            return render_template(
+                request,
+                "groups/detail.html",
+                {
+                    "group": group,
+                    "members": members,
+                    "roles": roles,
+                    "all_roles": all_roles,
+                    "all_users": all_users,
+                    "active_tab": tab,
+                },
+            )
+        except Exception:
+            flash(request, f"Group not found: {group_id}", "error")
+            return redirect("/groups")
+
+
+@post("/groups/{group_id:str}/members/add")
+async def add_group_member(request: Request, group_id: str) -> Response:
+    """Add a member to a group."""
+    form_data = await request.form()
+    subject_id = form_data.get("subject_id", "").strip()
+    role = form_data.get("role", "member").strip()
+
+    if not subject_id:
+        flash(request, "User is required.", "error")
+        return redirect(f"/groups/{group_id}?tab=members")
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        admin = get_current_admin(request)
+        try:
+            await service.add_group_member(
+                group_id, subject_id, role=role, added_by=admin.id if admin else None
+            )
+            await session.commit()
+            flash(request, "Member added successfully.", "success")
+        except Exception as e:
+            flash(request, f"Error adding member: {e}", "error")
+        return redirect(f"/groups/{group_id}?tab=members")
+
+
+@post("/groups/{group_id:str}/members/{subject_id:str}/remove")
+async def remove_group_member(
+    request: Request, group_id: str, subject_id: str
+) -> Response:
+    """Remove a member from a group."""
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            await service.remove_group_member(group_id, subject_id)
+            await session.commit()
+            flash(request, "Member removed successfully.", "success")
+        except Exception as e:
+            flash(request, f"Error removing member: {e}", "error")
+        return redirect(f"/groups/{group_id}?tab=members")
+
+
+@post("/groups/{group_id:str}/roles/add")
+async def add_group_role(request: Request, group_id: str) -> Response:
+    """Add a role to a group."""
+    form_data = await request.form()
+    role_name = form_data.get("role_name", "").strip()
+
+    if not role_name:
+        flash(request, "Role is required.", "error")
+        return redirect(f"/groups/{group_id}?tab=roles")
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        admin = get_current_admin(request)
+        try:
+            await service.assign_role_to_group(
+                group_id, role_name, granted_by=admin.id if admin else None
+            )
+            await session.commit()
+            flash(request, f"Role '{role_name}' assigned to group.", "success")
+        except Exception as e:
+            flash(request, f"Error assigning role: {e}", "error")
+        return redirect(f"/groups/{group_id}?tab=roles")
+
+
+@post("/groups/{group_id:str}/roles/{role_name:str}/remove")
+async def remove_group_role(
+    request: Request, group_id: str, role_name: str
+) -> Response:
+    """Remove a role from a group."""
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            await service.remove_role_from_group(group_id, role_name)
+            await session.commit()
+            flash(request, f"Role '{role_name}' removed from group.", "success")
+        except Exception as e:
+            flash(request, f"Error removing role: {e}", "error")
+        return redirect(f"/groups/{group_id}?tab=roles")
+
+
+@post("/groups/{group_id:str}/delete")
+async def delete_group(request: Request, group_id: str) -> Response:
+    """Delete a group."""
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            await service.delete_group(group_id)
+            await session.commit()
+            flash(request, "Group deleted successfully.", "success")
+        except Exception as e:
+            flash(request, f"Error deleting group: {e}", "error")
+        return redirect("/groups")
+
+
+# -----------------------------------------------------------------------------
+# Organization Management
+# -----------------------------------------------------------------------------
+
+
+@get("/organizations")
+async def list_organizations(request: Request) -> Response:
+    """List all organizations."""
+    search = request.query_params.get("search")
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        organizations = await service.list_organizations(search=search)
+        return render_template(
+            request,
+            "organizations/list.html",
+            {"organizations": organizations, "search": search},
+        )
+
+
+@get("/organizations/create", sync_to_thread=False)
+def create_organization_form(request: Request) -> Response:
+    """Show create organization form."""
+    return render_template(request, "organizations/create.html", {})
+
+
+@post("/organizations/create")
+async def create_organization(request: Request) -> Response:
+    """Create a new organization."""
+    form_data = await request.form()
+    name = form_data.get("name", "").strip()
+    slug = form_data.get("slug", "").strip()
+    domain = form_data.get("domain", "").strip() or None
+    plan = form_data.get("plan", "free").strip()
+
+    if not name or not slug:
+        flash(request, "Name and slug are required.", "error")
+        return redirect("/organizations/create")
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            org = await service.create_organization(
+                name=name, slug=slug, domain=domain, plan=plan
+            )
+            await session.commit()
+            flash(request, f"Organization '{name}' created successfully.", "success")
+            return redirect(f"/organizations/{org.id}")
+        except Exception as e:
+            flash(request, f"Error creating organization: {e}", "error")
+            return redirect("/organizations/create")
+
+
+@get("/organizations/{org_id:str}")
+async def organization_detail(request: Request, org_id: str) -> Response:
+    """View organization details."""
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            org = await service.get_organization(org_id)
+            # Get groups for this organization
+            all_groups = await service.list_groups()
+            org_groups = [g for g in all_groups if g.organization_id == org_id]
+
+            return render_template(
+                request,
+                "organizations/detail.html",
+                {
+                    "organization": org,
+                    "groups": org_groups,
+                },
+            )
+        except Exception:
+            flash(request, f"Organization not found: {org_id}", "error")
+            return redirect("/organizations")
+
+
+@post("/organizations/{org_id:str}/update")
+async def update_organization(request: Request, org_id: str) -> Response:
+    """Update an organization."""
+    form_data = await request.form()
+    name = form_data.get("name", "").strip() or None
+    domain = form_data.get("domain", "").strip() or None
+    plan = form_data.get("plan", "").strip() or None
+    is_active = form_data.get("is_active") == "on"
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            await service.update_organization(
+                org_id, name=name, domain=domain, plan=plan, is_active=is_active
+            )
+            await session.commit()
+            flash(request, "Organization updated successfully.", "success")
+        except Exception as e:
+            flash(request, f"Error updating organization: {e}", "error")
+        return redirect(f"/organizations/{org_id}")
+
+
+@post("/organizations/{org_id:str}/delete")
+async def delete_organization(request: Request, org_id: str) -> Response:
+    """Delete an organization."""
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            await service.delete_organization(org_id)
+            await session.commit()
+            flash(request, "Organization deleted successfully.", "success")
+        except Exception as e:
+            flash(request, f"Error deleting organization: {e}", "error")
+        return redirect("/organizations")
+
+
+# -----------------------------------------------------------------------------
+# Permissions & RBAC Visual Editor
+# -----------------------------------------------------------------------------
+
+
+@get("/permissions")
+async def permission_matrix(request: Request) -> Response:
+    """Show the permission matrix view."""
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        roles = await service.list_roles()
+        permissions = await service.get_all_permissions()
+
+        # Build matrix data
+        matrix: dict[str, set[str]] = {}
+        for role in roles:
+            matrix[role.name] = set(role.get_permissions_list())
+
+        return render_template(
+            request,
+            "permissions/matrix.html",
+            {
+                "roles": roles,
+                "permissions": permissions,
+                "matrix": matrix,
+            },
+        )
+
+
+@post("/permissions/toggle")
+async def toggle_permission(request: Request) -> Response:
+    """Toggle a permission for a role (HTMX endpoint)."""
+    form_data = await request.form()
+    role_name = form_data.get("role_name", "").strip()
+    permission = form_data.get("permission", "").strip()
+    enabled = form_data.get("enabled") == "true"
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            role = await service.get_role(role_name)
+            if role.is_system:
+                # Return error response for system roles
+                return Response(
+                    content='<span class="text-red-500 text-xs">System role</span>',
+                    status_code=200,
+                    media_type="text/html",
+                )
+
+            await service.toggle_role_permission(role_name, permission, enabled)
+            await session.commit()
+
+            # Return updated checkbox
+            checked = "checked" if enabled else ""
+            return Response(
+                content=f"""<input type="checkbox" {checked}
+                    class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                    hx-post="/permissions/toggle"
+                    hx-vals='{{"role_name": "{role_name}", "permission": "{permission}", "enabled": "{"false" if enabled else "true"}"}}'
+                    hx-swap="outerHTML">""",
+                status_code=200,
+                media_type="text/html",
+            )
+        except Exception as e:
+            return Response(
+                content=f'<span class="text-red-500 text-xs">{e}</span>',
+                status_code=200,
+                media_type="text/html",
+            )
+
+
+@get("/permissions/role-builder", sync_to_thread=False)
+def role_builder_form(request: Request) -> Response:
+    """Show the role builder wizard."""
+    return render_template(request, "permissions/role_builder.html", {})
+
+
+@post("/permissions/role-builder")
+async def create_custom_role(request: Request) -> Response:
+    """Create a custom role from the role builder."""
+    form_data = await request.form()
+    name = form_data.get("name", "").strip()
+    description = form_data.get("description", "").strip()
+    permissions_str = form_data.get("permissions", "")
+
+    if not name:
+        flash(request, "Role name is required.", "error")
+        return redirect("/permissions/role-builder")
+
+    # Parse permissions from form (comma-separated or multiple values)
+    if isinstance(permissions_str, str):
+        permissions = [p.strip() for p in permissions_str.split(",") if p.strip()]
+    else:
+        permissions = [str(p).strip() for p in permissions_str if str(p).strip()]
+
+    if not permissions:
+        flash(request, "At least one permission is required.", "error")
+        return redirect("/permissions/role-builder")
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        try:
+            await service.create_role(name, permissions, description)
+            await session.commit()
+            flash(request, f"Role '{name}' created successfully.", "success")
+            return redirect("/roles")
+        except Exception as e:
+            flash(request, f"Error creating role: {e}", "error")
+            return redirect("/permissions/role-builder")
+
+
+@get("/permissions/access-analyzer")
+async def access_analyzer(request: Request) -> Response:
+    """Show the access analyzer page."""
+    query_type = request.query_params.get("type")
+    query_value = request.query_params.get("value", "").strip()
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        all_permissions = await service.get_all_permissions()
+        all_users = await service.list_subjects(limit=100)
+
+        results = None
+        if query_type and query_value:
+            if query_type == "permission":
+                # Who has access to this permission?
+                results = await service.get_subjects_with_permission(query_value)
+            elif query_type == "user":
+                # What can this user do?
+                results = await service.get_effective_permissions(query_value)
+
+        return render_template(
+            request,
+            "permissions/access_analyzer.html",
+            {
+                "permissions": all_permissions,
+                "users": all_users,
+                "query_type": query_type,
+                "query_value": query_value,
+                "results": results,
+            },
+        )
+
+
+# -----------------------------------------------------------------------------
+# Audit Logs
+# -----------------------------------------------------------------------------
+
+
+@get("/audit")
+async def list_audit_logs(request: Request) -> Response:
+    """List audit logs with filters."""
+    # Parse query parameters
+    search = request.query_params.get("search")
+    event_type = request.query_params.get("event_type")
+    action = request.query_params.get("action")
+    outcome = request.query_params.get("outcome")
+    page = int(request.query_params.get("page", "1"))
+    per_page = 50
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        logs = await service.list_audit_logs(
+            search=search,
+            event_type=event_type,
+            action=action,
+            outcome=outcome,
+            offset=(page - 1) * per_page,
+            limit=per_page,
+        )
+        total = await service.count_audit_logs(
+            event_type=event_type, action=action, outcome=outcome
+        )
+
+        # Get unique values for filters
+        all_logs = await service.list_audit_logs(limit=500)
+        event_types = sorted({log.event_type for log in all_logs if log.event_type})
+        actions = sorted({log.action for log in all_logs if log.action})
+
+        return render_template(
+            request,
+            "audit/list.html",
+            {
+                "logs": logs,
+                "search": search,
+                "event_type": event_type,
+                "action": action,
+                "outcome": outcome,
+                "event_types": event_types,
+                "actions": actions,
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": (total + per_page - 1) // per_page,
+            },
+        )
+
+
+@get("/audit/{entry_id:str}")
+async def audit_log_detail(request: Request, entry_id: str) -> Response:
+    """View audit log entry details."""
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        entry = await service.get_audit_log(entry_id)
+
+        if entry is None:
+            flash(request, "Audit log entry not found.", "error")
+            return redirect("/audit")
+
+        # Get subject info if available
+        subject = None
+        if entry.subject_id:
+            with contextlib.suppress(Exception):
+                subject = await service.get_subject(entry.subject_id)
+
+        # Get actor info if available
+        actor = None
+        if entry.actor_id:
+            with contextlib.suppress(Exception):
+                actor = await service.get_subject(entry.actor_id)
+
+        return render_template(
+            request,
+            "audit/detail.html",
+            {
+                "entry": entry,
+                "subject": subject,
+                "actor": actor,
+            },
+        )
+
+
+# -----------------------------------------------------------------------------
+# Security Dashboard
+# -----------------------------------------------------------------------------
+
+
+@get("/security")
+async def security_dashboard(request: Request) -> Response:
+    """Security dashboard with metrics and insights."""
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+
+        # Get audit stats
+        stats = await service.get_audit_stats(days=7)
+        login_activity = await service.get_login_activity(days=7)
+
+        # Get MFA adoption
+        subjects = await service.list_subjects(limit=1000)
+        total_users = len(subjects)
+        mfa_enabled_users = sum(1 for s in subjects if s.totp_enabled)
+        mfa_adoption = (mfa_enabled_users / total_users * 100) if total_users > 0 else 0
+
+        # Get active sessions
+        sessions = await service.list_sessions(active_only=True)
+        active_session_count = len(sessions)
+
+        # Recent security events
+        recent_events = await service.list_audit_logs(limit=10)
+
+        return render_template(
+            request,
+            "security/dashboard.html",
+            {
+                "stats": stats,
+                "login_activity": login_activity,
+                "total_users": total_users,
+                "mfa_enabled_users": mfa_enabled_users,
+                "mfa_adoption": mfa_adoption,
+                "active_sessions": active_session_count,
+                "recent_events": recent_events,
+            },
+        )
+
+
+@get("/security/policies", sync_to_thread=False)
+def security_policies(request: Request) -> Response:
+    """Security policy configuration."""
+    return render_template(
+        request,
+        "security/policies.html",
+        {},
+    )
+
+
+# -----------------------------------------------------------------------------
+# Settings (placeholder)
+# -----------------------------------------------------------------------------
+
+
+@get("/settings", sync_to_thread=False)
+def settings(request: Request) -> Response:
+    """Settings hub page."""
+    return render_template(
+        request,
+        "settings/index.html",
+        {},
+    )
+
+
+@get("/settings/identity-providers", sync_to_thread=False)
+def identity_providers(request: Request) -> Response:
+    """Identity providers configuration page."""
+    return render_template(
+        request,
+        "settings/identity_providers.html",
+        {},
+    )
+
+
+@get("/settings/social-providers", sync_to_thread=False)
+def social_providers(request: Request) -> Response:
+    """Social login providers configuration page."""
+    return render_template(
+        request,
+        "settings/social_providers.html",
+        {},
+    )
+
+
+@get("/settings/api-keys", sync_to_thread=False)
+def api_keys(request: Request) -> Response:
+    """API keys management page."""
+    return render_template(
+        request,
+        "settings/api_keys.html",
+        {},
+    )
+
+
+@get("/settings/webhooks", sync_to_thread=False)
+def webhooks(request: Request) -> Response:
+    """Webhooks configuration page."""
+    return render_template(
+        request,
+        "settings/webhooks.html",
+        {},
+    )
+
+
+@get("/settings/oauth-clients", sync_to_thread=False)
+def oauth_clients(request: Request) -> Response:
+    """OAuth clients management page."""
+    return render_template(
+        request,
+        "settings/oauth_clients.html",
+        {},
+    )
+
+
+@get("/settings/branding", sync_to_thread=False)
+def branding(request: Request) -> Response:
+    """Branding settings page."""
+    return render_template(
+        request,
+        "settings/branding.html",
+        {},
+    )
+
+
+@get("/settings/email-templates", sync_to_thread=False)
+def email_templates(request: Request) -> Response:
+    """Email templates configuration page."""
+    return render_template(
+        request,
+        "settings/email_templates.html",
+        {},
+    )
+
+
+@get("/settings/health", sync_to_thread=False)
+def system_health(request: Request) -> Response:
+    """System health status page."""
+    return render_template(
+        request,
+        "settings/health.html",
+        {},
+    )
+
+
+# -----------------------------------------------------------------------------
 # App Factory
 # -----------------------------------------------------------------------------
 
@@ -340,18 +1383,76 @@ def create_admin_app(config: AdminConfig | None = None) -> Litestar:
 
     app = Litestar(
         route_handlers=[
+            # Authentication
+            login_page,
+            login,
+            logout,
+            # Dashboard
             dashboard,
-            list_subjects,
-            subject_detail,
-            activate_subject,
-            deactivate_subject,
+            # Users
+            list_users,
+            create_user_form,
+            create_user,
+            import_users_form,
+            import_users,
+            user_detail,
+            activate_user,
+            deactivate_user,
+            delete_user,
+            revoke_user_sessions,
+            add_user_role,
+            remove_user_role,
+            impersonate_user,
+            end_impersonation,
+            list_subjects,  # Legacy redirect
+            # Roles
             list_roles,
             create_role_form,
             create_role,
             role_detail,
             delete_role,
+            # Sessions
             list_sessions,
             revoke_session,
+            # Groups
+            list_groups,
+            create_group_form,
+            create_group,
+            group_detail,
+            add_group_member,
+            remove_group_member,
+            add_group_role,
+            remove_group_role,
+            delete_group,
+            # Organizations
+            list_organizations,
+            create_organization_form,
+            create_organization,
+            organization_detail,
+            update_organization,
+            delete_organization,
+            # Permissions & RBAC Visual Editor
+            permission_matrix,
+            toggle_permission,
+            role_builder_form,
+            create_custom_role,
+            access_analyzer,
+            # Audit
+            list_audit_logs,
+            audit_log_detail,
+            # Security
+            security_dashboard,
+            security_policies,
+            # Settings
+            settings,
+            identity_providers,
+            social_providers,
+            api_keys,
+            webhooks,
+            oauth_clients,
+            branding,
+            email_templates,
+            system_health,
         ],
         middleware=[session_config.middleware],
         on_startup=[on_startup],

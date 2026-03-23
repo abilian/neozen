@@ -1,0 +1,367 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+
+{% block title %}Security Dashboard - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header("Security Dashboard", subtitle="Monitor security metrics and configure policies", breadcrumbs=[{"label": "Security"}]) %}
+    <div class="flex gap-2">
+        {{ button("Audit Logs", variant="secondary", href="/audit") }}
+        {{ button("Security Policies", variant="secondary", href="/security/policies") }}
+    </div>
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Stats Overview -->
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <!-- Total Events (7 days) -->
+        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+            <dt class="truncate text-sm font-medium text-gray-500">Events (7 days)</dt>
+            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
+                {{ stats.total_events | default(0) }}
+            </dd>
+        </div>
+
+        <!-- Failed Logins -->
+        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+            <dt class="truncate text-sm font-medium text-gray-500">Failed Events</dt>
+            <dd class="mt-1 flex items-baseline gap-2">
+                <span class="text-3xl font-semibold tracking-tight {% if stats.failed_events > 0 %}text-red-600{% else %}text-gray-900{% endif %}">
+                    {{ stats.failed_events | default(0) }}
+                </span>
+                {% if stats.total_events > 0 %}
+                <span class="text-sm text-gray-500">
+                    ({{ ((stats.failed_events / stats.total_events) * 100) | round(1) }}%)
+                </span>
+                {% endif %}
+            </dd>
+        </div>
+
+        <!-- Active Sessions -->
+        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+            <dt class="truncate text-sm font-medium text-gray-500">Active Sessions</dt>
+            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
+                {{ active_session_count }}
+            </dd>
+        </div>
+
+        <!-- MFA Adoption -->
+        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+            <dt class="truncate text-sm font-medium text-gray-500">MFA Adoption</dt>
+            <dd class="mt-1 flex items-baseline gap-2">
+                <span class="text-3xl font-semibold tracking-tight {% if mfa_adoption >= 80 %}text-green-600{% elif mfa_adoption >= 50 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                    {{ mfa_adoption | round(1) }}%
+                </span>
+                <span class="text-sm text-gray-500">
+                    ({{ mfa_enabled_users }}/{{ total_users }} users)
+                </span>
+            </dd>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <!-- Login Activity Chart -->
+        <div class="overflow-hidden bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:px-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900">Login Activity (7 days)</h3>
+            </div>
+            <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
+                {% if login_activity %}
+                <div class="h-48" x-data="loginChart()" x-init="initChart()">
+                    <canvas id="loginChart"></canvas>
+                </div>
+                {% else %}
+                <div class="flex h-48 items-center justify-center">
+                    <p class="text-sm text-gray-500">No login data available</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Event Types Breakdown -->
+        <div class="overflow-hidden bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:px-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900">Event Types</h3>
+            </div>
+            <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
+                {% if stats.event_types %}
+                <div class="space-y-3">
+                    {% for event_type, count in stats.event_types.items() %}
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-gray-600">{{ event_type }}</span>
+                            <span class="font-medium text-gray-900">{{ count }}</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="bg-indigo-600 h-2 rounded-full" style="width: {{ (count / stats.total_events * 100) if stats.total_events > 0 else 0 }}%"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="flex h-48 items-center justify-center">
+                    <p class="text-sm text-gray-500">No event data available</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Security Indicators -->
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <!-- MFA Adoption Progress -->
+        <div class="overflow-hidden bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:px-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900">MFA Status</h3>
+            </div>
+            <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
+                <div class="relative pt-1">
+                    <div class="flex mb-2 items-center justify-between">
+                        <div>
+                            <span class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full {% if mfa_adoption >= 80 %}text-green-600 bg-green-200{% elif mfa_adoption >= 50 %}text-yellow-600 bg-yellow-200{% else %}text-red-600 bg-red-200{% endif %}">
+                                {% if mfa_adoption >= 80 %}Good{% elif mfa_adoption >= 50 %}Moderate{% else %}Low{% endif %}
+                            </span>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs font-semibold inline-block text-gray-600">
+                                {{ mfa_adoption | round(1) }}%
+                            </span>
+                        </div>
+                    </div>
+                    <div class="overflow-hidden h-2 text-xs flex rounded bg-gray-200">
+                        <div style="width: {{ mfa_adoption }}%" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center {% if mfa_adoption >= 80 %}bg-green-500{% elif mfa_adoption >= 50 %}bg-yellow-500{% else %}bg-red-500{% endif %}"></div>
+                    </div>
+                </div>
+                <p class="mt-4 text-sm text-gray-600">
+                    {{ mfa_enabled_users }} of {{ total_users }} users have MFA enabled.
+                </p>
+                <a href="/users?filter=no_mfa" class="mt-2 inline-block text-sm text-indigo-600 hover:text-indigo-500">
+                    View users without MFA &rarr;
+                </a>
+            </div>
+        </div>
+
+        <!-- Recent Failed Logins Alert -->
+        <div class="overflow-hidden bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:px-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900">Security Alerts</h3>
+            </div>
+            <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
+                {% if stats.failed_events > 10 %}
+                <div class="rounded-md bg-red-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">High failure rate</h3>
+                            <p class="mt-1 text-sm text-red-700">
+                                {{ stats.failed_events }} failed events in the last 7 days.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                {% elif stats.failed_events > 0 %}
+                <div class="rounded-md bg-yellow-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-yellow-800">Some failures detected</h3>
+                            <p class="mt-1 text-sm text-yellow-700">
+                                {{ stats.failed_events }} failed events in the last 7 days.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="rounded-md bg-green-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-green-800">All clear</h3>
+                            <p class="mt-1 text-sm text-green-700">
+                                No failed events in the last 7 days.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="overflow-hidden bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:px-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900">Quick Actions</h3>
+            </div>
+            <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
+                <div class="space-y-3">
+                    <a href="/audit?outcome=failure" class="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 hover:bg-gray-100">
+                        <span class="text-sm text-gray-900">View failed events</span>
+                        <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                        </svg>
+                    </a>
+                    <a href="/sessions" class="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 hover:bg-gray-100">
+                        <span class="text-sm text-gray-900">Manage sessions</span>
+                        <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                        </svg>
+                    </a>
+                    <a href="/security/policies" class="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 hover:bg-gray-100">
+                        <span class="text-sm text-gray-900">Configure policies</span>
+                        <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Security Events -->
+    <div class="overflow-hidden bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:px-6 flex justify-between items-center">
+            <h3 class="text-base font-semibold leading-6 text-gray-900">Recent Security Events</h3>
+            <a href="/audit" class="text-sm text-indigo-600 hover:text-indigo-500">View all &rarr;</a>
+        </div>
+        <div class="border-t border-gray-200">
+            {% if recent_events %}
+            <ul role="list" class="divide-y divide-gray-200">
+                {% for event in recent_events %}
+                <li class="px-4 py-4 sm:px-6 hover:bg-gray-50">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center min-w-0 gap-x-4">
+                            <div class="flex-shrink-0">
+                                {% if event.outcome == 'success' %}
+                                <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-green-100">
+                                    <svg class="h-4 w-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                                    </svg>
+                                </span>
+                                {% elif event.outcome == 'failure' %}
+                                <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100">
+                                    <svg class="h-4 w-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                    </svg>
+                                </span>
+                                {% else %}
+                                <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
+                                    <svg class="h-4 w-4 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                                    </svg>
+                                </span>
+                                {% endif %}
+                            </div>
+                            <div class="min-w-0 flex-auto">
+                                <p class="text-sm font-semibold leading-6 text-gray-900">
+                                    {{ event.event_type }}: {{ event.action }}
+                                </p>
+                                <p class="mt-1 truncate text-xs leading-5 text-gray-500">
+                                    {% if event.subject_id %}Subject: {{ event.subject_id[:16] }}...{% endif %}
+                                    {% if event.resource_type %} | Resource: {{ event.resource_type }}{% endif %}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-x-4">
+                            <div class="hidden sm:flex sm:flex-col sm:items-end">
+                                <p class="text-sm leading-6 text-gray-900">{{ event.timestamp.strftime('%H:%M:%S') }}</p>
+                                <p class="mt-1 text-xs leading-5 text-gray-500">{{ event.timestamp.strftime('%Y-%m-%d') }}</p>
+                            </div>
+                            <a href="/audit/{{ event.id }}" class="text-indigo-600 hover:text-indigo-500">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="px-4 py-12 text-center sm:px-6">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
+                </svg>
+                <h3 class="mt-2 text-sm font-semibold text-gray-900">No recent events</h3>
+                <p class="mt-1 text-sm text-gray-500">Security events will appear here as they occur.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if login_activity %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+function loginChart() {
+    return {
+        chart: null,
+        initChart() {
+            const ctx = document.getElementById('loginChart').getContext('2d');
+            const data = {{ login_activity | tojson }};
+
+            this.chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.map(d => d.date),
+                    datasets: [
+                        {
+                            label: 'Successful',
+                            data: data.map(d => d.success_count),
+                            backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                            borderRadius: 4,
+                        },
+                        {
+                            label: 'Failed',
+                            data: data.map(d => d.failure_count),
+                            backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                            borderRadius: 4,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                        }
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+}
+</script>
+{% endif %}
+{% endblock %}

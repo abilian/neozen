@@ -1,0 +1,120 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+
+{% block title %}Webhooks - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header("Webhooks", subtitle="Configure event notifications", breadcrumbs=[{"label": "Settings", "href": "/settings"}, {"label": "Webhooks"}]) %}
+    {{ button("Add Webhook", variant="primary") }}
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Info -->
+    <div class="rounded-md bg-blue-50 p-4">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-blue-800">Real-time Event Notifications</h3>
+                <div class="mt-2 text-sm text-blue-700">
+                    <p>Webhooks allow you to receive HTTP POST requests when events occur in NeoZen. Use them to integrate with your systems.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Webhooks List -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <div class="text-center py-12">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                </svg>
+                <h3 class="mt-2 text-sm font-semibold text-gray-900">No webhooks configured</h3>
+                <p class="mt-1 text-sm text-gray-500">Add a webhook endpoint to receive event notifications.</p>
+                <div class="mt-6">
+                    <button type="button" class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                        <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                        </svg>
+                        Add Webhook
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Available Events -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-base font-semibold leading-6 text-gray-900">Available Events</h3>
+            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">user.created</h4>
+                    <p class="mt-1 text-sm text-gray-500">A new user was created</p>
+                </div>
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">user.updated</h4>
+                    <p class="mt-1 text-sm text-gray-500">User profile was updated</p>
+                </div>
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">user.deleted</h4>
+                    <p class="mt-1 text-sm text-gray-500">A user was deleted</p>
+                </div>
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">session.created</h4>
+                    <p class="mt-1 text-sm text-gray-500">User logged in</p>
+                </div>
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">session.revoked</h4>
+                    <p class="mt-1 text-sm text-gray-500">Session was revoked</p>
+                </div>
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">mfa.enabled</h4>
+                    <p class="mt-1 text-sm text-gray-500">User enabled MFA</p>
+                </div>
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">password.changed</h4>
+                    <p class="mt-1 text-sm text-gray-500">Password was changed</p>
+                </div>
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">role.assigned</h4>
+                    <p class="mt-1 text-sm text-gray-500">Role assigned to user</p>
+                </div>
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">role.revoked</h4>
+                    <p class="mt-1 text-sm text-gray-500">Role removed from user</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Webhook Payload Example -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-base font-semibold leading-6 text-gray-900">Payload Format</h3>
+            <div class="mt-4">
+                <pre class="bg-gray-800 text-gray-100 rounded-md p-4 overflow-x-auto text-sm"><code>{
+  "id": "evt_123456789",
+  "type": "user.created",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "data": {
+    "user_id": "usr_abc123",
+    "email": "user@example.com",
+    "created_at": "2024-01-15T10:30:00Z"
+  }
+}</code></pre>
+            </div>
+            <p class="mt-4 text-sm text-gray-500">
+                Webhooks include a <code>X-Webhook-Signature</code> header for verification using HMAC-SHA256.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

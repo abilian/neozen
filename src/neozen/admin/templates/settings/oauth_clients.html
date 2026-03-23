@@ -1,0 +1,142 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+
+{% block title %}OAuth Clients - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header("OAuth Clients", subtitle="Manage registered applications", breadcrumbs=[{"label": "Settings", "href": "/settings"}, {"label": "OAuth Clients"}]) %}
+    {{ button("Register Application", variant="primary") }}
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Info -->
+    <div class="rounded-md bg-blue-50 p-4">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-blue-800">OAuth 2.1 Server</h3>
+                <div class="mt-2 text-sm text-blue-700">
+                    <p>Register applications that can authenticate users via OAuth 2.1 / OpenID Connect. NeoZen acts as the authorization server.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clients List -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <div class="text-center py-12">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                </svg>
+                <h3 class="mt-2 text-sm font-semibold text-gray-900">No OAuth clients registered</h3>
+                <p class="mt-1 text-sm text-gray-500">Register an application to enable OAuth authentication.</p>
+                <div class="mt-6">
+                    <button type="button" class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                        <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                        </svg>
+                        Register Application
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Endpoints -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-base font-semibold leading-6 text-gray-900">OAuth Endpoints</h3>
+            <div class="mt-4 space-y-3">
+                <div class="flex items-center justify-between rounded-md bg-gray-50 px-4 py-3">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">Authorization Endpoint</p>
+                        <code class="text-xs text-gray-500">/oauth/authorize</code>
+                    </div>
+                    <button type="button" class="text-gray-400 hover:text-gray-600">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="flex items-center justify-between rounded-md bg-gray-50 px-4 py-3">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">Token Endpoint</p>
+                        <code class="text-xs text-gray-500">/oauth/token</code>
+                    </div>
+                    <button type="button" class="text-gray-400 hover:text-gray-600">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="flex items-center justify-between rounded-md bg-gray-50 px-4 py-3">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">UserInfo Endpoint</p>
+                        <code class="text-xs text-gray-500">/oauth/userinfo</code>
+                    </div>
+                    <button type="button" class="text-gray-400 hover:text-gray-600">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="flex items-center justify-between rounded-md bg-gray-50 px-4 py-3">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">JWKS Endpoint</p>
+                        <code class="text-xs text-gray-500">/.well-known/jwks.json</code>
+                    </div>
+                    <button type="button" class="text-gray-400 hover:text-gray-600">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="flex items-center justify-between rounded-md bg-gray-50 px-4 py-3">
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">OpenID Configuration</p>
+                        <code class="text-xs text-gray-500">/.well-known/openid-configuration</code>
+                    </div>
+                    <button type="button" class="text-gray-400 hover:text-gray-600">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supported Grants -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-base font-semibold leading-6 text-gray-900">Supported Grant Types</h3>
+            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">Authorization Code + PKCE</h4>
+                    <p class="mt-1 text-sm text-gray-500">Recommended for web and mobile apps. Requires PKCE for public clients.</p>
+                </div>
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">Refresh Token</h4>
+                    <p class="mt-1 text-sm text-gray-500">Obtain new access tokens without user interaction.</p>
+                </div>
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">Client Credentials</h4>
+                    <p class="mt-1 text-sm text-gray-500">Machine-to-machine authentication for confidential clients.</p>
+                </div>
+                <div class="border rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900">Device Code</h4>
+                    <p class="mt-1 text-sm text-gray-500">For devices with limited input capabilities (Smart TV, CLI).</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
