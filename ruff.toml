@@ -66,23 +66,10 @@ lint.extend-ignore = [
 "tests/**/*.py" = [
     "ANN", #  [ ] missing-return-type
     "PLC0415", # [ ] import-outside-top-level
-    # "RUF029", #  [ ] unused-async
     "B903", #    [ ] class-as-data-structure
     "E402", #    [ ] module-import-not-at-top-of-file
     "RUF100", #  [*] unused-noqa
-    # "F401", #    [*] unused-import
-    # "PTH107", #  [*] os-remove
-    # "I001", #    [*] unsorted-imports
-    # "BLE001", #  blind-except
-    # "D",
-    # "DOC",
-    # "ANN",
-    # "PLR2004",
-    # "INP001",
-    # "PLC0415", # runtime imports for optional dependencies
-    # "E501", # line too long in test assertions
-    # "N802", # naming
-    # "S", # security
+    "FBT",
 ]
 "**/__init__.py" = [
     "RUF022", # Sort __all__
