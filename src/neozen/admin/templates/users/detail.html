@@ -1,0 +1,420 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+{% from "components/table.html" import badge %}
+{% from "components/modal.html" import confirm_modal %}
+
+{% block title %}{{ user.email }} - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header(
+    user.email or "User Details",
+    subtitle="User ID: " ~ user.id,
+    breadcrumbs=[{"label": "Users", "href": "/users"}, {"label": user.email or "User"}]
+) %}
+    <div class="flex gap-2">
+        {% if current_admin and current_admin.is_superadmin %}
+        <form action="/users/{{ user.id }}/impersonate" method="POST" class="inline">
+            <button type="submit"
+                    class="inline-flex items-center rounded-md bg-yellow-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-yellow-400">
+                <svg class="-ml-0.5 mr-1.5 h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" />
+                </svg>
+                Impersonate
+            </button>
+        </form>
+        {% endif %}
+        {% if user.is_active %}
+        <button type="button"
+                @click="$dispatch('open-confirm-deactivate', { action: '/users/{{ user.id }}/deactivate' })"
+                class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            Deactivate
+        </button>
+        {% else %}
+        <form action="/users/{{ user.id }}/activate" method="POST" class="inline">
+            <button type="submit"
+                    class="inline-flex items-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+                Activate
+            </button>
+        </form>
+        {% endif %}
+        <button type="button"
+                @click="$dispatch('open-confirm-delete', { action: '/users/{{ user.id }}/delete' })"
+                class="inline-flex items-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500">
+            Delete
+        </button>
+    </div>
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<!-- Tabs navigation -->
+<div class="border-b border-gray-200 mb-6">
+    <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+        <a href="/users/{{ user.id }}?tab=profile"
+           class="{% if active_tab == 'profile' %}border-indigo-500 text-indigo-600{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium">
+            Profile
+        </a>
+        <a href="/users/{{ user.id }}?tab=credentials"
+           class="{% if active_tab == 'credentials' %}border-indigo-500 text-indigo-600{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium">
+            Credentials
+        </a>
+        <a href="/users/{{ user.id }}?tab=sessions"
+           class="{% if active_tab == 'sessions' %}border-indigo-500 text-indigo-600{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium flex items-center">
+            Sessions
+            {% if sessions %}
+            <span class="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-600">{{ sessions|length }}</span>
+            {% endif %}
+        </a>
+        <a href="/users/{{ user.id }}?tab=roles"
+           class="{% if active_tab == 'roles' %}border-indigo-500 text-indigo-600{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium flex items-center">
+            Roles
+            {% if roles %}
+            <span class="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-600">{{ roles|length }}</span>
+            {% endif %}
+        </a>
+    </nav>
+</div>
+
+<!-- Tab content -->
+{% if active_tab == 'profile' %}
+<!-- Profile Tab -->
+<div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <div class="lg:col-span-2">
+        <div class="overflow-hidden bg-white shadow ring-1 ring-gray-900/5 sm:rounded-lg">
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <h3 class="text-base font-semibold leading-6 text-gray-900">Profile Information</h3>
+            </div>
+            <div class="px-4 py-5 sm:p-6">
+                <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Email</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ user.email or '-' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Username</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ user.username or '-' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">User ID</dt>
+                        <dd class="mt-1 text-sm text-gray-900 font-mono">{{ user.id }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Status</dt>
+                        <dd class="mt-1">
+                            {% if user.is_active %}
+                            <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Active</span>
+                            {% else %}
+                            <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">Inactive</span>
+                            {% endif %}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Email Verified</dt>
+                        <dd class="mt-1">
+                            {% if user.is_verified %}
+                            <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Verified</span>
+                            {% else %}
+                            <span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800">Unverified</span>
+                            {% endif %}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Created</dt>
+                        <dd class="mt-1 text-sm text-gray-900">
+                            {{ user.created_at.strftime('%B %d, %Y at %H:%M UTC') if user.created_at else '-' }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Last Updated</dt>
+                        <dd class="mt-1 text-sm text-gray-900">
+                            {{ user.updated_at.strftime('%B %d, %Y at %H:%M UTC') if user.updated_at else '-' }}
+                        </dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar with quick info -->
+    <div class="space-y-6">
+        <div class="overflow-hidden bg-white shadow ring-1 ring-gray-900/5 sm:rounded-lg">
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <h3 class="text-base font-semibold leading-6 text-gray-900">Quick Summary</h3>
+            </div>
+            <div class="px-4 py-5 sm:p-6 space-y-4">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-500">Active Sessions</span>
+                    <span class="text-sm font-medium text-gray-900">{{ sessions|length }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-500">Roles Assigned</span>
+                    <span class="text-sm font-medium text-gray-900">{{ roles|length }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-500">MFA Status</span>
+                    <span class="text-sm font-medium {% if user.totp_enabled %}text-green-600{% else %}text-gray-500{% endif %}">
+                        {{ 'Enabled' if user.totp_enabled else 'Disabled' }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% elif active_tab == 'credentials' %}
+<!-- Credentials Tab -->
+<div class="max-w-3xl space-y-6">
+    <!-- Password -->
+    <div class="overflow-hidden bg-white shadow ring-1 ring-gray-900/5 sm:rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200 flex items-center justify-between">
+            <div>
+                <h3 class="text-base font-semibold leading-6 text-gray-900">Password</h3>
+                <p class="mt-1 text-sm text-gray-500">Manage the user's password authentication.</p>
+            </div>
+        </div>
+        <div class="px-4 py-5 sm:p-6">
+            <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Password Status</dt>
+                    <dd class="mt-1">
+                        {% if user.hashed_password %}
+                        <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Set</span>
+                        {% else %}
+                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">Not Set</span>
+                        {% endif %}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Last Changed</dt>
+                    <dd class="mt-1 text-sm text-gray-900">
+                        {{ user.password_changed_at.strftime('%B %d, %Y') if user.password_changed_at else 'Never' }}
+                    </dd>
+                </div>
+            </dl>
+            <div class="mt-6">
+                <button type="button" class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50" disabled>
+                    Reset Password
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MFA (TOTP) -->
+    <div class="overflow-hidden bg-white shadow ring-1 ring-gray-900/5 sm:rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+            <h3 class="text-base font-semibold leading-6 text-gray-900">Multi-Factor Authentication</h3>
+            <p class="mt-1 text-sm text-gray-500">TOTP-based two-factor authentication.</p>
+        </div>
+        <div class="px-4 py-5 sm:p-6">
+            <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">TOTP Status</dt>
+                    <dd class="mt-1">
+                        {% if user.totp_enabled %}
+                        <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Enabled</span>
+                        {% else %}
+                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">Disabled</span>
+                        {% endif %}
+                    </dd>
+                </div>
+                {% if user.totp_confirmed_at %}
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Confirmed At</dt>
+                    <dd class="mt-1 text-sm text-gray-900">
+                        {{ user.totp_confirmed_at.strftime('%B %d, %Y') }}
+                    </dd>
+                </div>
+                {% endif %}
+            </dl>
+            {% if user.totp_enabled %}
+            <div class="mt-6">
+                <button type="button" class="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-red-200 hover:bg-red-100" disabled>
+                    Disable MFA
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% elif active_tab == 'sessions' %}
+<!-- Sessions Tab -->
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h3 class="text-base font-semibold leading-6 text-gray-900">Active Sessions</h3>
+        {% if sessions %}
+        <form action="/users/{{ user.id }}/revoke-sessions" method="POST">
+            <button type="submit" class="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-red-200 hover:bg-red-100">
+                Revoke All Sessions
+            </button>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if sessions %}
+    <div class="overflow-hidden bg-white shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+        <table class="min-w-full divide-y divide-gray-300">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:pl-6">Session</th>
+                    <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">IP Address</th>
+                    <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Created</th>
+                    <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Expires</th>
+                    <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                        <span class="sr-only">Actions</span>
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 bg-white">
+                {% for session in sessions %}
+                <tr>
+                    <td class="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6">
+                        <div class="text-sm font-medium text-gray-900 font-mono">{{ session.token_hash[:16] }}...</div>
+                        <div class="text-sm text-gray-500 truncate max-w-xs">{{ session.user_agent or 'Unknown device' }}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {{ session.ip_address or '-' }}
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {{ session.created_at.strftime('%b %d, %Y %H:%M') if session.created_at else '-' }}
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {{ session.expires_at.strftime('%b %d, %Y %H:%M') if session.expires_at else '-' }}
+                    </td>
+                    <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        <form action="/sessions/{{ session.token_hash }}/revoke" method="POST" class="inline">
+                            <button type="submit" class="text-red-600 hover:text-red-900">Revoke</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-12 bg-white rounded-lg shadow ring-1 ring-gray-900/5">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No active sessions</h3>
+        <p class="mt-1 text-sm text-gray-500">This user has no active sessions.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% elif active_tab == 'roles' %}
+<!-- Roles Tab -->
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h3 class="text-base font-semibold leading-6 text-gray-900">Assigned Roles</h3>
+    </div>
+
+    <!-- Add role form -->
+    <div class="overflow-hidden bg-white shadow ring-1 ring-gray-900/5 sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <form action="/users/{{ user.id }}/roles/add" method="POST" class="flex items-end gap-4">
+                <div class="flex-1">
+                    <label for="role_name" class="block text-sm font-medium leading-6 text-gray-900">Add Role</label>
+                    <select name="role_name" id="role_name"
+                            class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                        <option value="">Select a role...</option>
+                        {% for role in all_roles %}
+                        {% if role not in roles %}
+                        <option value="{{ role.name }}">{{ role.name }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+                    Add Role
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {% if roles %}
+    <div class="overflow-hidden bg-white shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+        <table class="min-w-full divide-y divide-gray-300">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:pl-6">Role</th>
+                    <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Type</th>
+                    <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Permissions</th>
+                    <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                        <span class="sr-only">Actions</span>
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 bg-white">
+                {% for role in roles %}
+                <tr>
+                    <td class="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6">
+                        <div class="flex items-center">
+                            <svg class="h-5 w-5 text-gray-400 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd" />
+                            </svg>
+                            <div>
+                                <div class="text-sm font-medium text-gray-900">{{ role.name }}</div>
+                                {% if role.description %}
+                                <div class="text-sm text-gray-500">{{ role.description }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm">
+                        {% if role.is_system %}
+                        <span class="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800">System</span>
+                        {% else %}
+                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">Custom</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-3 py-4 text-sm text-gray-500">
+                        <div class="flex flex-wrap gap-1 max-w-md">
+                            {% for perm in role.get_permissions_list()[:3] %}
+                            <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{{ perm }}</span>
+                            {% endfor %}
+                            {% if role.get_permissions_list()|length > 3 %}
+                            <span class="text-xs text-gray-400">+{{ role.get_permissions_list()|length - 3 }} more</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        <form action="/users/{{ user.id }}/roles/{{ role.name }}/remove" method="POST" class="inline">
+                            <button type="submit" class="text-red-600 hover:text-red-900">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-12 bg-white rounded-lg shadow ring-1 ring-gray-900/5">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No roles assigned</h3>
+        <p class="mt-1 text-sm text-gray-500">Assign a role above to grant permissions.</p>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Confirmation modals -->
+{{ confirm_modal(
+    id="deactivate",
+    title="Deactivate User",
+    message="Are you sure you want to deactivate this user? They will no longer be able to sign in.",
+    confirm_text="Deactivate",
+    variant="danger"
+) }}
+
+{{ confirm_modal(
+    id="delete",
+    title="Delete User",
+    message="Are you sure you want to permanently delete this user? This action cannot be undone.",
+    confirm_text="Delete",
+    variant="danger"
+) }}
+{% endblock %}

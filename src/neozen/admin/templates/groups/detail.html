@@ -1,0 +1,316 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+{% from "components/modal.html" import confirm_modal %}
+
+{% block title %}{{ group.name }} - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header(
+    group.name,
+    subtitle="Group ID: " ~ group.id,
+    breadcrumbs=[{"label": "Groups", "href": "/groups"}, {"label": group.name}]
+) %}
+    <div class="flex gap-2">
+        {% if group.is_active %}
+        <button type="button"
+                @click="$dispatch('open-confirm-deactivate')"
+                class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            Deactivate
+        </button>
+        {% else %}
+        <span class="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-600">
+            Inactive
+        </span>
+        {% endif %}
+        <button type="button"
+                @click="$dispatch('open-confirm-delete', { action: '/groups/{{ group.id }}/delete' })"
+                class="inline-flex items-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500">
+            Delete
+        </button>
+    </div>
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<!-- Group info card -->
+<div class="mb-6 overflow-hidden bg-white shadow ring-1 ring-gray-900/5 sm:rounded-lg">
+    <div class="px-4 py-5 sm:p-6">
+        <dl class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-4">
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Status</dt>
+                <dd class="mt-1">
+                    {% if group.is_active %}
+                    <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Active</span>
+                    {% else %}
+                    <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">Inactive</span>
+                    {% endif %}
+                </dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Members</dt>
+                <dd class="mt-1 text-sm text-gray-900 font-medium">{{ members|length }}</dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Roles</dt>
+                <dd class="mt-1 text-sm text-gray-900 font-medium">{{ roles|length }}</dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Created</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    {{ group.created_at.strftime('%B %d, %Y') if group.created_at else '-' }}
+                </dd>
+            </div>
+        </dl>
+        {% if group.description %}
+        <div class="mt-4 pt-4 border-t border-gray-200">
+            <dt class="text-sm font-medium text-gray-500">Description</dt>
+            <dd class="mt-1 text-sm text-gray-900">{{ group.description }}</dd>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Tabs navigation -->
+<div class="border-b border-gray-200 mb-6">
+    <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+        <a href="/groups/{{ group.id }}?tab=members"
+           class="{% if active_tab == 'members' %}border-indigo-500 text-indigo-600{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium flex items-center">
+            Members
+            {% if members %}
+            <span class="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-600">{{ members|length }}</span>
+            {% endif %}
+        </a>
+        <a href="/groups/{{ group.id }}?tab=roles"
+           class="{% if active_tab == 'roles' %}border-indigo-500 text-indigo-600{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium flex items-center">
+            Roles
+            {% if roles %}
+            <span class="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-600">{{ roles|length }}</span>
+            {% endif %}
+        </a>
+    </nav>
+</div>
+
+<!-- Tab content -->
+{% if active_tab == 'members' %}
+<!-- Members Tab -->
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h3 class="text-base font-semibold leading-6 text-gray-900">Group Members</h3>
+    </div>
+
+    <!-- Add member form -->
+    <div class="overflow-hidden bg-white shadow ring-1 ring-gray-900/5 sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <form action="/groups/{{ group.id }}/members/add" method="POST" class="flex items-end gap-4">
+                <div class="flex-1">
+                    <label for="subject_id" class="block text-sm font-medium leading-6 text-gray-900">Add Member</label>
+                    <select name="subject_id" id="subject_id"
+                            class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                        <option value="">Select a user...</option>
+                        {% for user in all_users %}
+                        {% set is_member = false %}
+                        {% for member, role in members %}
+                        {% if member.id == user.id %}{% set is_member = true %}{% endif %}
+                        {% endfor %}
+                        {% if not is_member %}
+                        <option value="{{ user.id }}">{{ user.email }}{% if user.username %} ({{ user.username }}){% endif %}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="role" class="block text-sm font-medium leading-6 text-gray-900">Role</label>
+                    <select name="role" id="role"
+                            class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                        <option value="member">Member</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <button type="submit" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+                    Add Member
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {% if members %}
+    <div class="overflow-hidden bg-white shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+        <table class="min-w-full divide-y divide-gray-300">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:pl-6">User</th>
+                    <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Role</th>
+                    <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
+                    <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                        <span class="sr-only">Actions</span>
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 bg-white">
+                {% for member, member_role in members %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6">
+                        <div class="flex items-center">
+                            <div class="h-10 w-10 flex-shrink-0">
+                                <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
+                                    <span class="text-sm font-medium text-gray-600">
+                                        {{ (member.email[0] | upper) if member.email else '?' }}
+                                    </span>
+                                </span>
+                            </div>
+                            <div class="ml-4">
+                                <div class="font-medium text-gray-900">
+                                    <a href="/users/{{ member.id }}" class="hover:text-indigo-600">{{ member.email }}</a>
+                                </div>
+                                <div class="text-gray-500 text-sm">{{ member.username or member.id[:8] ~ '...' }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm">
+                        {% if member_role == 'admin' %}
+                        <span class="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800">
+                            Admin
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">
+                            Member
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm">
+                        {% if member.is_active %}
+                        <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Active</span>
+                        {% else %}
+                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        <form action="/groups/{{ group.id }}/members/{{ member.id }}/remove" method="POST" class="inline">
+                            <button type="submit" class="text-red-600 hover:text-red-900">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-12 bg-white rounded-lg shadow ring-1 ring-gray-900/5">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No members</h3>
+        <p class="mt-1 text-sm text-gray-500">Add users to this group using the form above.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% elif active_tab == 'roles' %}
+<!-- Roles Tab -->
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h3 class="text-base font-semibold leading-6 text-gray-900">Assigned Roles</h3>
+        <p class="text-sm text-gray-500">Roles assigned to this group are inherited by all members.</p>
+    </div>
+
+    <!-- Add role form -->
+    <div class="overflow-hidden bg-white shadow ring-1 ring-gray-900/5 sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <form action="/groups/{{ group.id }}/roles/add" method="POST" class="flex items-end gap-4">
+                <div class="flex-1">
+                    <label for="role_name" class="block text-sm font-medium leading-6 text-gray-900">Add Role</label>
+                    <select name="role_name" id="role_name"
+                            class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                        <option value="">Select a role...</option>
+                        {% for role in all_roles %}
+                        {% if role not in roles %}
+                        <option value="{{ role.name }}">{{ role.name }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+                    Add Role
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {% if roles %}
+    <div class="overflow-hidden bg-white shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+        <table class="min-w-full divide-y divide-gray-300">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:pl-6">Role</th>
+                    <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Type</th>
+                    <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Permissions</th>
+                    <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                        <span class="sr-only">Actions</span>
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 bg-white">
+                {% for role in roles %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6">
+                        <div class="flex items-center">
+                            <svg class="h-5 w-5 text-gray-400 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd" />
+                            </svg>
+                            <div>
+                                <a href="/roles/{{ role.name }}" class="text-sm font-medium text-gray-900 hover:text-indigo-600">{{ role.name }}</a>
+                                {% if role.description %}
+                                <div class="text-sm text-gray-500">{{ role.description[:50] ~ '...' if role.description|length > 50 else role.description }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm">
+                        {% if role.is_system %}
+                        <span class="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800">System</span>
+                        {% else %}
+                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">Custom</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-3 py-4 text-sm text-gray-500">
+                        <div class="flex flex-wrap gap-1 max-w-md">
+                            {% for perm in role.get_permissions_list()[:3] %}
+                            <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{{ perm }}</span>
+                            {% endfor %}
+                            {% if role.get_permissions_list()|length > 3 %}
+                            <span class="text-xs text-gray-400">+{{ role.get_permissions_list()|length - 3 }} more</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        <form action="/groups/{{ group.id }}/roles/{{ role.name }}/remove" method="POST" class="inline">
+                            <button type="submit" class="text-red-600 hover:text-red-900">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-12 bg-white rounded-lg shadow ring-1 ring-gray-900/5">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No roles assigned</h3>
+        <p class="mt-1 text-sm text-gray-500">Assign a role above to grant permissions to all group members.</p>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Confirmation modals -->
+{{ confirm_modal(
+    id="delete",
+    title="Delete Group",
+    message="Are you sure you want to delete this group? All memberships will be removed.",
+    confirm_text="Delete",
+    variant="danger"
+) }}
+{% endblock %}

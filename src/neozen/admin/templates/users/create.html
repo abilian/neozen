@@ -1,0 +1,72 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+{% from "components/form.html" import input_field, checkbox_field %}
+
+{% block title %}Create User - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header("Create User", subtitle="Add a new user account", breadcrumbs=[{"label": "Users", "href": "/users"}, {"label": "Create"}]) %}
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl">
+    <form action="/users/create" method="POST" class="space-y-6">
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900">User Information</h3>
+                <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                    <div class="sm:col-span-4">
+                        {{ input_field(
+                            name="email",
+                            label="Email address",
+                            type="email",
+                            required=true,
+                            placeholder="user@example.com",
+                            help_text="The user's primary email address."
+                        ) }}
+                    </div>
+
+                    <div class="sm:col-span-4">
+                        {{ input_field(
+                            name="username",
+                            label="Username",
+                            placeholder="johndoe",
+                            help_text="Optional. A unique username for the user."
+                        ) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900">Account Status</h3>
+                <div class="mt-6 space-y-4">
+                    {{ checkbox_field(
+                        name="is_active",
+                        label="Active",
+                        checked=true,
+                        help_text="Active users can sign in to the application."
+                    ) }}
+
+                    {{ checkbox_field(
+                        name="is_verified",
+                        label="Email Verified",
+                        help_text="Mark the user's email as verified. Usually done via email confirmation."
+                    ) }}
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-end gap-3">
+            <a href="/users"
+               class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                Cancel
+            </a>
+            {{ button("Create User", type="submit", variant="primary") }}
+        </div>
+    </form>
+</div>
+{% endblock %}

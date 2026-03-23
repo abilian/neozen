@@ -1,0 +1,252 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+{% from "components/form.html" import input_field, textarea_field %}
+
+{% block title %}Role Builder - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header("Role Builder", subtitle="Create a custom role with selected permissions", breadcrumbs=[{"label": "Permissions", "href": "/permissions"}, {"label": "Role Builder"}]) %}
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl" x-data="roleBuilder()">
+    <form action="/permissions/role-builder" method="POST" class="space-y-6">
+        <!-- Step 1: Basic Info -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="flex items-center mb-4">
+                    <span class="flex items-center justify-center h-8 w-8 rounded-full bg-indigo-100 text-indigo-600 font-semibold text-sm">1</span>
+                    <h3 class="ml-3 text-base font-semibold leading-6 text-gray-900">Role Information</h3>
+                </div>
+                <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                    <div class="sm:col-span-3">
+                        {{ input_field(
+                            name="name",
+                            label="Role Name",
+                            required=true,
+                            placeholder="content_editor",
+                            help_text="Unique identifier for this role. Use lowercase letters and underscores."
+                        ) }}
+                    </div>
+                    <div class="sm:col-span-6">
+                        {{ textarea_field(
+                            name="description",
+                            label="Description",
+                            placeholder="Describe what this role is for...",
+                            rows=2,
+                            help_text="A brief description of the role's purpose."
+                        ) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Select Permissions -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="flex items-center mb-4">
+                    <span class="flex items-center justify-center h-8 w-8 rounded-full bg-indigo-100 text-indigo-600 font-semibold text-sm">2</span>
+                    <h3 class="ml-3 text-base font-semibold leading-6 text-gray-900">Select Permissions</h3>
+                </div>
+
+                <!-- Permission Categories -->
+                <div class="space-y-6">
+                    <!-- User Permissions -->
+                    <div class="border rounded-lg p-4">
+                        <h4 class="font-medium text-gray-900 mb-3 flex items-center">
+                            <svg class="h-5 w-5 text-gray-400 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" />
+                            </svg>
+                            User Permissions
+                        </h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="user:read"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Read users</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="user:write"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Write users</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="user:delete"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Delete users</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="user:read:own"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Read own</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="user:update:own"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Update own</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Role Permissions -->
+                    <div class="border rounded-lg p-4">
+                        <h4 class="font-medium text-gray-900 mb-3 flex items-center">
+                            <svg class="h-5 w-5 text-gray-400 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd" />
+                            </svg>
+                            Role Permissions
+                        </h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="role:read"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Read roles</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="role:write"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Write roles</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="role:delete"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Delete roles</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Group Permissions -->
+                    <div class="border rounded-lg p-4">
+                        <h4 class="font-medium text-gray-900 mb-3 flex items-center">
+                            <svg class="h-5 w-5 text-gray-400 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 9a3 3 0 100-6 3 3 0 000 6zM6 8a2 2 0 11-4 0 2 2 0 014 0zM1.49 15.326a.78.78 0 01-.358-.442 3 3 0 014.308-3.516 6.484 6.484 0 00-1.905 3.959c-.023.222-.014.442.025.654a4.97 4.97 0 01-2.07-.655zM16.44 15.98a4.97 4.97 0 002.07-.654.78.78 0 00.357-.442 3 3 0 00-4.308-3.517 6.484 6.484 0 011.907 3.96 2.32 2.32 0 01-.026.654zM18 8a2 2 0 11-4 0 2 2 0 014 0zM5.304 16.19a.844.844 0 01-.277-.71 5 5 0 019.947 0 .843.843 0 01-.277.71A6.975 6.975 0 0110 18a6.974 6.974 0 01-4.696-1.81z" />
+                            </svg>
+                            Group Permissions
+                        </h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="group:read"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Read groups</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="group:write"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Write groups</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="group:delete"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Delete groups</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Session Permissions -->
+                    <div class="border rounded-lg p-4">
+                        <h4 class="font-medium text-gray-900 mb-3 flex items-center">
+                            <svg class="h-5 w-5 text-gray-400 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M9.293 2.293a1 1 0 011.414 0l7 7A1 1 0 0117 11h-1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-3a1 1 0 00-1-1H9a1 1 0 00-1 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-6H3a1 1 0 01-.707-1.707l7-7z" clip-rule="evenodd" />
+                            </svg>
+                            Session Permissions
+                        </h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="session:read"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Read sessions</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="session:revoke"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Revoke sessions</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Audit & Settings Permissions -->
+                    <div class="border rounded-lg p-4">
+                        <h4 class="font-medium text-gray-900 mb-3 flex items-center">
+                            <svg class="h-5 w-5 text-gray-400 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+                            </svg>
+                            Audit & Settings
+                        </h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="audit:read"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Read audit logs</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="settings:read"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Read settings</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="permissions" value="settings:write"
+                                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                       @change="updateSelectedCount()">
+                                <span class="ml-2 text-sm text-gray-600">Write settings</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Selected count -->
+                <div class="mt-4 text-sm text-gray-500">
+                    <span x-text="selectedCount"></span> permission(s) selected
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Review & Create -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="flex items-center mb-4">
+                    <span class="flex items-center justify-center h-8 w-8 rounded-full bg-indigo-100 text-indigo-600 font-semibold text-sm">3</span>
+                    <h3 class="ml-3 text-base font-semibold leading-6 text-gray-900">Review & Create</h3>
+                </div>
+                <p class="text-sm text-gray-500 mb-4">
+                    Review your selections and click Create Role to finish.
+                </p>
+                <div class="flex justify-end gap-3">
+                    <a href="/permissions"
+                       class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                        Cancel
+                    </a>
+                    {{ button("Create Role", type="submit", variant="primary") }}
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+function roleBuilder() {
+    return {
+        selectedCount: 0,
+        updateSelectedCount() {
+            this.selectedCount = document.querySelectorAll('input[name="permissions"]:checked').length;
+        }
+    }
+}
+</script>
+{% endblock %}

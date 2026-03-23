@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}NeoZen Admin{% endblock %}</title>
+
+    <!-- Tailwind CSS (using CDN for development, replace with compiled CSS for production) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            200: '#c7d2fe',
+                            300: '#a5b4fc',
+                            400: '#818cf8',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            800: '#3730a3',
+                            900: '#312e81',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Inter font -->
+    <link rel="preconnect" href="https://rsms.me/">
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+
+    <!-- Heroicons (inline SVG, no external dependency) -->
+
+    <style>
+        [x-cloak] { display: none !important; }
+
+        /* Loading indicator for HTMX */
+        .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+        .htmx-request .htmx-indicator { opacity: 1; }
+        .htmx-request.htmx-indicator { opacity: 1; }
+
+        /* Smooth transitions */
+        .htmx-swapping { opacity: 0; transition: opacity 100ms ease-out; }
+        .htmx-settling { opacity: 1; transition: opacity 100ms ease-in; }
+
+        /* Spinner animation */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { animation: spin 0.6s linear infinite; }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+
+    {% block head %}{% endblock %}
+</head>
+<body class="h-full" hx-boost="true">
+    {% block body %}{% endblock %}
+
+    <!-- Toast notifications container -->
+    <div id="toast-container"
+         class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"
+         x-data="{ toasts: [] }"
+         @toast.window="toasts.push($event.detail); setTimeout(() => toasts.shift(), 5000)">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div x-show="true"
+                 x-transition:enter="transform ease-out duration-300 transition"
+                 x-transition:enter-start="translate-y-2 opacity-0"
+                 x-transition:enter-end="translate-y-0 opacity-100"
+                 x-transition:leave="transition ease-in duration-200"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 :class="{
+                     'bg-green-50 text-green-800 border-green-200': toast.type === 'success',
+                     'bg-red-50 text-red-800 border-red-200': toast.type === 'error',
+                     'bg-yellow-50 text-yellow-800 border-yellow-200': toast.type === 'warning',
+                     'bg-blue-50 text-blue-800 border-blue-200': toast.type === 'info'
+                 }"
+                 class="flex items-center p-4 rounded-lg shadow-lg border max-w-sm">
+                <span x-text="toast.message"></span>
+                <button @click="toasts = toasts.filter(t => t !== toast)"
+                        class="ml-4 inline-flex text-gray-400 hover:text-gray-500">
+                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+        </template>
+    </div>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

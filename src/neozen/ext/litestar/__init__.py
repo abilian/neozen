@@ -61,6 +61,13 @@ from .helpers import (
 from .middleware import NeoZenMiddleware
 from .oauth import create_oauth_router
 from .plugin import NeoZenPlugin
+from .rate_limit import (
+    RateLimitGuard,
+    RateLimitMiddleware as RateLimitMiddlewareLitestar,
+    get_client_ip,
+    get_rate_limit_result,
+    rate_limit_guard,
+)
 
 __all__ = [
     # Config
@@ -88,4 +95,10 @@ __all__ = [
     "logout_user",
     # OAuth
     "create_oauth_router",
+    # Rate limiting
+    "RateLimitGuard",
+    "RateLimitMiddlewareLitestar",
+    "get_client_ip",
+    "get_rate_limit_result",
+    "rate_limit_guard",
 ]

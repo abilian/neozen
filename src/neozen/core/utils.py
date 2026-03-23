@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
+
+
+def generate_id() -> str:
+    """Generate a unique ID.
+
+    Returns:
+        A unique string ID.
+    """
+    return str(uuid.uuid4())
 
 
 def ensure_utc(dt: datetime) -> datetime:
@@ -21,4 +31,4 @@ def ensure_utc(dt: datetime) -> datetime:
     return dt
 
 
-__all__ = ["ensure_utc"]
+__all__ = ["ensure_utc", "generate_id"]

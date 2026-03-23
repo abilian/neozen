@@ -1,0 +1,171 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/form.html" import search_input %}
+{% from "components/button.html" import button %}
+{% from "components/table.html" import badge, pagination %}
+{% from "components/modal.html" import confirm_modal %}
+
+{% block title %}Users - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header("Users", subtitle="Manage user accounts", breadcrumbs=[{"label": "Users"}]) %}
+    <div class="flex gap-2">
+        <a href="/users/import"
+           class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            <svg class="-ml-0.5 mr-1.5 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M9.25 13.25a.75.75 0 001.5 0V4.636l2.955 3.129a.75.75 0 001.09-1.03l-4.25-4.5a.75.75 0 00-1.09 0l-4.25 4.5a.75.75 0 101.09 1.03L9.25 4.636v8.614z" />
+                <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+            </svg>
+            Import
+        </a>
+        {{ button("Add User", variant="primary", href="/users/create") }}
+    </div>
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<!-- Search and filters -->
+<div class="mb-6">
+    <div class="flex flex-col sm:flex-row gap-4">
+        <div class="flex-1">
+            {{ search_input(name="search", value=search or '', placeholder="Search by email or name...", action="/users") }}
+        </div>
+        <div class="flex gap-2">
+            <select name="status"
+                    class="block rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                    onchange="this.form.submit()">
+                <option value="">All statuses</option>
+                <option value="active" {% if status == 'active' %}selected{% endif %}>Active</option>
+                <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Users table -->
+<div class="overflow-hidden bg-white shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+    <table class="min-w-full divide-y divide-gray-300">
+        <thead class="bg-gray-50">
+            <tr>
+                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:pl-6">
+                    User
+                </th>
+                <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Status
+                </th>
+                <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    MFA
+                </th>
+                <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Created
+                </th>
+                <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                    <span class="sr-only">Actions</span>
+                </th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200 bg-white">
+            {% for user in users %}
+            <tr class="hover:bg-gray-50 transition-colors">
+                <td class="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6">
+                    <div class="flex items-center">
+                        <div class="h-10 w-10 flex-shrink-0">
+                            <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100">
+                                <span class="text-sm font-medium leading-none text-indigo-600">
+                                    {{ user.email[0]|upper if user.email else '?' }}
+                                </span>
+                            </span>
+                        </div>
+                        <div class="ml-4">
+                            <div class="font-medium text-gray-900">{{ user.email or 'No email' }}</div>
+                            <div class="text-gray-500 text-sm">ID: {{ user.id[:8] }}...</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm">
+                    {% if user.is_active %}
+                    <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                        Active
+                    </span>
+                    {% else %}
+                    <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">
+                        Inactive
+                    </span>
+                    {% endif %}
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm">
+                    {% if user.totp_secret %}
+                    <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                        <svg class="mr-1 h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd" />
+                        </svg>
+                        Enabled
+                    </span>
+                    {% else %}
+                    <span class="inline-flex items-center text-gray-400 text-xs">
+                        Not enabled
+                    </span>
+                    {% endif %}
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                    {{ user.created_at.strftime('%b %d, %Y') if user.created_at else '-' }}
+                </td>
+                <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                    <div class="flex justify-end gap-2">
+                        <a href="/users/{{ user.id }}"
+                           class="text-indigo-600 hover:text-indigo-900">View</a>
+                        {% if user.is_active %}
+                        <button type="button"
+                                @click="$dispatch('open-confirm-deactivate', { action: '/users/{{ user.id }}/deactivate' })"
+                                class="text-red-600 hover:text-red-900">Deactivate</button>
+                        {% else %}
+                        <form action="/users/{{ user.id }}/activate" method="POST" class="inline">
+                            <button type="submit" class="text-green-600 hover:text-green-900">Activate</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="px-6 py-12 text-center">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-900">No users found</h3>
+                    <p class="mt-1 text-sm text-gray-500">
+                        {% if search %}
+                        No users match your search criteria.
+                        {% else %}
+                        Get started by creating a new user.
+                        {% endif %}
+                    </p>
+                    <div class="mt-6">
+                        <a href="/users/create"
+                           class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                            <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                            </svg>
+                            Add User
+                        </a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if users %}
+    {{ pagination(page=page|default(1), total_pages=total_pages|default(1), total_items=total_items|default(users|length)) }}
+    {% endif %}
+</div>
+
+<!-- Deactivate confirmation modal -->
+{{ confirm_modal(
+    id="deactivate",
+    title="Deactivate User",
+    message="Are you sure you want to deactivate this user? They will no longer be able to sign in.",
+    confirm_text="Deactivate",
+    variant="danger"
+) }}
+{% endblock %}

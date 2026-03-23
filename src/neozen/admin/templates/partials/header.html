@@ -1,0 +1,133 @@
+<!-- Impersonation banner -->
+{% if impersonation %}
+<div class="bg-yellow-400 px-4 py-2">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center">
+            <svg class="h-5 w-5 text-yellow-800 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+            </svg>
+            <span class="text-sm font-medium text-yellow-800">
+                Impersonating: <strong>{{ impersonation.user_email }}</strong>
+            </span>
+        </div>
+        <form action="/stop-impersonation" method="POST" class="inline">
+            <button type="submit" class="rounded-md bg-yellow-600 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-yellow-500">
+                Stop Impersonation
+            </button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Top header -->
+<div class="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
+    <!-- Mobile menu button -->
+    <button type="button"
+            class="-m-2.5 p-2.5 text-gray-700 lg:hidden"
+            @click="sidebarOpen = true">
+        <span class="sr-only">Open sidebar</span>
+        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        </svg>
+    </button>
+
+    <!-- Separator -->
+    <div class="h-6 w-px bg-gray-200 lg:hidden" aria-hidden="true"></div>
+
+    <div class="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
+        <!-- Search -->
+        <form class="relative flex flex-1" action="/search" method="GET">
+            <label for="search-field" class="sr-only">Search</label>
+            <svg class="pointer-events-none absolute inset-y-0 left-0 h-full w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd" />
+            </svg>
+            <input id="search-field"
+                   class="block h-full w-full border-0 py-0 pl-8 pr-0 text-gray-900 placeholder:text-gray-400 focus:ring-0 sm:text-sm"
+                   placeholder="Search users, roles, audit logs..."
+                   type="search"
+                   name="q">
+        </form>
+
+        <div class="flex items-center gap-x-4 lg:gap-x-6">
+            <!-- Notifications dropdown -->
+            <div class="relative" x-data="{ open: false }">
+                <button type="button"
+                        class="-m-2.5 p-2.5 text-gray-400 hover:text-gray-500"
+                        @click="open = !open">
+                    <span class="sr-only">View notifications</span>
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                    </svg>
+                </button>
+                <!-- Notification badge -->
+                <span class="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-400 ring-2 ring-white"></span>
+
+                <!-- Dropdown panel -->
+                <div x-show="open"
+                     x-cloak
+                     @click.away="open = false"
+                     x-transition:enter="transition ease-out duration-100"
+                     x-transition:enter-start="transform opacity-0 scale-95"
+                     x-transition:enter-end="transform opacity-100 scale-100"
+                     x-transition:leave="transition ease-in duration-75"
+                     x-transition:leave-start="transform opacity-100 scale-100"
+                     x-transition:leave-end="transform opacity-0 scale-95"
+                     class="absolute right-0 z-10 mt-2.5 w-80 origin-top-right rounded-md bg-white py-2 shadow-lg ring-1 ring-gray-900/5">
+                    <div class="px-4 py-2 border-b border-gray-100">
+                        <h3 class="text-sm font-semibold text-gray-900">Notifications</h3>
+                    </div>
+                    <div class="px-4 py-3 text-sm text-gray-500">
+                        No new notifications
+                    </div>
+                </div>
+            </div>
+
+            <!-- Separator -->
+            <div class="hidden lg:block lg:h-6 lg:w-px lg:bg-gray-200" aria-hidden="true"></div>
+
+            <!-- Profile dropdown -->
+            <div class="relative" x-data="{ open: false }">
+                <button type="button"
+                        class="-m-1.5 flex items-center p-1.5"
+                        @click="open = !open">
+                    <span class="sr-only">Open user menu</span>
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600">
+                        <span class="text-sm font-medium leading-none text-white">
+                            {{ current_admin.name[0]|upper if current_admin else 'A' }}
+                        </span>
+                    </span>
+                    <span class="hidden lg:flex lg:items-center">
+                        <span class="ml-4 text-sm font-semibold leading-6 text-gray-900" aria-hidden="true">
+                            {{ current_admin.name if current_admin else 'Admin' }}
+                        </span>
+                        <svg class="ml-2 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                        </svg>
+                    </span>
+                </button>
+
+                <!-- Dropdown menu -->
+                <div x-show="open"
+                     x-cloak
+                     @click.away="open = false"
+                     x-transition:enter="transition ease-out duration-100"
+                     x-transition:enter-start="transform opacity-0 scale-95"
+                     x-transition:enter-end="transform opacity-100 scale-100"
+                     x-transition:leave="transition ease-in duration-75"
+                     x-transition:leave-start="transform opacity-100 scale-100"
+                     x-transition:leave-end="transform opacity-0 scale-95"
+                     class="absolute right-0 z-10 mt-2.5 w-56 origin-top-right rounded-md bg-white py-2 shadow-lg ring-1 ring-gray-900/5">
+                    {% if current_admin %}
+                    <div class="px-4 py-2 border-b border-gray-100">
+                        <p class="text-sm font-medium text-gray-900">{{ current_admin.email }}</p>
+                        <p class="text-xs text-gray-500">{{ current_admin.role.value|title }}</p>
+                    </div>
+                    {% endif %}
+                    <a href="/settings" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>
+                    <hr class="my-1 border-gray-100">
+                    <a href="/logout" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Sign out</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

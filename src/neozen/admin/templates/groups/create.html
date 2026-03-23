@@ -1,0 +1,52 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+{% from "components/form.html" import input_field, textarea_field %}
+
+{% block title %}Create Group - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header("Create Group", subtitle="Add a new user group", breadcrumbs=[{"label": "Groups", "href": "/groups"}, {"label": "Create"}]) %}
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl">
+    <form action="/groups/create" method="POST" class="space-y-6">
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900">Group Information</h3>
+                <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                    <div class="sm:col-span-4">
+                        {{ input_field(
+                            name="name",
+                            label="Group Name",
+                            required=true,
+                            placeholder="Engineering Team",
+                            help_text="A descriptive name for this group."
+                        ) }}
+                    </div>
+
+                    <div class="sm:col-span-6">
+                        {{ textarea_field(
+                            name="description",
+                            label="Description",
+                            placeholder="Describe the purpose of this group...",
+                            rows=3,
+                            help_text="Optional description of the group's purpose."
+                        ) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-end gap-3">
+            <a href="/groups"
+               class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                Cancel
+            </a>
+            {{ button("Create Group", type="submit", variant="primary") }}
+        </div>
+    </form>
+</div>
+{% endblock %}

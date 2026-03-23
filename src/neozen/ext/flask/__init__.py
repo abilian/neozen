@@ -64,6 +64,7 @@ from .helpers import (
 )
 from .mixins import AnonymousUser, UserMixin
 from .oauth import create_oauth_blueprint
+from .rate_limit import FlaskRateLimitMiddleware, get_client_ip, rate_limit
 
 __all__ = [
     # Extension
@@ -85,4 +86,8 @@ __all__ = [
     "UserMixin",
     # OAuth
     "create_oauth_blueprint",
+    # Rate limiting
+    "FlaskRateLimitMiddleware",
+    "get_client_ip",
+    "rate_limit",
 ]

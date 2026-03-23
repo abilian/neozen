@@ -1,0 +1,233 @@
+{% extends "layouts/app.html" %}
+{% from "components/breadcrumb.html" import page_header %}
+{% from "components/button.html" import button %}
+
+{% block title %}Access Analyzer - NeoZen Admin{% endblock %}
+
+{% block page_header %}
+{% call page_header("Access Analyzer", subtitle="Analyze who has access to what", breadcrumbs=[{"label": "Permissions", "href": "/permissions"}, {"label": "Access Analyzer"}]) %}
+{% endcall %}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Query Forms -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Who has access to X? -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">
+                    <svg class="inline-block h-5 w-5 text-gray-400 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd" />
+                    </svg>
+                    Who has access to...?
+                </h3>
+                <form action="/permissions/access-analyzer" method="GET" class="space-y-4">
+                    <input type="hidden" name="type" value="permission">
+                    <div>
+                        <label for="permission_query" class="block text-sm font-medium leading-6 text-gray-900">Permission</label>
+                        <select name="value" id="permission_query"
+                                class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            <option value="">Select a permission...</option>
+                            {% for perm in permissions %}
+                            <option value="{{ perm }}" {% if query_type == 'permission' and query_value == perm %}selected{% endif %}>{{ perm }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+                        Find Users
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- What can user Y do? -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">
+                    <svg class="inline-block h-5 w-5 text-gray-400 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" />
+                    </svg>
+                    What can this user do?
+                </h3>
+                <form action="/permissions/access-analyzer" method="GET" class="space-y-4">
+                    <input type="hidden" name="type" value="user">
+                    <div>
+                        <label for="user_query" class="block text-sm font-medium leading-6 text-gray-900">User</label>
+                        <select name="value" id="user_query"
+                                class="mt-2 block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                            <option value="">Select a user...</option>
+                            {% for user in users %}
+                            <option value="{{ user.id }}" {% if query_type == 'user' and query_value == user.id %}selected{% endif %}>{{ user.email }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+                        Show Permissions
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results -->
+    {% if results is not none %}
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            {% if query_type == 'permission' %}
+            <!-- Who has access results -->
+            <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">
+                Users with <span class="font-mono text-indigo-600">{{ query_value }}</span> permission
+            </h3>
+            {% if results %}
+            <div class="overflow-hidden ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+                <table class="min-w-full divide-y divide-gray-300">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:pl-6">User</th>
+                            <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Source</th>
+                            <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Source Type</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 bg-white">
+                        {% for item in results %}
+                        <tr>
+                            <td class="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6">
+                                <div class="flex items-center">
+                                    <div class="h-8 w-8 flex-shrink-0">
+                                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
+                                            <span class="text-xs font-medium text-gray-600">
+                                                {{ (item.subject.email[0] | upper) if item.subject.email else '?' }}
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div class="ml-3">
+                                        <a href="/users/{{ item.subject.id }}" class="font-medium text-gray-900 hover:text-indigo-600">{{ item.subject.email }}</a>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                                {{ item.source_name }}
+                            </td>
+                            <td class="whitespace-nowrap px-3 py-4 text-sm">
+                                {% if item.source_type == 'role' %}
+                                <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+                                    Direct Role
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800">
+                                    Via Group
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="mt-4 text-sm text-gray-500">
+                Found {{ results|length }} user(s) with this permission.
+            </p>
+            {% else %}
+            <div class="text-center py-8">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No users found</h3>
+                <p class="mt-1 text-sm text-gray-500">No users have this permission.</p>
+            </div>
+            {% endif %}
+
+            {% elif query_type == 'user' %}
+            <!-- User's permissions results -->
+            <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">
+                Effective permissions for user
+            </h3>
+            {% if results %}
+            <div class="overflow-hidden ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+                <table class="min-w-full divide-y divide-gray-300">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:pl-6">Permission</th>
+                            <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Source</th>
+                            <th scope="col" class="px-3 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Source Type</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 bg-white">
+                        {% for item in results %}
+                        <tr>
+                            <td class="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6">
+                                <span class="font-mono text-sm text-gray-900">{{ item.permission }}</span>
+                            </td>
+                            <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                                {{ item.source_name }}
+                            </td>
+                            <td class="whitespace-nowrap px-3 py-4 text-sm">
+                                {% if item.source_type == 'role' %}
+                                <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+                                    Direct Role
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800">
+                                    Via Group
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Permission Summary -->
+            <div class="mt-6">
+                <h4 class="text-sm font-medium text-gray-900 mb-3">Permission Summary</h4>
+                <div class="flex flex-wrap gap-2">
+                    {% set categories = {} %}
+                    {% for item in results %}
+                    {% set cat = item.permission.split(':')[0] %}
+                    {% if cat not in categories %}
+                    {% set _ = categories.update({cat: 0}) %}
+                    {% endif %}
+                    {% set _ = categories.update({cat: categories[cat] + 1}) %}
+                    {% endfor %}
+                    {% for cat, count in categories.items() %}
+                    <span class="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-800">
+                        <span class="capitalize">{{ cat }}</span>
+                        <span class="ml-2 inline-flex items-center justify-center h-5 w-5 rounded-full bg-gray-200 text-xs">{{ count }}</span>
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <p class="mt-4 text-sm text-gray-500">
+                User has {{ results|length }} effective permission(s).
+            </p>
+            {% else %}
+            <div class="text-center py-8">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No permissions</h3>
+                <p class="mt-1 text-sm text-gray-500">This user has no permissions assigned.</p>
+            </div>
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <!-- No query yet -->
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-12 text-center sm:px-6">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+            </svg>
+            <h3 class="mt-2 text-sm font-semibold text-gray-900">Select a query</h3>
+            <p class="mt-1 text-sm text-gray-500">
+                Use the forms above to analyze access permissions.
+            </p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

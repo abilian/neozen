@@ -14,7 +14,11 @@ from neozen.storage.base import DoesNotExist
 from neozen.storage.sqlalchemy.models import (
     BackupCode,
     EmailVerificationToken,
+    Group,
+    GroupMembership,
+    GroupRoleAssignment,
     OAuthState,
+    Organization,
     PasswordHistory,
     Role,
     RoleAssignment,
@@ -211,11 +215,63 @@ def get_webauthn_challenge_repository(
     return WebAuthnChallengeRepository(session=session)
 
 
+class GroupRepository(NeoZenRepository[Group]):
+    """Repository for Group model."""
+
+    model_type = Group
+
+
+class GroupMembershipRepository(NeoZenRepository[GroupMembership]):
+    """Repository for GroupMembership model."""
+
+    model_type = GroupMembership
+
+
+class GroupRoleAssignmentRepository(NeoZenRepository[GroupRoleAssignment]):
+    """Repository for GroupRoleAssignment model."""
+
+    model_type = GroupRoleAssignment
+
+
+class OrganizationRepository(NeoZenRepository[Organization]):
+    """Repository for Organization model."""
+
+    model_type = Organization
+
+
+def get_group_repository(session: AsyncSession) -> GroupRepository:
+    """Factory function for GroupRepository."""
+    return GroupRepository(session=session)
+
+
+def get_group_membership_repository(
+    session: AsyncSession,
+) -> GroupMembershipRepository:
+    """Factory function for GroupMembershipRepository."""
+    return GroupMembershipRepository(session=session)
+
+
+def get_group_role_assignment_repository(
+    session: AsyncSession,
+) -> GroupRoleAssignmentRepository:
+    """Factory function for GroupRoleAssignmentRepository."""
+    return GroupRoleAssignmentRepository(session=session)
+
+
+def get_organization_repository(session: AsyncSession) -> OrganizationRepository:
+    """Factory function for OrganizationRepository."""
+    return OrganizationRepository(session=session)
+
+
 __all__ = [
     "BackupCodeRepository",
     "EmailVerificationTokenRepository",
+    "GroupMembershipRepository",
+    "GroupRepository",
+    "GroupRoleAssignmentRepository",
     "NeoZenRepository",
     "OAuthStateRepository",
+    "OrganizationRepository",
     "PasswordHistoryRepository",
     "RoleAssignmentRepository",
     "RoleRepository",
@@ -226,7 +282,11 @@ __all__ = [
     "WebAuthnCredentialRepository",
     "get_backup_code_repository",
     "get_email_verification_token_repository",
+    "get_group_membership_repository",
+    "get_group_repository",
+    "get_group_role_assignment_repository",
     "get_oauth_state_repository",
+    "get_organization_repository",
     "get_password_history_repository",
     "get_role_assignment_repository",
     "get_role_repository",

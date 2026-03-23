@@ -1,0 +1,119 @@
+{# Data table component with sorting, pagination, and row actions #}
+
+{% macro table(columns, rows, id="data-table", sortable=true, row_id_field="id") %}
+<div class="overflow-hidden bg-white shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+    <table class="min-w-full divide-y divide-gray-300" id="{{ id }}">
+        <thead class="bg-gray-50">
+            <tr>
+                {% for col in columns %}
+                <th scope="col"
+                    class="{% if loop.first %}pl-4 pr-3 sm:pl-6{% elif loop.last %}pl-3 pr-4 sm:pr-6{% else %}px-3{% endif %} py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    {% if sortable and col.sortable is not defined or col.sortable %}
+                    <a href="?sort={{ col.field }}&order={{ 'desc' if request.query_params.get('sort') == col.field and request.query_params.get('order', 'asc') == 'asc' else 'asc' }}"
+                       class="group inline-flex items-center gap-1 hover:text-gray-700">
+                        {{ col.label }}
+                        <svg class="h-4 w-4 text-gray-400 group-hover:text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 3a.75.75 0 01.55.24l3.25 3.5a.75.75 0 11-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 01-1.1-1.02l3.25-3.5A.75.75 0 0110 3zm-3.76 9.2a.75.75 0 011.06.04l2.7 2.908 2.7-2.908a.75.75 0 111.1 1.02l-3.25 3.5a.75.75 0 01-1.1 0l-3.25-3.5a.75.75 0 01.04-1.06z" clip-rule="evenodd" />
+                        </svg>
+                    </a>
+                    {% else %}
+                    {{ col.label }}
+                    {% endif %}
+                </th>
+                {% endfor %}
+                <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                    <span class="sr-only">Actions</span>
+                </th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200 bg-white">
+            {% for row in rows %}
+            <tr class="hover:bg-gray-50 transition-colors">
+                {% for col in columns %}
+                <td class="{% if loop.first %}pl-4 pr-3 sm:pl-6 font-medium text-gray-900{% elif loop.last %}pl-3 pr-4 sm:pr-6{% else %}px-3{% endif %} py-4 whitespace-nowrap text-sm text-gray-500">
+                    {% if col.render %}
+                        {{ col.render(row) }}
+                    {% elif col.type == 'badge' %}
+                        {{ badge(row[col.field], col.badge_variant|default('gray')) }}
+                    {% elif col.type == 'date' %}
+                        {{ row[col.field].strftime('%Y-%m-%d %H:%M') if row[col.field] else '-' }}
+                    {% elif col.type == 'bool' %}
+                        {% if row[col.field] %}
+                        <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">Yes</span>
+                        {% else %}
+                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">No</span>
+                        {% endif %}
+                    {% else %}
+                        {{ row[col.field] if row[col.field] is defined else row.get(col.field, '-') }}
+                    {% endif %}
+                </td>
+                {% endfor %}
+                <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                    {{ caller(row) if caller else '' }}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="{{ columns|length + 1 }}" class="px-6 py-12 text-center text-sm text-gray-500">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                    </svg>
+                    <h3 class="mt-2 text-sm font-medium text-gray-900">No data</h3>
+                    <p class="mt-1 text-sm text-gray-500">No records found.</p>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
+
+{% macro badge(text, variant="gray") %}
+{% set variants = {
+    'gray': 'bg-gray-100 text-gray-700',
+    'primary': 'bg-indigo-100 text-indigo-700',
+    'success': 'bg-green-100 text-green-700',
+    'warning': 'bg-yellow-100 text-yellow-800',
+    'danger': 'bg-red-100 text-red-700',
+    'info': 'bg-blue-100 text-blue-700'
+} %}
+<span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium {{ variants.get(variant, variants.gray) }}">
+    {{ text }}
+</span>
+{% endmacro %}
+
+{% macro pagination(page, total_pages, total_items, per_page=50, base_url="?") %}
+{% set start = (page - 1) * per_page + 1 %}
+{% set end = [page * per_page, total_items]|min %}
+<nav class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6" aria-label="Pagination">
+    <div class="hidden sm:block">
+        <p class="text-sm text-gray-700">
+            Showing <span class="font-medium">{{ start }}</span> to <span class="font-medium">{{ end }}</span> of
+            <span class="font-medium">{{ total_items }}</span> results
+        </p>
+    </div>
+    <div class="flex flex-1 justify-between sm:justify-end gap-2">
+        {% if page > 1 %}
+        <a href="{{ base_url }}page={{ page - 1 }}"
+           class="relative inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            Previous
+        </a>
+        {% else %}
+        <span class="relative inline-flex items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed">
+            Previous
+        </span>
+        {% endif %}
+
+        {% if page < total_pages %}
+        <a href="{{ base_url }}page={{ page + 1 }}"
+           class="relative inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            Next
+        </a>
+        {% else %}
+        <span class="relative inline-flex items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-400 cursor-not-allowed">
+            Next
+        </span>
+        {% endif %}
+    </div>
+</nav>
+{% endmacro %}

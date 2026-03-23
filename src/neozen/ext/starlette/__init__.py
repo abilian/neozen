@@ -53,6 +53,11 @@ from .helpers import (
 )
 from .middleware import NeoZenMiddleware
 from .oauth import create_oauth_routes
+from .rate_limit import (
+    LoginRateLimitMiddleware,
+    RateLimitMiddleware,
+    get_client_ip,
+)
 
 __all__ = [
     # Backend
@@ -72,4 +77,8 @@ __all__ = [
     "logout_user",
     # OAuth
     "create_oauth_routes",
+    # Rate limiting
+    "LoginRateLimitMiddleware",
+    "RateLimitMiddleware",
+    "get_client_ip",
 ]

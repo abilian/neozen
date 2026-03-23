@@ -402,10 +402,146 @@ class WebAuthnChallenge(Base):
         return f"<WebAuthnChallenge id={self.id} operation={self.operation}>"
 
 
+class Group(AuditColumns, Base):
+    """SQLAlchemy model for user groups.
+
+    Groups allow organizing users and assigning roles collectively.
+    Supports nested groups via parent_id.
+    """
+
+    __tablename__ = "groups"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text(), nullable=False, default="")
+    parent_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("groups.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    organization_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<Group id={self.id} name={self.name}>"
+
+
+class GroupMembership(Base):
+    """SQLAlchemy model for group membership.
+
+    Links subjects to groups with a membership role.
+    """
+
+    __tablename__ = "group_memberships"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    group_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("groups.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    subject_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="member"
+    )  # member, admin, owner
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    added_by: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    def __repr__(self) -> str:
+        return f"<GroupMembership group={self.group_id} subject={self.subject_id}>"
+
+
+class GroupRoleAssignment(Base):
+    """SQLAlchemy model for assigning roles to groups.
+
+    All members of the group inherit these roles.
+    """
+
+    __tablename__ = "group_role_assignments"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    group_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("groups.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("roles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    granted_by: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    def __repr__(self) -> str:
+        return f"<GroupRoleAssignment group={self.group_id} role={self.role_id}>"
+
+
+class Organization(AuditColumns, Base):
+    """SQLAlchemy model for organizations (multi-tenancy).
+
+    Organizations scope users, groups, and resources for multi-tenant deployments.
+    """
+
+    __tablename__ = "organizations"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    slug: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
+    domain: Mapped[str | None] = mapped_column(
+        String(255), unique=True, nullable=True, index=True
+    )
+    plan: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="free"
+    )  # free, pro, enterprise
+    is_active: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
+    # Settings stored as JSON
+    settings_json: Mapped[str] = mapped_column(Text(), nullable=False, default="{}")
+
+    def __repr__(self) -> str:
+        return f"<Organization id={self.id} name={self.name}>"
+
+
 __all__ = [
     "BackupCode",
     "EmailVerificationToken",
+    "Group",
+    "GroupMembership",
+    "GroupRoleAssignment",
     "OAuthState",
+    "Organization",
     "PasswordHistory",
     "Role",
     "RoleAssignment",
