@@ -261,7 +261,7 @@ class PermissionsRequiredGuard:
             AuthenticationRequiredError: If user is not authenticated
             PermissionDeniedError: If user lacks required permissions
         """
-        from neozen.core.authz.models import Permission  # noqa: PLC0415
+        from neozen.web.auth import check_user_permissions  # noqa: PLC0415
 
         state = connection.scope.get("state", {})
         session = state.get("neozen_session")
@@ -275,27 +275,12 @@ class PermissionsRequiredGuard:
             raise AuthenticationRequiredError(detail="Authentication required")
 
         # Check permissions
-        for perm_str in self.permissions:
-            required = Permission.parse(perm_str)
-            has_perm = False
-
-            # Try has_permission method first
-            if hasattr(user, "has_permission"):
-                has_perm = user.has_permission(required)
-            else:
-                # Fall back to checking permissions attribute
-                user_perms = getattr(user, "permissions", [])
-                for user_perm_str in user_perms:
-                    user_perm = Permission.parse(user_perm_str)
-                    if user_perm.matches(required):
-                        has_perm = True
-                        break
-
-            if not has_perm:
-                raise PermissionDeniedError(
-                    permission=perm_str,
-                    detail=f"Missing permission: {perm_str}",
-                )
+        missing = check_user_permissions(user, self.permissions)
+        if missing:
+            raise PermissionDeniedError(
+                permission=missing,
+                detail=f"Missing permission: {missing}",
+            )
 
 
 def roles_required(*roles: str) -> RolesRequiredGuard:

@@ -176,7 +176,7 @@ def permissions_required(
         async def delete_user(request: Request) -> Response:
             ...
     """
-    from neozen.core.authz.models import Permission  # noqa: PLC0415
+    from neozen.web.auth import check_user_permissions  # noqa: PLC0415
 
     def decorator(f: RouteHandler) -> RouteHandler:
         @wraps(f)
@@ -192,32 +192,14 @@ def permissions_required(
                 )
 
             # Check permissions
-            for perm_str in permissions:
-                required = Permission.parse(perm_str)
-                has_perm = False
-
-                # Try has_permission method first
-                if hasattr(user, "has_permission"):
-                    has_perm = user.has_permission(required)
-                else:
-                    # Fall back to checking permissions attribute
-                    user_perms = getattr(user, "permissions", [])
-                    for user_perm_str in user_perms:
-                        user_perm = Permission.parse(user_perm_str)
-                        if user_perm.matches(required):
-                            has_perm = True
-                            break
-
-                if not has_perm:
-                    if on_forbidden is not None:
-                        return await on_forbidden(request)
-                    return JSONResponse(
-                        {
-                            "error": "Forbidden",
-                            "detail": f"Missing permission: {perm_str}",
-                        },
-                        status_code=403,
-                    )
+            missing = check_user_permissions(user, permissions)
+            if missing:
+                if on_forbidden is not None:
+                    return await on_forbidden(request)
+                return JSONResponse(
+                    {"error": "Forbidden", "detail": f"Missing permission: {missing}"},
+                    status_code=403,
+                )
 
             return await f(request, *args, **kwargs)
 

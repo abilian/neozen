@@ -18,7 +18,6 @@ Example:
 
 from __future__ import annotations
 
-import base64
 import typing
 
 from flask import (
@@ -31,11 +30,6 @@ from flask import (
     session,
 )
 from werkzeug.wrappers import Response as WerkzeugResponse
-
-# Flask route return type - includes all valid Flask return types
-ResponseValue = (
-    Response | WerkzeugResponse | tuple[Response, int] | tuple[str, int] | str
-)
 
 from neozen.core.oauth.client_service import OAuthClientService
 from neozen.core.oauth.exceptions import TokenError
@@ -52,21 +46,154 @@ from neozen.web.oauth import (
     IntrospectionEndpoint,
     RevocationEndpoint,
     TokenEndpoint,
+    parse_basic_auth,
+)
+
+# Flask route return type - includes all valid Flask return types
+ResponseValue = (
+    Response | WerkzeugResponse | tuple[Response, int] | tuple[str, int] | str
 )
 
 
-def parse_basic_auth(header: str | None) -> tuple[str | None, str | None]:
-    """Parse Basic auth header to get client_id and client_secret."""
-    if not header or not header.startswith("Basic "):
-        return None, None
+def _get_client_credentials() -> tuple[str | None, str | None]:
+    """Extract client credentials from request (header or form)."""
+    client_id, client_secret = parse_basic_auth(request.headers.get("Authorization"))
+    if not client_id:
+        client_id = request.form.get("client_id")
+        client_secret = request.form.get("client_secret")
+    return client_id, client_secret
 
-    try:
-        encoded = header[6:]
-        decoded = base64.b64decode(encoded).decode("utf-8")
-        client_id, client_secret = decoded.split(":", 1)
-        return client_id, client_secret
-    except (ValueError, UnicodeDecodeError):
-        return None, None
+
+def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
+    """Create the token endpoint handler."""
+
+    async def token() -> ResponseValue:
+        """OAuth 2.1 Token Endpoint."""
+        client_id, client_secret = _get_client_credentials()
+        try:
+            payload = dict(request.form)
+            response = await token_ep(
+                payload, client_id=client_id, client_secret=client_secret
+            )
+            return jsonify(response.to_dict())
+        except TokenError as e:
+            return jsonify({
+                "error": e.error,
+                "error_description": e.error_description,
+            }), 400
+
+    return token
+
+
+def _create_introspect_handler(
+    introspection_ep: IntrospectionEndpoint,
+) -> typing.Callable:
+    """Create the introspection endpoint handler."""
+
+    async def introspect() -> ResponseValue:
+        """OAuth 2.1 Token Introspection Endpoint (RFC 7662)."""
+        client_id, client_secret = _get_client_credentials()
+        try:
+            payload = dict(request.form)
+            response = await introspection_ep(
+                payload, client_id=client_id, client_secret=client_secret
+            )
+            return jsonify(response.to_dict())
+        except TokenError as e:
+            return jsonify({
+                "error": e.error,
+                "error_description": e.error_description,
+            }), 401
+
+    return introspect
+
+
+def _create_revoke_handler(revocation_ep: RevocationEndpoint) -> typing.Callable:
+    """Create the revocation endpoint handler."""
+
+    async def revoke() -> ResponseValue:
+        """OAuth 2.1 Token Revocation Endpoint (RFC 7009)."""
+        client_id, client_secret = _get_client_credentials()
+        try:
+            payload = dict(request.form)
+            await revocation_ep(
+                payload, client_id=client_id, client_secret=client_secret
+            )
+            return "", 200
+        except TokenError as e:
+            return jsonify({
+                "error": e.error,
+                "error_description": e.error_description,
+            }), 401
+
+    return revoke
+
+
+def _create_authorize_handler(
+    authorization_endpoint: AuthorizationEndpoint,
+    get_current_subject: typing.Callable[[], typing.Any] | None,
+    login_url: str,
+    consent_template: str,
+) -> typing.Callable:
+    """Create the authorization endpoint GET handler."""
+
+    async def authorize() -> ResponseValue:
+        """OAuth 2.1 Authorization Endpoint."""
+        subject = get_current_subject() if get_current_subject else None
+        payload = dict(request.args)
+        response = await authorization_endpoint.handle_authorization_request(
+            payload, subject
+        )
+
+        if response.requires_login:
+            session["oauth_params"] = payload
+            return redirect(login_url)
+
+        if response.requires_consent:
+            return render_template(consent_template, consent_data=response.consent_data)
+
+        if response.error:
+            redirect_url = response.get_redirect_url()
+            if redirect_url:
+                return redirect(redirect_url)
+            return jsonify({
+                "error": response.error,
+                "error_description": response.error_description,
+            }), 400
+
+        redirect_url = response.get_redirect_url()
+        if redirect_url:
+            return redirect(redirect_url)
+        return jsonify({"error": "invalid_request"}), 400
+
+    return authorize
+
+
+def _create_authorize_consent_handler(
+    authorization_endpoint: AuthorizationEndpoint,
+    get_current_subject: typing.Callable[[], typing.Any] | None,
+) -> typing.Callable:
+    """Create the authorization consent POST handler."""
+
+    async def authorize_consent() -> ResponseValue:
+        """Handle consent form submission."""
+        subject = get_current_subject() if get_current_subject else None
+        if not subject:
+            return jsonify({"error": "Not authenticated"}), 401
+
+        payload = dict(request.form)
+        response = await authorization_endpoint.handle_consent(payload, subject)
+
+        redirect_url = response.get_redirect_url()
+        if redirect_url:
+            return redirect(redirect_url)
+
+        return jsonify({
+            "error": response.error or "unknown_error",
+            "error_description": response.error_description,
+        }), 400
+
+    return authorize_consent
 
 
 def create_oauth_blueprint[
@@ -99,183 +226,34 @@ def create_oauth_blueprint[
     """
     bp = Blueprint("oauth", __name__)
 
-    # Create token endpoint adapter
+    # Create endpoint adapters
     token_ep = TokenEndpoint(token_service)
-
-    # Create introspection endpoint
     introspection_ep = IntrospectionEndpoint(
-        client_service=client_service,
-        token_service=token_service,
+        client_service=client_service, token_service=token_service
     )
-
-    # Create revocation endpoint
     revocation_ep = RevocationEndpoint(
-        client_service=client_service,
-        token_service=token_service,
+        client_service=client_service, token_service=token_service
     )
 
-    @bp.route("/token", methods=["POST"])
-    async def token() -> ResponseValue:
-        """OAuth 2.1 Token Endpoint.
+    # Register core endpoints
+    bp.route("/token", methods=["POST"])(_create_token_handler(token_ep))
+    bp.route("/introspect", methods=["POST"])(
+        _create_introspect_handler(introspection_ep)
+    )
+    bp.route("/revoke", methods=["POST"])(_create_revoke_handler(revocation_ep))
 
-        POST /oauth/token
-
-        Supports:
-        - authorization_code grant
-        - refresh_token grant
-        """
-        # Get client credentials from Basic auth or POST body
-        client_id, client_secret = parse_basic_auth(
-            request.headers.get("Authorization")
-        )
-
-        # Fall back to POST body
-        if not client_id:
-            client_id = request.form.get("client_id")
-            client_secret = request.form.get("client_secret")
-
-        try:
-            payload = dict(request.form)
-            response = await token_ep(
-                payload,
-                client_id=client_id,
-                client_secret=client_secret,
-            )
-            return jsonify(response.to_dict())
-        except TokenError as e:
-            return jsonify({
-                "error": e.error,
-                "error_description": e.error_description,
-            }), 400
-
-    @bp.route("/introspect", methods=["POST"])
-    async def introspect() -> ResponseValue:
-        """OAuth 2.1 Token Introspection Endpoint (RFC 7662).
-
-        POST /oauth/introspect
-
-        Requires client authentication.
-        """
-        client_id, client_secret = parse_basic_auth(
-            request.headers.get("Authorization")
-        )
-
-        if not client_id:
-            client_id = request.form.get("client_id")
-            client_secret = request.form.get("client_secret")
-
-        try:
-            payload = dict(request.form)
-            response = await introspection_ep(
-                payload,
-                client_id=client_id,
-                client_secret=client_secret,
-            )
-            return jsonify(response.to_dict())
-        except TokenError as e:
-            return jsonify({
-                "error": e.error,
-                "error_description": e.error_description,
-            }), 401
-
-    @bp.route("/revoke", methods=["POST"])
-    async def revoke() -> ResponseValue:
-        """OAuth 2.1 Token Revocation Endpoint (RFC 7009).
-
-        POST /oauth/revoke
-
-        Requires client authentication. Always returns 200 OK.
-        """
-        client_id, client_secret = parse_basic_auth(
-            request.headers.get("Authorization")
-        )
-
-        if not client_id:
-            client_id = request.form.get("client_id")
-            client_secret = request.form.get("client_secret")
-
-        try:
-            payload = dict(request.form)
-            await revocation_ep(
-                payload,
-                client_id=client_id,
-                client_secret=client_secret,
-            )
-            return "", 200
-        except TokenError as e:
-            return jsonify({
-                "error": e.error,
-                "error_description": e.error_description,
-            }), 401
-
+    # Register authorization endpoints if provided
     if authorization_endpoint:
-
-        @bp.route("/authorize", methods=["GET"])
-        async def authorize() -> ResponseValue:
-            """OAuth 2.1 Authorization Endpoint.
-
-            GET /oauth/authorize
-
-            Initiates the authorization code flow.
-            """
-            # Get current subject
-            subject = None
-            if get_current_subject:
-                subject = get_current_subject()
-
-            payload = dict(request.args)
-            response = await authorization_endpoint.handle_authorization_request(
-                payload, subject
+        bp.route("/authorize", methods=["GET"])(
+            _create_authorize_handler(
+                authorization_endpoint, get_current_subject, login_url, consent_template
             )
-
-            if response.requires_login:
-                # Store OAuth parameters in session for after login
-                session["oauth_params"] = payload
-                return redirect(login_url)
-
-            if response.requires_consent:
-                # Render consent page
-                return render_template(
-                    consent_template,
-                    consent_data=response.consent_data,
-                )
-
-            if response.error:
-                redirect_url = response.get_redirect_url()
-                if redirect_url:
-                    return redirect(redirect_url)
-                return jsonify({
-                    "error": response.error,
-                    "error_description": response.error_description,
-                }), 400
-
-            # Success - redirect with code
-            redirect_url = response.get_redirect_url()
-            if redirect_url:
-                return redirect(redirect_url)
-            return jsonify({"error": "invalid_request"}), 400
-
-        @bp.route("/authorize", methods=["POST"])
-        async def authorize_consent() -> ResponseValue:
-            """Handle consent form submission."""
-            subject = None
-            if get_current_subject:
-                subject = get_current_subject()
-
-            if not subject:
-                return jsonify({"error": "Not authenticated"}), 401
-
-            payload = dict(request.form)
-            response = await authorization_endpoint.handle_consent(payload, subject)
-
-            redirect_url = response.get_redirect_url()
-            if redirect_url:
-                return redirect(redirect_url)
-
-            return jsonify({
-                "error": response.error or "unknown_error",
-                "error_description": response.error_description,
-            }), 400
+        )
+        bp.route("/authorize", methods=["POST"])(
+            _create_authorize_consent_handler(
+                authorization_endpoint, get_current_subject
+            )
+        )
 
     return bp
 

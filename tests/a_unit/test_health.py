@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from neozen.monitoring.health import (
@@ -129,7 +131,8 @@ class TestHealthChecker:
     async def test_register_check(self, checker: HealthChecker) -> None:
         """Test registering a check."""
 
-        def dummy_check() -> CheckResult:
+        async def dummy_check() -> CheckResult:
+            await asyncio.sleep(0)
             return CheckResult(name="dummy", healthy=True)
 
         checker.register("dummy", dummy_check)
@@ -140,7 +143,8 @@ class TestHealthChecker:
     async def test_unregister_check(self, checker: HealthChecker) -> None:
         """Test unregistering a check."""
 
-        def dummy_check() -> CheckResult:
+        async def dummy_check() -> CheckResult:
+            await asyncio.sleep(0)
             return CheckResult(name="dummy", healthy=True)
 
         checker.register("dummy", dummy_check)
@@ -152,7 +156,8 @@ class TestHealthChecker:
     async def test_check_single(self, checker: HealthChecker) -> None:
         """Test running a single check."""
 
-        def db_check() -> CheckResult:
+        async def db_check() -> CheckResult:
+            await asyncio.sleep(0)
             return CheckResult(name="db", healthy=True, message="Connected")
 
         checker.register("db", db_check)
@@ -172,7 +177,8 @@ class TestHealthChecker:
     async def test_check_exception_handling(self, checker: HealthChecker) -> None:
         """Test that exceptions in checks are handled."""
 
-        def failing_check() -> CheckResult:
+        async def failing_check() -> CheckResult:
+            await asyncio.sleep(0)
             msg = "Connection failed"
             raise RuntimeError(msg)
 
@@ -186,10 +192,12 @@ class TestHealthChecker:
     async def test_check_all_healthy(self, checker: HealthChecker) -> None:
         """Test check_all when all checks pass."""
 
-        def check1() -> CheckResult:
+        async def check1() -> CheckResult:
+            await asyncio.sleep(0)
             return CheckResult(name="check1", healthy=True)
 
-        def check2() -> CheckResult:
+        async def check2() -> CheckResult:
+            await asyncio.sleep(0)
             return CheckResult(name="check2", healthy=True)
 
         checker.register("check1", check1)
@@ -204,10 +212,12 @@ class TestHealthChecker:
     async def test_check_all_unhealthy(self, checker: HealthChecker) -> None:
         """Test check_all when a check fails."""
 
-        def healthy_check() -> CheckResult:
+        async def healthy_check() -> CheckResult:
+            await asyncio.sleep(0)
             return CheckResult(name="healthy", healthy=True)
 
-        def unhealthy_check() -> CheckResult:
+        async def unhealthy_check() -> CheckResult:
+            await asyncio.sleep(0)
             return CheckResult(name="unhealthy", healthy=False)
 
         checker.register("healthy", healthy_check)
@@ -243,10 +253,12 @@ class TestHealthChecker:
     async def test_registered_checks_list(self, checker: HealthChecker) -> None:
         """Test getting list of registered checks."""
 
-        def check1() -> CheckResult:
+        async def check1() -> CheckResult:
+            await asyncio.sleep(0)
             return CheckResult(name="check1", healthy=True)
 
-        def check2() -> CheckResult:
+        async def check2() -> CheckResult:
+            await asyncio.sleep(0)
             return CheckResult(name="check2", healthy=True)
 
         checker.register("check1", check1)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from enum import Enum
@@ -259,6 +260,7 @@ def require_permission(
     def decorator(
         func: Callable[..., Coroutine[Any, Any, Response]],
     ) -> Callable[..., Coroutine[Any, Any, Response]]:
+        @functools.wraps(func)
         async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Response:
             admin = get_current_admin(request)
             if not admin:
@@ -267,8 +269,6 @@ def require_permission(
                 raise NotAuthorizedException(detail=f"Permission denied: {permission}")
             return await func(request, *args, **kwargs)
 
-        wrapper.__name__ = func.__name__
-        wrapper.__doc__ = func.__doc__
         return wrapper
 
     return decorator
@@ -282,14 +282,13 @@ def require_admin(
     Redirects to login if not authenticated.
     """
 
+    @functools.wraps(func)
     async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Response:
         admin = get_current_admin(request)
         if not admin:
             return redirect_to_login()
         return await func(request, *args, **kwargs)
 
-    wrapper.__name__ = func.__name__
-    wrapper.__doc__ = func.__doc__
     return wrapper
 
 

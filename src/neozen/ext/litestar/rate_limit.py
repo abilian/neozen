@@ -6,9 +6,9 @@ against brute force attacks.
 
 from __future__ import annotations
 
+import json
 import typing
 
-from litestar import Response
 from litestar.connection import ASGIConnection
 from litestar.enums import ScopeType
 from litestar.handlers import BaseRouteHandler
@@ -126,6 +126,9 @@ class RateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # Store config reference for type checker (limiter is guaranteed non-None here)
+        config = limiter.config
+
         # Get client IP
         ip_address = get_client_ip(scope)
 
@@ -156,21 +159,36 @@ class RateLimitMiddleware:
                 int(result.retry_after.total_seconds()) if result.retry_after else 60
             )
 
-            response = Response(
-                content={
-                    "error": "Too Many Requests",
-                    "message": "Rate limit exceeded. Please try again later.",
-                    "retry_after": retry_after,
-                },
-                status_code=429,
-                headers={
-                    "Retry-After": str(retry_after),
-                    "X-RateLimit-Limit": str(limiter.config.max_attempts),
-                    "X-RateLimit-Remaining": "0",
-                },
-                media_type="application/json",
+            body = json.dumps({
+                "error": "Too Many Requests",
+                "message": "Rate limit exceeded. Please try again later.",
+                "retry_after": retry_after,
+            }).encode()
+            headers: list[tuple[bytes, bytes]] = [
+                (b"content-type", b"application/json"),
+                (b"retry-after", str(retry_after).encode()),
+                (b"x-ratelimit-limit", str(config.max_attempts).encode()),
+                (b"x-ratelimit-remaining", b"0"),
+            ]
+            await send(
+                typing.cast(
+                    Message,
+                    {
+                        "type": "http.response.start",
+                        "status": 429,
+                        "headers": headers,
+                    },
+                )
             )
-            await response(scope, receive, send)
+            await send(
+                typing.cast(
+                    Message,
+                    {
+                        "type": "http.response.body",
+                        "body": body,
+                    },
+                )
+            )
             return
 
         # Wrap send to add headers
@@ -180,7 +198,7 @@ class RateLimitMiddleware:
                 headers.extend([
                     (
                         b"x-ratelimit-limit",
-                        str(limiter.config.max_attempts).encode(),
+                        str(config.max_attempts).encode(),
                     ),
                     (
                         b"x-ratelimit-remaining",

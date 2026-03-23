@@ -996,7 +996,7 @@ async def toggle_permission(request: Request) -> Response:
                     media_type="text/html",
                 )
 
-            await service.toggle_role_permission(role_name, permission, enabled)
+            await service.toggle_role_permission(role_name, permission, enabled=enabled)
             await session.commit()
 
             # Return updated checkbox

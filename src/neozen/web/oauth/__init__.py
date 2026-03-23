@@ -22,6 +22,11 @@ from neozen.web.oauth.revocation_endpoint import (
     RevocationRequest,
 )
 from neozen.web.oauth.token_endpoint import TokenEndpoint, TokenResponse
+from neozen.web.oauth.utils import (
+    ClientCredentials,
+    OAuthErrorResponse,
+    parse_basic_auth,
+)
 
 __all__ = [
     "AuthorizationEndpoint",
@@ -36,4 +41,7 @@ __all__ = [
     "RevocationRequest",
     "TokenEndpoint",
     "TokenResponse",
+    "ClientCredentials",
+    "OAuthErrorResponse",
+    "parse_basic_auth",
 ]

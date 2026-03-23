@@ -394,7 +394,7 @@ class SQLAlchemyPasswordResetTokenRepository:
             )
             result = await session.execute(stmt)
             await session.commit()
-            return result.rowcount  # type: ignore[return-value]
+            return result.rowcount or 0  # type: ignore[attr-defined]
 
 
 __all__ = [

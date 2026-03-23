@@ -7,7 +7,7 @@ import json
 import operator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, overload
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,14 @@ from neozen.storage.sqlalchemy.repositories import (
 )
 from neozen.storage.sqlalchemy.security_models import AuditLog
 from neozen.storage.sqlalchemy.security_repositories import AuditLogRepository
+
+
+@overload
+def _ensure_aware(dt: datetime) -> datetime: ...
+
+
+@overload
+def _ensure_aware(dt: None) -> None: ...
 
 
 def _ensure_aware(dt: datetime | None) -> datetime | None:
@@ -83,16 +91,18 @@ def _apply_subject_filters(
 
     # Date filters
     if filters.created_after:
+        after = filters.created_after
         filtered = [
             s
             for s in filtered
-            if s.created_at and _ensure_aware(s.created_at) >= filters.created_after
+            if s.created_at is not None and _ensure_aware(s.created_at) >= after
         ]
     if filters.created_before:
+        before = filters.created_before
         filtered = [
             s
             for s in filtered
-            if s.created_at and _ensure_aware(s.created_at) <= filters.created_before
+            if s.created_at is not None and _ensure_aware(s.created_at) <= before
         ]
 
     return filtered
@@ -404,7 +414,7 @@ class AdminService:
             is_active=is_active,
             is_verified=is_verified,
         )
-        return await self.subject_repo.insert(subject)
+        return await self.subject_repo.add(subject)
 
     async def update_subject(
         self,
@@ -529,7 +539,7 @@ class AdminService:
             granted_by=granted_by,
             granted_at=datetime.now(UTC),
         )
-        return await self.role_assignment_repo.insert(assignment)
+        return await self.role_assignment_repo.add(assignment)
 
     async def remove_role_from_subject(
         self,
@@ -944,7 +954,7 @@ class AdminService:
             organization_id=organization_id,
             is_active=True,
         )
-        return await self.group_repo.insert(group)
+        return await self.group_repo.add(group)
 
     async def update_group(
         self,
@@ -1039,7 +1049,7 @@ class AdminService:
             added_by=added_by,
             added_at=datetime.now(UTC),
         )
-        return await self.group_membership_repo.insert(membership)
+        return await self.group_membership_repo.add(membership)
 
     async def remove_group_member(self, group_id: str, subject_id: str) -> None:
         """Remove a member from a group.
@@ -1107,7 +1117,7 @@ class AdminService:
             granted_by=granted_by,
             granted_at=datetime.now(UTC),
         )
-        return await self.group_role_assignment_repo.insert(assignment)
+        return await self.group_role_assignment_repo.add(assignment)
 
     async def remove_role_from_group(self, group_id: str, role_name: str) -> None:
         """Remove a role from a group.
@@ -1204,7 +1214,7 @@ class AdminService:
             is_active=True,
             settings_json="{}",
         )
-        return await self.organization_repo.insert(org)
+        return await self.organization_repo.add(org)
 
     async def update_organization(
         self,
