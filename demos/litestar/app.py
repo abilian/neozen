@@ -16,12 +16,6 @@ from typing import TYPE_CHECKING
 from jinja2 import Environment, FileSystemLoader
 from pwdlib import PasswordHash
 
-from demos.shared.auth import (
-    RoleServiceFactory,
-    SessionServiceFactory,
-    create_subject_loader,
-    get_subject_roles,
-)
 from demos.shared.database import create_database, init_database
 from litestar import Litestar, Request, Response, get, post
 from litestar.connection import ASGIConnection
@@ -42,6 +36,12 @@ from neozen.ext.litestar import (
     logout_user,
 )
 from neozen.storage.base import DoesNotExist
+from neozen.storage.sqlalchemy import (
+    RoleServiceFactory,
+    SessionServiceFactory,
+    create_subject_loader,
+    get_subject_roles,
+)
 from neozen.storage.sqlalchemy.repositories import (
     SubjectRepository,
 )

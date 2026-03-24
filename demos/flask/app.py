@@ -19,11 +19,6 @@ from typing import Any
 
 from pwdlib import PasswordHash
 
-from demos.shared.auth import (
-    RoleServiceFactory,
-    SessionServiceFactory,
-    get_subject_roles,
-)
 from demos.shared.database import create_database, init_database
 from flask import (
     Flask,
@@ -46,6 +41,11 @@ from neozen.ext.flask import (
     logout_user,
 )
 from neozen.storage.base import DoesNotExist
+from neozen.storage.sqlalchemy import (
+    RoleServiceFactory,
+    SessionServiceFactory,
+    get_subject_roles,
+)
 from neozen.storage.sqlalchemy.repositories import (
     BackupCodeRepository,
     SocialAccountRepository,

@@ -16,12 +16,6 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from pwdlib import PasswordHash
 
-from demos.shared.auth import (
-    RoleServiceFactory,
-    SessionServiceFactory,
-    create_subject_loader,
-    get_subject_roles,
-)
 from demos.shared.database import create_database, init_database
 from neozen.admin.app import create_admin_app
 from neozen.admin.config import AdminConfig
@@ -36,6 +30,12 @@ from neozen.ext.starlette import (
     logout_user,
 )
 from neozen.storage.base import DoesNotExist
+from neozen.storage.sqlalchemy import (
+    RoleServiceFactory,
+    SessionServiceFactory,
+    create_subject_loader,
+    get_subject_roles,
+)
 from neozen.storage.sqlalchemy.repositories import SubjectRepository
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
