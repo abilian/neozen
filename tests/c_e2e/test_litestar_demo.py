@@ -85,7 +85,7 @@ async def litestar_app(tmp_path: Path):
         max_age=86400 * 7,
     )
 
-    app = Litestar(
+    yield Litestar(
         route_handlers=[
             litestar_module.index,
             litestar_module.login_page,
@@ -104,8 +104,6 @@ async def litestar_app(tmp_path: Path):
         stores={"sessions": MemoryStore()},
         state=State({"session_factory": session_factory}),
     )
-
-    yield app
 
     # Restore original values
     litestar_module.engine = orig_engine

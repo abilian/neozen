@@ -98,8 +98,7 @@ async def starlette_app(tmp_path: Path):
         Middleware(NeoZenMiddleware, backend=starlette_module.backend),
     ]
 
-    app = Starlette(routes=routes, middleware=middleware)
-    yield app
+    yield Starlette(routes=routes, middleware=middleware)
 
     # Restore original values
     starlette_module.engine = orig_engine
