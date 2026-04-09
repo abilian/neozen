@@ -17,6 +17,7 @@ from neozen.core.factors.password import (
     PasswordFactorError,
     PasswordHasherProtocol,
     PasswordSubjectModel,
+    create_password_factor,
 )
 from neozen.core.factors.protocol import (
     AuthenticatingFactorProtocol,
@@ -45,6 +46,7 @@ __all__ = [
     "PasswordFactorError",
     "PasswordHasherProtocol",
     "PasswordSubjectModel",
+    "create_password_factor",
     # Protocols
     "AuthenticatingFactorProtocol",
     "ChallengingFactorProtocol",

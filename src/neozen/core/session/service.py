@@ -305,10 +305,18 @@ class SessionService[S: SessionModel]:
             List of session records.
 
         """
-        # Note: The storage protocol needs extension to support this properly.
-        # This is a placeholder that would need a get_many_by() or similar method.
-        msg = "list_sessions requires extended storage protocol with list support"
-        raise NotImplementedError(msg)
+        now = datetime.now(UTC)
+        sessions = await self.storage.get_many_by(subject_id=subject_id)
+
+        result = []
+        for s in sessions:
+            if not include_revoked and s.revoked_at is not None:
+                continue
+            if not include_expired and s.expires_at <= now:
+                continue
+            result.append(s)
+
+        return result
 
 
 __all__ = [

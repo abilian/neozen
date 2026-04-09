@@ -141,4 +141,4 @@ module = "qrcode.*"
 ignore_missing_imports = true
 
 [tool.ty.rules]
-unused-ignore-comment = "ignore"
+unused-type-ignore-comment = "ignore"

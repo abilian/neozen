@@ -349,6 +349,27 @@ class OAuthClientService:
             subject_id=subject_id,
         )
 
+    async def refresh_access_token(
+        self,
+        provider_id: str,
+        refresh_token: str,
+    ) -> typing.Any:
+        """Refresh an access token using a refresh token.
+
+        Args:
+            provider_id: The OAuth provider ID.
+            refresh_token: The refresh token to use.
+
+        Returns:
+            New OAuthTokens with a fresh access token.
+
+        Raises:
+            OAuthProviderNotFoundError: If provider is not registered.
+            OAuthTokenError: If the refresh fails.
+        """
+        provider = self._get_provider(provider_id)
+        return await provider.refresh_access_token(refresh_token)
+
     async def cleanup_expired_states(self) -> int:
         """Clean up expired OAuth states.
 

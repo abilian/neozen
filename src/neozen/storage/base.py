@@ -6,10 +6,18 @@ The canonical location is neozen.core.repository.
 
 from __future__ import annotations
 
-from neozen.core.repository import DoesNotExist, RepositoryError, RepositoryProtocol
+from neozen.core.repository import (
+    DoesNotExist,
+    ReadableRepositoryProtocol,
+    RepositoryError,
+    RepositoryProtocol,
+    WritableRepositoryProtocol,
+)
 
 __all__ = [
     "DoesNotExist",
+    "ReadableRepositoryProtocol",
     "RepositoryError",
     "RepositoryProtocol",
+    "WritableRepositoryProtocol",
 ]

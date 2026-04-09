@@ -23,20 +23,16 @@ class DoesNotExist(RepositoryError):
         super().__init__(message)
 
 
-class RepositoryProtocol[Model](typing.Protocol):
-    """Protocol for repositories.
+@typing.runtime_checkable
+class ReadableRepositoryProtocol[Model](typing.Protocol):
+    """Protocol for read-only repository operations.
 
-    This protocol defines the interface that all repositories must implement.
-    It's used for type checking and enables mock implementations for testing.
+    Consumers that only need to look up objects can depend on this
+    narrower interface instead of the full RepositoryProtocol.
     """
-
-    model_type: type[Model]
 
     async def get_one_by(self, **filters: typing.Any) -> Model:
         """Retrieve an object by arbitrary filters.
-
-        Args:
-            **filters: A set of key-value pairs to filter the query.
 
         Raises:
             DoesNotExist: If the object does not exist.
@@ -55,43 +51,30 @@ class RepositoryProtocol[Model](typing.Protocol):
     ) -> list[Model]:
         """Retrieve multiple objects by arbitrary filters.
 
-        Args:
-            offset: Number of records to skip (for pagination).
-            limit: Maximum number of records to return (None for no limit).
-            **filters: A set of key-value pairs to filter the query.
-
         Returns:
             A list of matching objects.
         """
         ...
 
     async def count(self, **filters: typing.Any) -> int:
-        """Count objects matching the given filters.
-
-        Args:
-            **filters: A set of key-value pairs to filter the query.
-
-        Returns:
-            The count of matching objects.
-        """
+        """Count objects matching the given filters."""
         ...
 
     async def exists(self, **filters: typing.Any) -> bool:
-        """Check if any object exists matching the given filters.
-
-        Args:
-            **filters: A set of key-value pairs to filter the query.
-
-        Returns:
-            True if at least one matching object exists, False otherwise.
-        """
+        """Check if any object exists matching the given filters."""
         ...
+
+
+@typing.runtime_checkable
+class WritableRepositoryProtocol[Model](typing.Protocol):
+    """Protocol for write repository operations.
+
+    Consumers that need to create/update/delete objects can depend
+    on this interface.
+    """
 
     async def create(self, **data: typing.Any) -> Model:
         """Create a new object.
-
-        Args:
-            **data: The object data to create.
 
         Returns:
             The created object.
@@ -101,26 +84,34 @@ class RepositoryProtocol[Model](typing.Protocol):
     async def update_obj(self, obj: Model, **data: typing.Any) -> Model:
         """Update an existing object.
 
-        Args:
-            obj: The object to update.
-            **data: The data to update the object with.
-
         Returns:
             The updated object.
         """
         ...
 
     async def delete(self, obj: Model) -> None:
-        """Delete an object.
-
-        Args:
-            obj: The object to delete.
-        """
+        """Delete an object."""
         ...
+
+
+class RepositoryProtocol[Model](
+    ReadableRepositoryProtocol[Model],
+    WritableRepositoryProtocol[Model],
+    typing.Protocol,
+):
+    """Full repository protocol combining read and write operations.
+
+    This is the original interface. Existing code that depends on
+    RepositoryProtocol continues to work unchanged.
+    """
+
+    model_type: type[Model]
 
 
 __all__ = [
     "DoesNotExist",
+    "ReadableRepositoryProtocol",
     "RepositoryError",
     "RepositoryProtocol",
+    "WritableRepositoryProtocol",
 ]

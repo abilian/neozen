@@ -177,6 +177,55 @@ class OAuthProvider:
             msg = f"User info request failed: {e}"
             raise OAuthUserInfoError(msg) from e
 
+    async def refresh_access_token(self, refresh_token: str) -> OAuthTokens:
+        """Refresh an access token using a refresh token.
+
+        Args:
+            refresh_token: The refresh token from the original grant.
+
+        Returns:
+            New OAuth tokens (access_token, possibly new refresh_token).
+
+        Raises:
+            OAuthTokenError: If the refresh fails.
+        """
+        if self.http_client is None:
+            msg = "HTTP client is required for token refresh"
+            raise OAuthTokenError(msg)
+
+        data: dict[str, str] = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": self.config.client_id,
+            "client_secret": self.config.client_secret,
+        }
+
+        try:
+            response = await self.http_client.post(
+                self.config.token_endpoint,
+                data=data,
+                headers={"Accept": "application/json"},
+            )
+
+            if response.status_code != 200:
+                msg = f"Token refresh failed: {response.status_code}"
+                raise OAuthTokenError(msg)
+
+            token_data = response.json()
+            return OAuthTokens(
+                access_token=token_data["access_token"],
+                token_type=token_data.get("token_type", "Bearer"),
+                refresh_token=token_data.get("refresh_token", refresh_token),
+                expires_in=token_data.get("expires_in"),
+                scope=token_data.get("scope"),
+                id_token=token_data.get("id_token"),
+            )
+        except OAuthTokenError:
+            raise
+        except Exception as e:
+            msg = f"Token refresh failed: {e}"
+            raise OAuthTokenError(msg) from e
+
     def _parse_user_info(self, data: dict[str, typing.Any]) -> OAuthUserInfo:
         """Parse user info from the provider's response.
 

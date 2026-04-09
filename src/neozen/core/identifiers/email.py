@@ -58,8 +58,23 @@ class EmailIdentifierProvider[S: EmailSubjectModel](IdentifierProvider[S]):
         return EmailIdentifier[_S](email_storage)
 
 
+def create_email_identifier(
+    email_storage: RepositoryProtocol[typing.Any],
+) -> EmailIdentifier[typing.Any]:
+    """Create an EmailIdentifier without generic type constraints.
+
+    Use this when your User model structurally matches EmailSubjectModel
+    (has email, id, is_active fields) but doesn't inherit from it.
+
+    Example:
+        identifier = create_email_identifier(my_user_repo_adapter)
+    """
+    return EmailIdentifier(email_storage)
+
+
 __all__ = [
     "EmailIdentifier",
     "EmailIdentifierProvider",
     "EmailSubjectModel",
+    "create_email_identifier",
 ]

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -26,6 +27,8 @@ from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.response import Redirect
 from litestar.stores.memory import MemoryStore
 from neozen.admin.services import AdminService
+from neozen.core.email.console import ConsoleEmailSender
+from neozen.core.factors.magic_link import MagicLinkConfig, MagicLinkFactor
 from neozen.ext.litestar import (
     NeoZenConfig,
     NeoZenPlugin,
@@ -72,6 +75,83 @@ session_service = SessionServiceFactory(session_factory, SECRET_KEY)
 
 # Role service factory
 role_service = RoleServiceFactory(session_factory)
+
+
+# Magic link setup
+class SubjectEmailLookupAdapter:
+    def __init__(self, sf):
+        self._sf = sf
+
+    async def get_email(self, subject_id: str) -> str | None:
+        async with self._sf() as s:
+            repo = SubjectRepository(session=s)
+            try:
+                subject = await repo.get_one_by(id=subject_id)
+                return subject.email
+            except DoesNotExist:
+                return None
+
+    async def subject_exists(self, subject_id: str) -> bool:
+        async with self._sf() as s:
+            repo = SubjectRepository(session=s)
+            return await repo.exists(id=subject_id)
+
+
+class InMemoryMagicLinkTokenRepository:
+    """Simple in-memory token repository for the demo."""
+
+    def __init__(self):
+        self._tokens = {}
+        self._by_hash = {}
+        self._counter = 0
+
+    async def create(self, **kwargs):
+        from types import SimpleNamespace
+
+        self._counter += 1
+        token_id = f"mlt_{self._counter}"
+        token = SimpleNamespace(id=token_id, **kwargs)
+        self._tokens[token_id] = token
+        self._by_hash[kwargs["token_hash"]] = token_id
+        return token
+
+    async def get_by_hash(self, token_hash):
+        token_id = self._by_hash.get(token_hash)
+        return self._tokens.get(token_id) if token_id else None
+
+    async def mark_used(self, token_id, used_at):
+        if token_id in self._tokens:
+            self._tokens[token_id].used_at = used_at
+
+    async def count_pending(self, subject_id, since):
+        now = datetime.now(UTC)
+        return sum(
+            1
+            for t in self._tokens.values()
+            if t.subject_id == subject_id
+            and t.created_at >= since
+            and t.used_at is None
+            and t.expires_at > now
+        )
+
+    async def invalidate_all(self, subject_id):
+        now = datetime.now(UTC)
+        count = 0
+        for t in self._tokens.values():
+            if t.subject_id == subject_id and t.used_at is None:
+                t.used_at = now
+                count += 1
+        return count
+
+
+email_sender = ConsoleEmailSender()
+magic_link_factor = MagicLinkFactor(
+    config=MagicLinkConfig(link_base_url=""),  # Set dynamically per request
+    token_repository=InMemoryMagicLinkTokenRepository(),
+    subject_email_lookup=SubjectEmailLookupAdapter(session_factory),
+    email_sender=email_sender,
+    token_hash_key=SECRET_KEY,
+)
 
 
 # =============================================================================
@@ -207,6 +287,101 @@ async def login_submit(request: Request) -> Response:
     return render_template(
         request, "login.html", {"current_user": None, "email": email}
     )
+
+
+@get("/magic-login", sync_to_thread=False)
+def magic_login_page(request: Request) -> Response:
+    """Magic link request page."""
+    if is_authenticated(request):
+        return Redirect(path="/dashboard")
+    return render_template(request, "magic_login.html", {"current_user": None})
+
+
+@post("/magic-login")
+async def magic_login_submit(request: Request) -> Response:
+    """Handle magic link request."""
+    if is_authenticated(request):
+        return Redirect(path="/dashboard")
+
+    form = await request.form()
+    email = str(form.get("email", "")).lower()
+
+    if not email or "@" not in email:
+        flash(request, "Please enter a valid email address", "error")
+        return render_template(request, "magic_login.html", {"current_user": None})
+
+    # Look up subject by email
+    async with session_factory() as db_session:
+        repo = SubjectRepository(session=db_session)
+        try:
+            subject = await repo.get_one_by(email=email)
+            # Set base URL dynamically
+            base_url = str(request.base_url).rstrip("/")
+            magic_link_factor.config = MagicLinkConfig(
+                link_base_url=f"{base_url}/magic-login/verify",
+                token_lifetime=magic_link_factor.config.token_lifetime,
+                max_pending_per_subject=magic_link_factor.config.max_pending_per_subject,
+                rate_limit_window=magic_link_factor.config.rate_limit_window,
+                token_prefix=magic_link_factor.config.token_prefix,
+            )
+            await magic_link_factor.begin_authentication(subject.id)
+        except DoesNotExist:
+            pass  # Don't reveal whether email exists
+
+    flash(
+        request,
+        "If an account exists with that email, a magic link has been sent. Check your console output.",
+        "success",
+    )
+    return Redirect(path="/magic-login")
+
+
+@get("/magic-login/verify")
+async def magic_login_verify(request: Request) -> Response:
+    """Verify magic link token and log in."""
+    token = request.query_params.get("token", "")
+    if not token:
+        flash(request, "Invalid magic link", "error")
+        return Redirect(path="/login")
+
+    from neozen.core.crypto import get_token_hash
+
+    token_hash = get_token_hash(token, SECRET_KEY)
+    token_record = await magic_link_factor.token_repository.get_by_hash(token_hash)
+
+    if not token_record:
+        flash(request, "Invalid or expired magic link", "error")
+        return Redirect(path="/login")
+
+    valid = await magic_link_factor.complete_authentication(
+        token_record.subject_id, response=token
+    )
+
+    if valid:
+        async with session_factory() as db_session:
+            repo = SubjectRepository(session=db_session)
+            try:
+                subject = await repo.get_one_by(id=token_record.subject_id)
+                response = Redirect(path="/dashboard")
+                await login_user(request, response, subject)
+                flash(request, "Login successful via magic link!", "success")
+                return response
+            except DoesNotExist:
+                pass
+
+    flash(request, "Invalid or expired magic link", "error")
+    return Redirect(path="/login")
+
+
+@get("/api/test/last-magic-link", sync_to_thread=False)
+def api_last_magic_link(request: Request) -> Response:
+    """Test endpoint: return the last magic link URL sent (dev only)."""
+    if email_sender.sent_messages:
+        last = email_sender.sent_messages[-1]
+        for line in last.body_text.splitlines():
+            if "magic-login/verify?token=" in line:
+                return json_response({"url": line.strip()})
+    return json_response({"url": None})
 
 
 @get("/register", sync_to_thread=False)
@@ -545,6 +720,9 @@ def create_app() -> Litestar:
             index,
             login_page,
             login_submit,
+            magic_login_page,
+            magic_login_submit,
+            magic_login_verify,
             register_page,
             register_submit,
             dashboard,
@@ -557,6 +735,7 @@ def create_app() -> Litestar:
             admin_sessions,
             admin_revoke_session,
             # JSON API routes
+            api_last_magic_link,
             api_register,
             api_login,
             api_logout,

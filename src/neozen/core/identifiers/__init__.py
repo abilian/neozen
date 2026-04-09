@@ -13,6 +13,7 @@ from neozen.core.identifiers.email import (
     EmailIdentifier,
     EmailIdentifierProvider,
     EmailSubjectModel,
+    create_email_identifier,
 )
 from neozen.core.identifiers.lookup import (
     IdentifierLookupService,
@@ -36,6 +37,7 @@ __all__ = [
     "EmailIdentifier",
     "EmailIdentifierProvider",
     "EmailSubjectModel",
+    "create_email_identifier",
     "IdentifierError",
     "IdentifierLookupService",
     "IdentifierProtocol",

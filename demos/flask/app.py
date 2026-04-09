@@ -32,6 +32,8 @@ from flask import (
     url_for,
 )
 from neozen.admin.services import AdminService
+from neozen.core.email.console import ConsoleEmailSender
+from neozen.core.factors.magic_link import MagicLinkConfig, MagicLinkFactor
 from neozen.ext.flask import (
     NeoZen,
     UserMixin,
@@ -102,6 +104,91 @@ session_service = SessionServiceFactory(session_factory, app.secret_key)
 
 # Role service factory
 role_service = RoleServiceFactory(session_factory)
+
+
+# =============================================================================
+# Magic Link Authentication
+# =============================================================================
+
+
+class SubjectEmailLookupAdapter:
+    def __init__(self, sf):
+        self._sf = sf
+
+    async def get_email(self, subject_id: str) -> str | None:
+        async with self._sf() as s:
+            repo = SubjectRepository(session=s)
+            try:
+                subject = await repo.get_one_by(id=subject_id)
+                return subject.email
+            except DoesNotExist:
+                return None
+
+    async def subject_exists(self, subject_id: str) -> bool:
+        async with self._sf() as s:
+            repo = SubjectRepository(session=s)
+            return await repo.exists(id=subject_id)
+
+
+class InMemoryMagicLinkTokenRepository:
+    """Simple in-memory token repository for the demo."""
+
+    def __init__(self):
+        self._tokens = {}
+        self._by_hash = {}
+        self._counter = 0
+
+    async def create(self, **kwargs):
+        from types import SimpleNamespace
+
+        self._counter += 1
+        token_id = f"mlt_{self._counter}"
+        token = SimpleNamespace(id=token_id, **kwargs)
+        self._tokens[token_id] = token
+        self._by_hash[kwargs["token_hash"]] = token_id
+        return token
+
+    async def get_by_hash(self, token_hash):
+        token_id = self._by_hash.get(token_hash)
+        return self._tokens.get(token_id) if token_id else None
+
+    async def mark_used(self, token_id, used_at):
+        if token_id in self._tokens:
+            self._tokens[token_id].used_at = used_at
+
+    async def count_pending(self, subject_id, since):
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC)
+        return sum(
+            1
+            for t in self._tokens.values()
+            if t.subject_id == subject_id
+            and t.created_at >= since
+            and t.used_at is None
+            and t.expires_at > now
+        )
+
+    async def invalidate_all(self, subject_id):
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC)
+        count = 0
+        for t in self._tokens.values():
+            if t.subject_id == subject_id and t.used_at is None:
+                t.used_at = now
+                count += 1
+        return count
+
+
+email_sender = ConsoleEmailSender()
+magic_link_factor = MagicLinkFactor(
+    config=MagicLinkConfig(link_base_url=""),  # Will be set dynamically
+    token_repository=InMemoryMagicLinkTokenRepository(),
+    subject_email_lookup=SubjectEmailLookupAdapter(session_factory),
+    email_sender=email_sender,
+    token_hash_key=app.secret_key,
+)
 
 # =============================================================================
 # Stage 5: Advanced Authentication Configuration
@@ -363,6 +450,93 @@ def login():
         oauth_providers=OAUTH_PROVIDERS,
         webauthn_enabled=WEBAUTHN_AVAILABLE,
     )
+
+
+@app.route("/magic-login", methods=["GET", "POST"])
+def magic_login_request():
+    """Request a magic link."""
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        email = request.form.get("email", "").lower()
+        if not email or "@" not in email:
+            flash("Please enter a valid email address", "error")
+        else:
+            # Look up subject by email
+            user = User.get_by_email(email)
+            if user:
+                # Set the base URL dynamically
+                base_url = request.url_root.rstrip("/")
+                magic_link_factor.config = MagicLinkConfig(
+                    link_base_url=f"{base_url}/magic-login/verify",
+                    token_lifetime=magic_link_factor.config.token_lifetime,
+                    max_pending_per_subject=magic_link_factor.config.max_pending_per_subject,
+                    rate_limit_window=magic_link_factor.config.rate_limit_window,
+                    token_prefix=magic_link_factor.config.token_prefix,
+                )
+                run_async(
+                    magic_link_factor.begin_authentication(
+                        user.id, ip_address=request.remote_addr
+                    )
+                )
+            # Always show success (prevents email enumeration)
+            flash(
+                "If an account exists with that email, a magic link has been sent."
+                " Check your console output.",
+                "success",
+            )
+            return redirect(url_for("magic_login_request"))
+
+    return render_template("magic_login.html", current_user=None)
+
+
+@app.route("/magic-login/verify")
+def magic_login_verify():
+    """Verify a magic link token and log in."""
+    token = request.args.get("token", "")
+    if not token:
+        flash("Invalid magic link", "error")
+        return redirect(url_for("login"))
+
+    # Find which subject this token belongs to
+    from neozen.core.crypto import get_token_hash
+
+    token_hash = get_token_hash(token, app.secret_key)
+    token_record = run_async(magic_link_factor.token_repository.get_by_hash(token_hash))
+
+    if not token_record:
+        flash("Invalid or expired magic link", "error")
+        return redirect(url_for("login"))
+
+    # Complete authentication
+    valid = run_async(
+        magic_link_factor.complete_authentication(
+            token_record.subject_id, response=token
+        )
+    )
+
+    if valid:
+        user = User.get(token_record.subject_id)
+        if user:
+            login_user(user, remember=True)
+            flash("Login successful via magic link!", "success")
+            return redirect(url_for("dashboard"))
+
+    flash("Invalid or expired magic link", "error")
+    return redirect(url_for("login"))
+
+
+@app.route("/api/test/last-magic-link")
+def api_last_magic_link():
+    """Test endpoint: return the last magic link URL sent (dev only)."""
+    if email_sender.sent_messages:
+        last = email_sender.sent_messages[-1]
+        # Extract URL from body text
+        for line in last.body_text.splitlines():
+            if "magic-login/verify?token=" in line:
+                return jsonify({"url": line.strip()})
+    return jsonify({"url": None})
 
 
 @app.route("/register", methods=["GET", "POST"])

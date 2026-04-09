@@ -176,6 +176,28 @@ class PasswordFactor[S: PasswordSubjectModel]:
         raise InvalidCredentialsError
 
 
+def create_password_factor(
+    identifier: IdentifierProtocol[typing.Any],
+    subject_storage: RepositoryProtocol[typing.Any],
+    hasher: PasswordHasherProtocol,
+) -> PasswordFactor[typing.Any]:
+    """Create a PasswordFactor without generic type constraints.
+
+    Use this when your User model structurally matches PasswordSubjectModel
+    (has hashed_password, id, is_active fields) but doesn't inherit from it.
+
+    Example:
+        factor = create_password_factor(
+            identifier=email_identifier,
+            subject_storage=my_user_repo_adapter,
+            hasher=my_hasher,
+        )
+    """
+    return PasswordFactor(
+        identifier=identifier, subject_storage=subject_storage, hasher=hasher
+    )
+
+
 __all__ = [
     "InvalidCredentialsError",
     "PasswordAuthenticateRequest",
@@ -184,4 +206,5 @@ __all__ = [
     "PasswordFactorError",
     "PasswordHasherProtocol",
     "PasswordSubjectModel",
+    "create_password_factor",
 ]
