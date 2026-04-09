@@ -116,6 +116,7 @@ dev = [
     "pytest-playwright>=0.7.0",
     "types-peewee>=4.0.0.20260223",
     "pylint>=4.0.5",
+    "mkdocs-material>=9.7.6",
 ]
 
 #

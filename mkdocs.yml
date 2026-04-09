@@ -1,0 +1,70 @@
+site_name: NeoZen
+site_description: Authentication and authorization for modern Python applications
+site_url: https://neozen.abilian.com/
+
+repo_url: https://github.com/abilian/neozen
+repo_name: abilian/neozen
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - search.highlight
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+  - Guides:
+      - Bring Your Own Model: guides/bring-your-own-model.md
+      - Flask Integration: guides/flask.md
+      - Litestar Integration: guides/litestar.md
+      - Magic Link Authentication: guides/magic-link.md
+      - TOTP / MFA: guides/totp.md
+      - Authorization (RBAC): guides/authorization.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Factor Protocols: architecture/factors.md
+      - Storage Abstraction: architecture/storage.md
+  - Reference:
+      - Configuration: reference/configuration.md
+      - Factors: reference/factors.md
+      - Session Management: reference/sessions.md
+      - Authorization: reference/authorization.md
+      - Email: reference/email.md
+      - OAuth Client: reference/oauth-client.md
