@@ -79,7 +79,8 @@ class SessionServiceFactory:
         """
         async with self.session_factory() as db_session:
             repo = SessionRepository(session=db_session)
-            service = SessionService[Session](storage=repo, hash_key=self.secret_key)
+            # pyrefly: ignore [bad-specialization]
+            service = SessionService(storage=repo, hash_key=self.secret_key)  # type: ignore[type-var]
             token = await service.create_session(
                 subject_id,
                 ip_address=ip_address,
@@ -105,7 +106,8 @@ class SessionServiceFactory:
         """
         async with self.session_factory() as db_session:
             repo = SessionRepository(session=db_session)
-            service = SessionService[Session](storage=repo, hash_key=self.secret_key)
+            # pyrefly: ignore [bad-specialization]
+            service = SessionService(storage=repo, hash_key=self.secret_key)  # type: ignore[type-var]
             try:
                 session = await service.validate_session(
                     token, update_activity=update_activity
@@ -124,7 +126,8 @@ class SessionServiceFactory:
         """
         async with self.session_factory() as db_session:
             repo = SessionRepository(session=db_session)
-            service = SessionService[Session](storage=repo, hash_key=self.secret_key)
+            # pyrefly: ignore [bad-specialization]
+            service = SessionService(storage=repo, hash_key=self.secret_key)  # type: ignore[type-var]
             await service.revoke_session_by_token(token)
             await db_session.commit()
 

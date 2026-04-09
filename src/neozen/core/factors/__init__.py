@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+from neozen.core.factors.magic_link import (
+    MagicLinkConfig,
+    MagicLinkFactor,
+    MagicLinkToken,
+    MagicLinkTokenRepository,
+    SubjectEmailLookup,
+)
 from neozen.core.factors.password import (
     InvalidCredentialsError,
     PasswordAuthenticateRequest,
@@ -24,6 +31,12 @@ from neozen.core.factors.registry import (
 )
 
 __all__ = [
+    # Magic link factor
+    "MagicLinkConfig",
+    "MagicLinkFactor",
+    "MagicLinkToken",
+    "MagicLinkTokenRepository",
+    "SubjectEmailLookup",
     # Password factor
     "InvalidCredentialsError",
     "PasswordAuthenticateRequest",

@@ -201,7 +201,7 @@ class TOTPFactor[S: TOTPSubjectModel]:
     def _generate_qr_code(self, provisioning_uri: str) -> str | None:
         """Generate a QR code data URI for the provisioning URI."""
         try:
-            import qrcode  # noqa: PLC0415  # type: ignore[import-untyped]
+            import qrcode  # noqa: PLC0415
 
             qr = qrcode.QRCode(
                 version=1,

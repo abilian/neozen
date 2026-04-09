@@ -18,6 +18,7 @@ from neozen.storage.sqlalchemy.security_models import (
     AccountLockout,
     AuditLog,
     LoginAttempt,
+    MagicLinkToken,
     PasswordResetToken,
 )
 
@@ -44,6 +45,12 @@ class PasswordResetTokenRepository(NeoZenRepository[PasswordResetToken]):
     """Repository for password reset tokens."""
 
     model_type = PasswordResetToken
+
+
+class MagicLinkTokenRepository(NeoZenRepository[MagicLinkToken]):
+    """Repository for magic link tokens."""
+
+    model_type = MagicLinkToken
 
 
 # =============================================================================
@@ -397,12 +404,93 @@ class SQLAlchemyPasswordResetTokenRepository:
             return result.rowcount or 0  # type: ignore[attr-defined]
 
 
+# =============================================================================
+# Magic Link Token Repository (Enhanced)
+# =============================================================================
+
+
+class SQLAlchemyMagicLinkTokenRepository:
+    """SQLAlchemy-backed magic link token repository.
+
+    Implements the MagicLinkTokenRepository protocol.
+    """
+
+    def __init__(self, session_factory: typing.Callable[[], AsyncSession]) -> None:
+        """Initialize with session factory."""
+        self._session_factory = session_factory
+
+    async def create(self, **kwargs: typing.Any) -> MagicLinkToken:
+        """Create a new magic link token."""
+        async with self._session_factory() as session:
+            token = MagicLinkToken(
+                id=str(uuid.uuid4()),
+                **kwargs,
+            )
+            session.add(token)
+            await session.commit()
+            await session.refresh(token)
+            return token
+
+    async def get_by_hash(self, token_hash: str) -> MagicLinkToken | None:
+        """Get token by hash."""
+        async with self._session_factory() as session:
+            stmt = select(MagicLinkToken).where(MagicLinkToken.token_hash == token_hash)
+            result = await session.execute(stmt)
+            return result.scalar_one_or_none()
+
+    async def mark_used(self, token_id: str, used_at: datetime) -> None:
+        """Mark token as used."""
+        async with self._session_factory() as session:
+            stmt = (
+                update(MagicLinkToken)
+                .where(MagicLinkToken.id == token_id)
+                .values(used_at=used_at)
+            )
+            await session.execute(stmt)
+            await session.commit()
+
+    async def count_pending(
+        self,
+        subject_id: str,
+        since: datetime,
+    ) -> int:
+        """Count pending (unused, unexpired) tokens for subject since time."""
+        async with self._session_factory() as session:
+            now = datetime.now(UTC)
+            stmt = select(func.count(MagicLinkToken.id)).where(
+                MagicLinkToken.subject_id == subject_id,
+                MagicLinkToken.created_at >= since,
+                MagicLinkToken.used_at.is_(None),
+                MagicLinkToken.expires_at > now,
+            )
+            result = await session.execute(stmt)
+            return result.scalar() or 0
+
+    async def invalidate_all(self, subject_id: str) -> int:
+        """Invalidate all pending tokens for subject."""
+        async with self._session_factory() as session:
+            now = datetime.now(UTC)
+            stmt = (
+                update(MagicLinkToken)
+                .where(
+                    MagicLinkToken.subject_id == subject_id,
+                    MagicLinkToken.used_at.is_(None),
+                )
+                .values(used_at=now)
+            )
+            result = await session.execute(stmt)
+            await session.commit()
+            return result.rowcount or 0  # type: ignore[attr-defined]
+
+
 __all__ = [
     "AccountLockoutRepository",
     "AuditLogRepository",
     "LoginAttemptRepository",
+    "MagicLinkTokenRepository",
     "PasswordResetTokenRepository",
     "SQLAlchemyAuditLogStore",
+    "SQLAlchemyMagicLinkTokenRepository",
     "SQLAlchemyPasswordResetTokenRepository",
     "SQLAlchemyRateLimitStore",
 ]

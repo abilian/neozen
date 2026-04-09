@@ -1037,6 +1037,7 @@ async def create_custom_role(request: Request) -> Response:
         return redirect("/permissions/role-builder")
 
     # Parse permissions from form (comma-separated or multiple values)
+    permissions: list[str]
     if isinstance(permissions_str, str):
         permissions = [p.strip() for p in permissions_str.split(",") if p.strip()]
     else:

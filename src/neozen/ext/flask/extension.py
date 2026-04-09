@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import typing
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -248,7 +249,7 @@ class NeoZen:
 
         # Call subject loader (handle both sync and async)
         loader = self._subject_loader
-        if asyncio.iscoroutinefunction(loader):
+        if inspect.iscoroutinefunction(loader):
             subject = self._run_async(loader(subject_id))
         else:
             subject = loader(subject_id)

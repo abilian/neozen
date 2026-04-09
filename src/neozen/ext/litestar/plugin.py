@@ -58,7 +58,8 @@ class NeoZenPlugin(InitPluginProtocol):
 
         # Add our middleware to the list
         if app_config.middleware is None:
-            app_config.middleware = []  # type: ignore[assignment]
+            # pyrefly: ignore [bad-assignment]
+            app_config.middleware = []
 
         app_config.middleware.insert(0, middleware_factory)
 

@@ -133,7 +133,7 @@ def rate_limit(
 
             # Ensure response is a Response object
             if not isinstance(response, Response):
-                return response  # type: ignore[return-value]
+                return response
 
             # Add rate limit headers
             response.headers["X-RateLimit-Limit"] = str(limiter.config.max_attempts)

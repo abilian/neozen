@@ -173,9 +173,52 @@ class PasswordResetToken(Base):
         return f"<PasswordResetToken id={self.id} subject_id={self.subject_id}>"
 
 
+class MagicLinkToken(Base):
+    """Magic link authentication tokens.
+
+    Stores hashed tokens for passwordless email authentication
+    with expiration and one-time use tracking.
+    """
+
+    __tablename__ = "magic_link_tokens"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    subject_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        index=True,
+    )
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+
+    __table_args__ = (
+        Index("ix_magic_link_subject_created", "subject_id", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<MagicLinkToken id={self.id} subject_id={self.subject_id}>"
+
+
 __all__ = [
     "AccountLockout",
     "AuditLog",
     "LoginAttempt",
+    "MagicLinkToken",
     "PasswordResetToken",
 ]

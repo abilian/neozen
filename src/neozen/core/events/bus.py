@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import fnmatch
+import inspect
 import logging
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
@@ -114,7 +115,7 @@ class EventBus:
 
         for handler in handlers:
             try:
-                if asyncio.iscoroutinefunction(handler):
+                if inspect.iscoroutinefunction(handler):
                     await handler(event)
                 else:
                     handler(event)
@@ -136,7 +137,7 @@ class EventBus:
         handlers = self._get_matching_handlers(event.event_type)
 
         for handler in handlers:
-            if asyncio.iscoroutinefunction(handler):
+            if inspect.iscoroutinefunction(handler):
                 logger.warning(
                     "Skipping async handler in sync emit for %s",
                     event.event_type,

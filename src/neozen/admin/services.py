@@ -234,7 +234,7 @@ class AdminService:
         active_sessions = len([
             s
             for s in all_sessions
-            if s.revoked_at is None and _ensure_aware(s.expires_at) > now  # type: ignore[operator]
+            if s.revoked_at is None and _ensure_aware(s.expires_at) > now
         ])
 
         # Recent registrations (last 7 days)
@@ -243,7 +243,7 @@ class AdminService:
         recent_registrations = len([
             s
             for s in all_subjects
-            if s.created_at and _ensure_aware(s.created_at) > week_ago  # type: ignore[operator]
+            if s.created_at and _ensure_aware(s.created_at) > week_ago
         ])
 
         return DashboardStats(
@@ -484,7 +484,7 @@ class AdminService:
             sessions = [
                 s
                 for s in sessions
-                if s.revoked_at is None and _ensure_aware(s.expires_at) > now  # type: ignore[operator]
+                if s.revoked_at is None and _ensure_aware(s.expires_at) > now
             ]
 
         return sessions
@@ -864,7 +864,7 @@ class AdminService:
             sessions = [
                 s
                 for s in sessions
-                if s.revoked_at is None and _ensure_aware(s.expires_at) > now  # type: ignore[operator]
+                if s.revoked_at is None and _ensure_aware(s.expires_at) > now
             ]
 
         return sessions

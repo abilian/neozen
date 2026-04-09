@@ -140,7 +140,7 @@ def with_database(
 
         return asyncio.run(run())
 
-    return wrapper
+    return wrapper  # type: ignore[return-value]  # @wraps changes inferred type
 
 
 async def list_all(session: AsyncSession, model: type) -> list:
