@@ -5,10 +5,15 @@
 NeoZen (**N**eoZe**N** = Auth**N** + Auth**Z**) is a framework-agnostic
 toolkit that provides:
 
-- **Authentication**: Passwords, magic links, TOTP, WebAuthn/passkeys, social login (Google, GitHub)
+- **Authentication**: Passwords, magic links, TOTP, email OTP, WebAuthn/passkeys, social login (Google, GitHub)
 - **Authorization**: Role-based access control (RBAC), permissions, policy-based authorization
+- **Groups & Invitations**: Group membership management and email-based invitations
 - **Session management**: Secure token-based sessions with sliding window expiration
-- **OAuth 2.1 server**: Authorization code grant with PKCE
+- **OAuth 2.1 server**: Authorization code, refresh, and client credentials grants with PKCE
+- **OpenID Connect 1.0 Provider**: ID tokens, JWKS, UserInfo, discovery, consent, RP-initiated logout, dynamic client registration
+- **SCIM 2.0 server**: User and Group resources with filter parser and discovery
+- **LDAP backend**: Read-mostly LDAP/Active Directory subject store with bind authentication
+- **i18n**: Framework-agnostic catalog-based translation (EN/FR built-in)
 
 ## Design Principles
 

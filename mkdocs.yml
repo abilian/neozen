@@ -57,7 +57,12 @@ nav:
       - Litestar Integration: guides/litestar.md
       - Magic Link Authentication: guides/magic-link.md
       - TOTP / MFA: guides/totp.md
+      - Email OTP: guides/email-otp.md
       - Authorization (RBAC): guides/authorization.md
+      - Groups & Invitations: guides/groups.md
+      - OpenID Connect Provider: guides/oidc.md
+      - SCIM 2.0: guides/scim.md
+      - LDAP Backend: guides/ldap.md
   - Architecture:
       - Overview: architecture/overview.md
       - Factor Protocols: architecture/factors.md

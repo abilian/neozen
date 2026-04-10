@@ -1,0 +1,171 @@
+# OpenID Connect Provider
+
+NeoZen includes a full OpenID Connect 1.0 Provider built on top of the
+OAuth 2.1 server. It provides discovery, JWKS, ID token signing,
+UserInfo, consent management, RP-initiated logout, and dynamic client
+registration.
+
+## Installation
+
+```bash
+uv add "neozen[oidc]"
+```
+
+This installs `pyjwt[crypto]` for JWT signing.
+
+## Quick Start
+
+```python
+from neozen.core.oidc import (
+    InMemoryKeyManager,
+    IDTokenGenerator,
+    DefaultClaimsProvider,
+)
+from neozen.core.oidc.discovery import build_metadata_from_base_url
+from neozen.web.oidc import (
+    DiscoveryEndpoint,
+    JWKSEndpoint,
+    UserInfoEndpoint,
+)
+
+# Set up key management (rotates RSA signing keys)
+key_manager = InMemoryKeyManager()  # use a persistent backend in prod
+
+# ID token generator
+id_token_gen = IDTokenGenerator(
+    key_manager=key_manager,
+    issuer="https://auth.example.com",
+)
+
+# Claims provider (reads attributes from your subject model)
+claims_provider = DefaultClaimsProvider(my_subject_lookup)
+
+# Discovery metadata
+metadata = build_metadata_from_base_url(
+    issuer="https://auth.example.com",
+    base_url="https://auth.example.com",
+)
+
+# HTTP endpoints
+discovery = DiscoveryEndpoint(metadata)
+jwks = JWKSEndpoint(key_manager)
+userinfo = UserInfoEndpoint(
+    token_service=oauth_token_service,
+    claims_provider=claims_provider,
+)
+```
+
+## Endpoints
+
+| Endpoint | Path | Returns |
+|----------|------|---------|
+| Discovery | `/.well-known/openid-configuration` | Provider metadata |
+| JWKS | `/.well-known/jwks.json` | Public signing keys |
+| UserInfo | `/userinfo` | Subject claims (Bearer auth) |
+| End Session | `/oauth/end_session` | Logout flow |
+| Registration | `/oauth/register` | Dynamic client registration |
+
+## Key Management
+
+The `KeyManager` protocol manages RSA signing keys for ID tokens:
+
+```python
+manager = InMemoryKeyManager()
+
+# Get current signing key
+key = await manager.get_active_signing_key()
+
+# Rotate (old key kept for verification of in-flight tokens)
+new_key = await manager.rotate_key()
+
+# Get all public keys (for JWKS)
+jwks = await manager.get_jwks()
+```
+
+For production, implement `KeyManager` against a persistent store
+(database, file, or KMS).
+
+## ID Tokens
+
+ID tokens are returned automatically from the OAuth token endpoint
+when the request includes the `openid` scope:
+
+```python
+from neozen.web.oauth import TokenEndpoint
+
+endpoint = TokenEndpoint(
+    oauth_token_service,
+    id_token_generator=id_token_gen,
+    claims_provider=claims_provider,
+)
+# Now POST /token with scope=openid email returns id_token in the response
+```
+
+## Scopes and Claims
+
+Standard OIDC scope-to-claims mapping is built in:
+
+| Scope | Claims |
+|-------|--------|
+| `openid` | `sub` |
+| `profile` | name, family_name, given_name, preferred_username, picture, locale, ... |
+| `email` | email, email_verified |
+| `phone` | phone_number, phone_number_verified |
+| `address` | address |
+
+## Consent Management
+
+```python
+from neozen.core.oidc.consent import ConsentService
+
+service = ConsentService(repository=consent_repo)
+
+# Check before authorization
+if not await service.has_consent(user_id, client_id, "openid email"):
+    # Show consent screen
+    ...
+
+# Grant
+await service.grant_consent(user_id, client_id, "openid email")
+
+# List trusted apps
+apps = await service.list_trusted_apps(user_id)
+
+# Revoke
+await service.revoke_consent(user_id, client_id)
+```
+
+## RP-Initiated Logout
+
+```python
+from neozen.web.oidc import EndSessionEndpoint
+
+endpoint = EndSessionEndpoint(client_service)
+result = await endpoint(query_params)
+
+if result.post_logout_redirect_uri:
+    # Destroy session, then redirect
+    ...
+```
+
+## Dynamic Client Registration
+
+```python
+from neozen.web.oidc import RegistrationEndpoint
+
+endpoint = RegistrationEndpoint(client_service)
+response = await endpoint({
+    "redirect_uris": ["https://app.example.com/callback"],
+    "client_name": "My App",
+})
+# Returns client_id, client_secret, etc.
+```
+
+## CORS
+
+```python
+from neozen.web.oidc.cors import collect_allowed_origins
+
+origins = await collect_allowed_origins(client_service)
+# Use as CORS middleware allowed_origins
+```

@@ -284,6 +284,162 @@ await sender.send(EmailMessage(to="user@example.com", subject="Hello", body_text
 | `nz_pr_` | Password reset |
 | `nz_at_` / `nz_rt_` / `nz_ac_` | OAuth tokens |
 
+## Email OTP
+
+```python
+from neozen.core.factors.email_otp import EmailOTPFactor, EmailOTPConfig
+
+factor = EmailOTPFactor(
+    config=EmailOTPConfig(),
+    code_repository=otp_repo,
+    subject_email_lookup=email_lookup,
+    email_sender=sender,
+    code_hash_key="secret",
+)
+
+# Send a code
+await factor.begin_authentication(user_id)
+
+# Verify
+ok = await factor.complete_authentication(user_id, response="123456")
+```
+
+## Groups
+
+```python
+from neozen.core.groups import GroupService, GroupRole
+
+service = GroupService(group_repository=g_repo, membership_repository=m_repo)
+
+group = await service.create_group("engineering", owner_id="user_1")
+await service.add_member(group.id, "user_2", actor_id="user_1")
+await service.change_role(group.id, "user_2", GroupRole.ADMIN, actor_id="user_1")
+members = await service.list_members(group.id)
+```
+
+## Invitations
+
+```python
+from neozen.core.groups import InvitationService, InvitationConfig
+
+service = InvitationService(
+    config=InvitationConfig(
+        accept_url_template="https://app.com/invite?token={token}",
+    ),
+    repository=inv_repo,
+    token_hash_key="secret",
+)
+
+# Create
+invitation, token = await service.create_invitation(
+    email="new@example.com",
+    invited_by="admin_1",
+    group_ids=["grp_1"],
+    role_names=["user"],
+)
+
+# Accept
+details = await service.accept_invitation(token, accepted_by=new_user_id)
+```
+
+## OIDC Provider
+
+```python
+from neozen.core.oidc import InMemoryKeyManager, IDTokenGenerator
+from neozen.web.oidc import (
+    DiscoveryEndpoint, JWKSEndpoint, UserInfoEndpoint,
+    EndSessionEndpoint, RegistrationEndpoint,
+)
+from neozen.core.oidc.discovery import build_metadata_from_base_url
+
+key_manager = InMemoryKeyManager()
+id_token_gen = IDTokenGenerator(
+    key_manager=key_manager, issuer="https://auth.example.com",
+)
+
+# Wire OIDC into the OAuth token endpoint
+endpoint = TokenEndpoint(
+    oauth_token_service,
+    id_token_generator=id_token_gen,
+    claims_provider=claims_provider,
+)
+
+# HTTP endpoints
+metadata = build_metadata_from_base_url(
+    issuer="https://auth.example.com",
+    base_url="https://auth.example.com",
+)
+discovery = DiscoveryEndpoint(metadata)
+jwks = JWKSEndpoint(key_manager)
+userinfo = UserInfoEndpoint(oauth_token_service, claims_provider)
+```
+
+## SCIM 2.0
+
+```python
+from neozen.core.scim import SCIMUserService, SCIMGroupService, User, Email
+from neozen.web.scim import UsersEndpoint, GroupsEndpoint, DiscoveryEndpoints
+
+user_service = SCIMUserService(
+    adapter=my_adapter,
+    base_url="https://api.example.com/scim/v2",
+)
+users = UsersEndpoint(user_service)
+
+# Create
+result = await users.create({"userName": "alice", "emails": [...]})
+
+# List with filter
+result = await users.list({"filter": 'userName sw "ali"', "count": 10})
+
+# Discovery
+discovery = DiscoveryEndpoints()
+```
+
+## LDAP Backend
+
+```python
+from neozen.storage.ldap import LDAPConfig, LDAPSubjectRepository, authenticate_user
+
+config = LDAPConfig(
+    url="ldap://ldap.example.com",
+    bind_dn="cn=admin,dc=example,dc=com",
+    bind_password="secret",
+    base_dn="ou=people,dc=example,dc=com",
+)
+
+repo = LDAPSubjectRepository(config)
+user = await repo.get_one_by(email="alice@example.com")
+
+# Bind authentication
+user = await authenticate_user(config, "alice@example.com", "password")
+```
+
+## i18n
+
+```python
+from neozen.core.i18n import builtin_translator, negotiate_locale, Catalog
+
+# Use the built-in translator (EN/FR for emails and errors)
+msg = builtin_translator.gettext(
+    "email.password_reset.subject",
+    locale="fr",
+    app_name="My App",
+)
+
+# Add a custom locale
+builtin_translator.add_catalog("de", Catalog({...}))
+
+# Negotiate from request
+locale = negotiate_locale(
+    ui_locales=request.params.get("ui_locales"),
+    user_preference=user.locale,
+    accept_language=request.headers.get("Accept-Language"),
+    available=["en", "fr", "de"],
+    default="en",
+)
+```
+
 ## Common Imports
 
 ```python
@@ -291,6 +447,7 @@ await sender.send(EmailMessage(to="user@example.com", subject="Hello", body_text
 from neozen.core.factors.password import PasswordFactor, create_password_factor
 from neozen.core.factors.totp import TOTPFactor, TOTPConfig
 from neozen.core.factors.magic_link import MagicLinkFactor, MagicLinkConfig
+from neozen.core.factors.email_otp import EmailOTPFactor, EmailOTPConfig
 
 # Identifiers
 from neozen.core.identifiers.email import EmailIdentifier, create_email_identifier
@@ -302,15 +459,37 @@ from neozen.storage.sqlalchemy import SessionServiceFactory
 from neozen.storage.sqlalchemy import RoleServiceFactory, get_subject_roles
 from neozen.core.authz.models import Permission, Role, RoleAssignment, ScopeType
 
+# Groups & Invitations
+from neozen.core.groups import GroupService, GroupRole, InvitationService
+
 # Email
 from neozen.core.email.base import EmailMessage, EmailSenderProtocol
 from neozen.core.email.console import ConsoleEmailSender
 from neozen.core.email.smtp import SMTPEmailSender
+from neozen.core.email.notifications import NotificationService
 
 # OAuth client
 from neozen.core.oauth_client.service import OAuthClientService
 from neozen.core.oauth_client.providers.google import GoogleProvider
 from neozen.core.oauth_client.providers.github import GitHubProvider
+
+# OIDC Provider
+from neozen.core.oidc import InMemoryKeyManager, IDTokenGenerator, DefaultClaimsProvider
+from neozen.core.oidc.discovery import build_metadata_from_base_url
+from neozen.web.oidc import (
+    DiscoveryEndpoint, JWKSEndpoint, UserInfoEndpoint,
+    EndSessionEndpoint, RegistrationEndpoint,
+)
+
+# SCIM
+from neozen.core.scim import SCIMUserService, SCIMGroupService, User, Group, Email
+from neozen.web.scim import UsersEndpoint, GroupsEndpoint, DiscoveryEndpoints
+
+# LDAP
+from neozen.storage.ldap import LDAPConfig, LDAPSubjectRepository, authenticate_user
+
+# i18n
+from neozen.core.i18n import Translator, Catalog, builtin_translator, negotiate_locale
 
 # Storage
 from neozen.storage.sqlalchemy.repositories import SubjectRepository
