@@ -20,6 +20,11 @@ from neozen.core.oidc.claims import (
     DefaultClaimsProvider,
     SubjectClaims,
 )
+from neozen.core.oidc.consent import (
+    ConsentRecord,
+    ConsentRepository,
+    ConsentService,
+)
 from neozen.core.oidc.discovery import OIDCProviderMetadata
 from neozen.core.oidc.id_token import (
     IDTokenClaims,
@@ -38,6 +43,9 @@ __all__ = [
     "JWK",
     "JWKS",
     "ClaimsProvider",
+    "ConsentRecord",
+    "ConsentRepository",
+    "ConsentService",
     "DefaultClaimsProvider",
     "IDTokenClaims",
     "IDTokenGenerator",
