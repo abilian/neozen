@@ -905,6 +905,18 @@ wheels = [
 ]
 
 [[package]]
+name = "ldap3"
+version = "2.9.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyasn1" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/ac/96bd5464e3edbc61595d0d69989f5d9969ae411866427b2500a8e5b812c0/ldap3-2.9.1.tar.gz", hash = "sha256:f3e7fc4718e3f09dda568b57100095e0ce58633bcabbed8667ce3f8fbaa4229f", size = 398830, upload-time = "2021-07-18T06:34:21.786Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/f6/71d6ec9f18da0b2201287ce9db6afb1a1f637dedb3f0703409558981c723/ldap3-2.9.1-py2.py3-none-any.whl", hash = "sha256:5869596fc4948797020d3f03b7939da938778a0f9e2009f7a072ccf92b8e8d70", size = 432192, upload-time = "2021-07-18T06:34:12.905Z" },
+]
+
+[[package]]
 name = "librt"
 version = "0.8.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1411,6 +1423,7 @@ all = [
     { name = "httpx" },
     { name = "itsdangerous" },
     { name = "jinja2" },
+    { name = "ldap3" },
     { name = "litestar" },
     { name = "peewee" },
     { name = "phonenumbers" },
@@ -1434,6 +1447,9 @@ demo = [
     { name = "litestar" },
     { name = "starlette" },
     { name = "uvicorn" },
+]
+ldap = [
+    { name = "ldap3" },
 ]
 oauth-client = [
     { name = "httpx" },
@@ -1522,9 +1538,10 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'oauth-client'", specifier = ">=0.28.0" },
     { name = "itsdangerous", marker = "extra == 'demo'", specifier = ">=2.0.0" },
     { name = "jinja2", marker = "extra == 'demo'", specifier = ">=3.1.0" },
+    { name = "ldap3", marker = "extra == 'ldap'", specifier = ">=2.9.0" },
     { name = "litestar", marker = "extra == 'demo'", specifier = ">=2.0.0" },
     { name = "litestar", extras = ["standard"], specifier = ">=2.19.0" },
-    { name = "neozen", extras = ["password", "phone", "totp", "oauth-client", "webauthn", "oidc", "sqlalchemy", "peewee", "tortoise", "databases", "demo"], marker = "extra == 'all'" },
+    { name = "neozen", extras = ["password", "phone", "totp", "oauth-client", "webauthn", "oidc", "ldap", "sqlalchemy", "peewee", "tortoise", "databases", "demo"], marker = "extra == 'all'" },
     { name = "peewee", marker = "extra == 'peewee'", specifier = ">=3.17.0" },
     { name = "phonenumbers", marker = "extra == 'phone'", specifier = ">=9.0.0" },
     { name = "pwdlib", extras = ["argon2"], marker = "extra == 'password'", specifier = ">=0.3.0" },
@@ -1540,7 +1557,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'demo'", specifier = ">=0.30.0" },
     { name = "webauthn", marker = "extra == 'webauthn'", specifier = ">=2.0.0" },
 ]
-provides-extras = ["password", "phone", "totp", "oauth-client", "webauthn", "oidc", "sqlalchemy", "peewee", "tortoise", "databases", "demo", "all"]
+provides-extras = ["password", "phone", "totp", "oauth-client", "webauthn", "oidc", "ldap", "sqlalchemy", "peewee", "tortoise", "databases", "demo", "all"]
 
 [package.metadata.requires-dev]
 dev = [
