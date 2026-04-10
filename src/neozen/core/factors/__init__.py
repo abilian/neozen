@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from neozen.core.factors.email_otp import (
+    EmailOTPCode,
+    EmailOTPCodeRepository,
+    EmailOTPConfig,
+    EmailOTPFactor,
+)
 from neozen.core.factors.magic_link import (
     MagicLinkConfig,
     MagicLinkFactor,
@@ -32,6 +38,11 @@ from neozen.core.factors.registry import (
 )
 
 __all__ = [
+    # Email OTP factor
+    "EmailOTPCode",
+    "EmailOTPCodeRepository",
+    "EmailOTPConfig",
+    "EmailOTPFactor",
     # Magic link factor
     "MagicLinkConfig",
     "MagicLinkFactor",

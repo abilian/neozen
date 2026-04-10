@@ -367,7 +367,7 @@ class OAuthClientService:
             OAuthProviderNotFoundError: If provider is not registered.
             OAuthTokenError: If the refresh fails.
         """
-        provider = self._get_provider(provider_id)
+        provider = self.get_provider(provider_id)
         return await provider.refresh_access_token(refresh_token)
 
     async def cleanup_expired_states(self) -> int:

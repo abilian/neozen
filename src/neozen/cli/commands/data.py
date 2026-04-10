@@ -99,21 +99,25 @@ def dump(args: argparse.Namespace) -> int:
     async def run() -> int:
         db_url = get_database_url()
         async with DatabaseContext(db_url) as session:
-            data = {
-                "version": 1,
-                "exported_at": datetime.now(UTC).isoformat(),
-                "subjects": await _dump_subjects(session),
-                "roles": await _dump_roles(session),
-                "role_assignments": await _dump_role_assignments(session),
-            }
+            subjects = await _dump_subjects(session)
+            roles = await _dump_roles(session)
+            assignments = await _dump_role_assignments(session)
+
+        data: dict[str, Any] = {
+            "version": 1,
+            "exported_at": datetime.now(UTC).isoformat(),
+            "subjects": subjects,
+            "roles": roles,
+            "role_assignments": assignments,
+        }
 
         text = json.dumps(data, indent=2, default=str)
         if output_path:
             output_path.write_text(text)
             print(
-                f"Dumped {len(data['subjects'])} subjects, "
-                f"{len(data['roles'])} roles, "
-                f"{len(data['role_assignments'])} assignments "
+                f"Dumped {len(subjects)} subjects, "
+                f"{len(roles)} roles, "
+                f"{len(assignments)} assignments "
                 f"to {output_path}"
             )
         else:
