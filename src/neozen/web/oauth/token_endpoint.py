@@ -61,6 +61,19 @@ class RefreshTokenRequest(BaseModel):
     client_id: str | None = None
 
 
+class ClientCredentialsTokenRequest(BaseModel):
+    """Request for client_credentials grant.
+
+    Per RFC 6749 Section 4.4, the client authenticates via the
+    token endpoint (Basic auth or POST body) and receives an
+    access token directly.
+    """
+
+    grant_type: typing.Literal["client_credentials"]
+    scope: str | None = None
+    client_id: str | None = None
+
+
 # =============================================================================
 # Response Models (HTTP layer)
 # =============================================================================
@@ -157,6 +170,10 @@ class TokenEndpoint[
                 )
             case "refresh_token":
                 return await self._handle_refresh_token(
+                    payload, client_id, client_secret
+                )
+            case "client_credentials":
+                return await self._handle_client_credentials(
                     payload, client_id, client_secret
                 )
             case None:
@@ -278,6 +295,69 @@ class TokenEndpoint[
             scope=scope if scope != stored_refresh.scope else None,
         )
 
+    async def _handle_client_credentials(
+        self,
+        payload: dict[str, typing.Any],
+        auth_client_id: str | None,
+        auth_client_secret: str | None,
+    ) -> TokenResponse:
+        """Handle client_credentials grant.
+
+        Per RFC 6749 Section 4.4, the client authenticates and
+        receives an access token (no refresh token).
+        """
+        # Parse request
+        request = self._parse_client_credentials_request(payload)
+
+        # Resolve client_id from request body or auth header
+        client_id = request.client_id or auth_client_id
+        if not client_id:
+            msg = "client_id is required"
+            raise TokenInvalidRequestError(msg)
+
+        if request.client_id and auth_client_id and request.client_id != auth_client_id:
+            msg = "Client ID mismatch."
+            raise TokenInvalidClientError(msg)
+
+        # Get client
+        client = await self._get_client(client_id)
+
+        # Verify client is allowed to use this grant type
+        if not client.is_grant_type_allowed("client_credentials"):
+            msg = "Client is not allowed to use client_credentials grant."
+            raise TokenInvalidGrantError(msg)
+
+        # Validate scope
+        scope = request.scope
+        if scope and not client.is_scope_allowed(scope):
+            msg = "One or more requested scopes are not allowed for this client."
+            raise TokenInvalidScopeError(msg)
+
+        # Issue access token
+        result = await self.service.issue_client_credentials_token(client, scope)
+
+        return TokenResponse(
+            access_token=result.access_token,
+            token_type="Bearer",
+            expires_in=int(self.service.access_token_lifetime.total_seconds()),
+            refresh_token=None,  # No refresh token for client_credentials
+            scope=scope,
+        )
+
+    def _parse_client_credentials_request(
+        self, payload: dict[str, typing.Any]
+    ) -> ClientCredentialsTokenRequest:
+        """Parse and validate client_credentials request."""
+        try:
+            return ClientCredentialsTokenRequest.model_validate(payload)
+        except ValidationError as e:
+            errors = e.errors()
+            if errors:
+                msg = f"Invalid parameter: {errors[0]['loc'][0]}"
+                raise TokenInvalidRequestError(msg) from e
+            msg = "Invalid request"
+            raise TokenInvalidRequestError(msg) from e
+
     def _parse_authorization_code_request(
         self, payload: dict[str, typing.Any]
     ) -> AuthorizationCodeTokenRequest:
@@ -326,6 +406,7 @@ class TokenEndpoint[
 
 __all__ = [
     "AuthorizationCodeTokenRequest",
+    "ClientCredentialsTokenRequest",
     "RefreshTokenRequest",
     "TokenEndpoint",
     "TokenResponse",

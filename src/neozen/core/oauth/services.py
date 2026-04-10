@@ -296,6 +296,50 @@ class OAuthTokenService[
             scope=auth_code.scope,
         )
 
+    async def issue_client_credentials_token(
+        self,
+        client: OC,
+        scope: str | None,
+    ) -> AccessTokenResult:
+        """Issue an access token via the client_credentials grant.
+
+        Per RFC 6749 Section 4.4, refresh tokens are NOT issued for
+        the client_credentials grant -- the client can simply request
+        a new token if needed.
+
+        Args:
+            client: The authenticated OAuth client.
+            scope: The scope (already validated against client's allowed scopes).
+
+        Returns:
+            Access token result (no refresh token).
+        """
+        now = datetime.now(UTC)
+
+        # Generate access token
+        access_token, access_token_hash = generate_token_hash_pair(
+            self.token_hash_key, prefix=self.access_token_prefix
+        )
+        access_expires_at = now + self.access_token_lifetime
+
+        # The "subject" for client_credentials is the client itself
+        await self.access_token_repository.create(
+            token_hash=access_token_hash,
+            client_id=client.client_id,
+            subject_id=client.client_id,
+            scope=scope,
+            expires_at=access_expires_at,
+            created_at=now,
+            revoked_at=None,
+        )
+
+        return AccessTokenResult(
+            access_token=access_token,
+            access_token_hash=access_token_hash,
+            expires_at=access_expires_at,
+            scope=scope,
+        )
+
     async def refresh_access_token(
         self,
         stored_refresh: ORT,

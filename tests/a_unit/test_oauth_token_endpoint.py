@@ -32,6 +32,8 @@ from tests.conftest import MockStorage
 @dataclasses.dataclass
 class MockOAuthClient(OAuthClientModel):
     client_id: str
+    allowed_grant_types: str = ""
+    allowed_scopes: str = ""
 
 
 @dataclasses.dataclass
@@ -471,6 +473,172 @@ class TestRefreshTokenGrant:
                 "client_id": "client_1",
                 "scope": "read write delete",  # exceeds original
             })
+
+
+# =============================================================================
+# Tests: Client Credentials Grant
+# =============================================================================
+
+
+@pytest.mark.anyio
+class TestClientCredentialsGrant:
+    async def test_success(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        await client_storage.create(
+            client_id="svc_1",
+            allowed_grant_types="client_credentials",
+            allowed_scopes="api:read api:write",
+        )
+
+        response = await token_endpoint({
+            "grant_type": "client_credentials",
+            "client_id": "svc_1",
+            "scope": "api:read",
+        })
+
+        assert isinstance(response, TokenResponse)
+        assert response.access_token.startswith("nz_at_")
+        assert response.token_type == "Bearer"
+        assert response.expires_in == 3600
+        assert response.scope == "api:read"
+        # No refresh token for client_credentials per RFC 6749 Section 4.4
+        assert response.refresh_token is None
+
+    async def test_no_scope(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        """Scope is optional for client_credentials."""
+        await client_storage.create(
+            client_id="svc_1",
+            allowed_grant_types="client_credentials",
+        )
+
+        response = await token_endpoint({
+            "grant_type": "client_credentials",
+            "client_id": "svc_1",
+        })
+
+        assert isinstance(response, TokenResponse)
+        assert response.scope is None
+
+    async def test_client_id_from_basic_auth(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        """client_id can come from Basic auth header instead of body."""
+        await client_storage.create(
+            client_id="svc_1",
+            allowed_grant_types="client_credentials",
+        )
+
+        response = await token_endpoint(
+            {"grant_type": "client_credentials"},
+            client_id="svc_1",
+            client_secret="secret",
+        )
+
+        assert isinstance(response, TokenResponse)
+        assert response.access_token.startswith("nz_at_")
+
+    async def test_client_id_mismatch(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        """If client_id is in both body and auth header, they must match."""
+        await client_storage.create(
+            client_id="svc_1",
+            allowed_grant_types="client_credentials",
+        )
+
+        with pytest.raises(TokenInvalidClientError):
+            await token_endpoint(
+                {
+                    "grant_type": "client_credentials",
+                    "client_id": "svc_1",
+                },
+                client_id="svc_2",
+            )
+
+    async def test_missing_client_id(
+        self,
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        with pytest.raises(TokenInvalidRequestError):
+            await token_endpoint({"grant_type": "client_credentials"})
+
+    async def test_unknown_client(
+        self,
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        with pytest.raises(TokenInvalidClientError):
+            await token_endpoint({
+                "grant_type": "client_credentials",
+                "client_id": "nonexistent",
+            })
+
+    async def test_grant_type_not_allowed(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        """Client must have client_credentials in allowed_grant_types."""
+        await client_storage.create(
+            client_id="svc_1",
+            allowed_grant_types="authorization_code",  # No client_credentials
+        )
+
+        with pytest.raises(TokenInvalidGrantError):
+            await token_endpoint({
+                "grant_type": "client_credentials",
+                "client_id": "svc_1",
+            })
+
+    async def test_scope_not_allowed(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        await client_storage.create(
+            client_id="svc_1",
+            allowed_grant_types="client_credentials",
+            allowed_scopes="api:read",
+        )
+
+        with pytest.raises(TokenInvalidScopeError):
+            await token_endpoint({
+                "grant_type": "client_credentials",
+                "client_id": "svc_1",
+                "scope": "api:write admin:all",
+            })
+
+    async def test_token_subject_is_client(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        access_token_storage: MockStorage[MockOAuthAccessToken],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        """The token's subject_id should be the client_id itself."""
+        await client_storage.create(
+            client_id="svc_1",
+            allowed_grant_types="client_credentials",
+        )
+
+        response = await token_endpoint({
+            "grant_type": "client_credentials",
+            "client_id": "svc_1",
+        })
+
+        token_hash = get_token_hash(response.access_token, TOKEN_HASH_KEY)
+        stored = await access_token_storage.get_one_by(token_hash=token_hash)
+        assert stored.subject_id == "svc_1"
+        assert stored.client_id == "svc_1"
 
 
 # =============================================================================
