@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from neozen.cli.commands import client, config, role, subject
+from neozen.cli.commands import client, config, data, role, subject
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -35,6 +35,9 @@ Examples:
   neozen config init
   neozen config validate
   neozen config show
+  neozen data dump --output backup.json
+  neozen data restore --input backup.json
+  neozen data populate --count 50
 """,
     )
 
@@ -436,6 +439,56 @@ Examples:
     )
     config_init.set_defaults(func=config.init_command)
 
+    # Data command
+    data_parser = subparsers.add_parser(
+        "data",
+        help="Data import/export and test data generation",
+        description="Dump, restore, and populate the database.",
+    )
+    data_subparsers = data_parser.add_subparsers(
+        dest="subcommand",
+        title="subcommands",
+    )
+
+    # data dump
+    data_dump = data_subparsers.add_parser(
+        "dump",
+        help="Export subjects, roles, and assignments to JSON",
+    )
+    data_dump.add_argument(
+        "--output",
+        "-o",
+        help="Output file (default: stdout)",
+    )
+    data_dump.set_defaults(func=data.dump)
+
+    # data restore
+    data_restore = data_subparsers.add_parser(
+        "restore",
+        help="Restore from a JSON dump",
+    )
+    data_restore.add_argument(
+        "--input",
+        "-i",
+        required=True,
+        help="Input JSON file",
+    )
+    data_restore.set_defaults(func=data.restore)
+
+    # data populate
+    data_populate = data_subparsers.add_parser(
+        "populate",
+        help="Generate test data",
+    )
+    data_populate.add_argument(
+        "--count",
+        "-n",
+        type=int,
+        default=10,
+        help="Number of test users to create (default: 10)",
+    )
+    data_populate.set_defaults(func=data.populate)
+
     return parser
 
 
@@ -449,9 +502,13 @@ def main(args: list[str] | None = None) -> int:
         return 0
 
     # Handle commands with subcommands
-    if parsed.command in ("subject", "client", "role", "config") and not getattr(
-        parsed, "subcommand", None
-    ):
+    if parsed.command in (
+        "subject",
+        "client",
+        "role",
+        "config",
+        "data",
+    ) and not getattr(parsed, "subcommand", None):
         # Print help for the specific command
         parser.parse_args([parsed.command, "--help"])
         return 0
