@@ -34,32 +34,24 @@ lint.extend-ignore = [
     "T201", # Print...
     "PLW1514",
     "PLC1901",
+    "S105", #   	hardcoded-password-string (false positive)
+    "S106", #   	hardcoded-password-func-arg (same)
+    "S107", #   	hardcoded-password-default (same)
 
     # Fix later (or not)
-    "ANN401",
-    "ARG002", # Unused argument - common in watch methods/event handlers
-    "PLR0913", # Too many arguments - export functions need them
-    "S603", # subprocess call - intentional for $EDITOR
-    "BLE001", # Blind exception - acceptable for user-facing error handling
-    "SLF001", # Private member access - accessing own class's private attrs
-    "PLW2901", # Loop variable overwritten - common strip() pattern
-    "ANN003", # Missing **kwargs annotation - common in widget subclasses
-    "ANN001", # Missing arg annotation - event handlers
-    "S110", # try-except-pass - acceptable for config loading with defaults
-    "PLW0603", # global statement - used for singleton config/state
-    "TRY300", # return in try block - cleaner for import checks
-    "PERF401", # list comprehension - explicit append loop is clearer
-    "E501", #  	line-too-long
-    "S107", #  	hardcoded-password-default
-    "N818", #  	error-suffix-on-exception-name
-    "UP049", # 	private-type-parameter
-    "DTZ005", #	call-datetime-now-without-tzinfo
-    "S106", #  	hardcoded-password-func-arg
-    "ARG001", #	unused-function-argument
-    "PYI036", #	bad-exit-annotation
-    "S105", #  	hardcoded-password-string
-    "UP047", # 	non-pep695-generic-function
-    "FURB113",
+    "ANN401", # 	any-type
+    "BLE001", # 	blind-except
+    "SLF001", # 	private-member-access
+    "E501", #   	line-too-long
+    "ARG002", # 	unused-method-argument
+    "ARG001", # 	unused-function-argument
+    "N818", #   	error-suffix-on-exception-name
+    "S110", #   	try-except-pass
+    "FURB113", #	repeated-append
+    "PLW2901", #	redefined-loop-name
+    "PYI036", # 	bad-exit-annotation
+    # "UP047", #  	non-pep695-generic-function
+    "UP049", #  	private-type-parameter
 ]
 
 [lint.extend-per-file-ignores]
@@ -70,6 +62,8 @@ lint.extend-ignore = [
     "E402", #    [ ] module-import-not-at-top-of-file
     "RUF100", #  [*] unused-noqa
     "FBT",
+    "DTZ005",
+    "S603",
 ]
 "**/__init__.py" = [
     "RUF022", # Sort __all__

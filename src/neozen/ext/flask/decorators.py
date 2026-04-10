@@ -15,7 +15,7 @@ if typing.TYPE_CHECKING:
     F = typing.TypeVar("F", bound=Callable[..., typing.Any])
 
 
-def login_required(
+def login_required[F: Callable[..., typing.Any]](
     func: F | None = None,
     *,
     redirect: bool = True,
@@ -76,7 +76,7 @@ def login_required(
     return decorator
 
 
-def fresh_login_required(
+def fresh_login_required[F: Callable[..., typing.Any]](
     func: F | None = None,
     *,
     redirect: bool = True,

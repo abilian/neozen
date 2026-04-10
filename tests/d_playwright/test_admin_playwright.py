@@ -15,60 +15,54 @@ import pytest
 from .conftest import generate_test_email, login_user, register_user
 
 if TYPE_CHECKING:
-    from playwright.sync_api import Page
+    from playwright.sync_api import Browser, Page
 
 
 # =============================================================================
-# Module-level admin user tracking
+# Session-scoped admin fixtures
 # =============================================================================
-
-# Store admin credentials per framework (module-scoped)
-_flask_admin: dict[str, str] | None = None
-_litestar_admin: dict[str, str] | None = None
-
-
-def get_or_create_flask_admin(page: Page, server: str) -> dict[str, str]:
-    """Get or create Flask admin user."""
-    global _flask_admin
-    if _flask_admin is None:
-        _flask_admin = {
-            "email": generate_test_email(),
-            "password": "SecurePassword123!",
-        }
-        page.context.clear_cookies()
-        register_user(page, server, _flask_admin["email"], _flask_admin["password"])
-    return _flask_admin
+#
+# Each framework needs an admin user that exists for the duration of the
+# test session. We use session-scoped fixtures that open a fresh browser
+# context just to register the admin once, then return immutable
+# credentials. Subsequent tests use those credentials via login.
 
 
-def get_or_create_litestar_admin(page: Page, server: str) -> dict[str, str]:
-    """Get or create Litestar admin user."""
-    global _litestar_admin
-    if _litestar_admin is None:
-        _litestar_admin = {
-            "email": generate_test_email(),
-            "password": "SecurePassword123!",
-        }
-        page.context.clear_cookies()
-        register_user(
-            page, server, _litestar_admin["email"], _litestar_admin["password"]
-        )
-    return _litestar_admin
+_ADMIN_PASSWORD = "SecurePassword123!"
 
 
-def login_flask_admin(page: Page, server: str) -> dict[str, str]:
-    """Login as Flask admin user, creating if needed."""
-    creds = get_or_create_flask_admin(page, server)
-    page.context.clear_cookies()
-    login_user(page, server, creds["email"], creds["password"])
+def _create_admin_via_browser(browser: Browser, server: str) -> dict[str, str]:
+    """Open a temporary context to register a new admin user."""
+    creds = {
+        "email": generate_test_email(),
+        "password": _ADMIN_PASSWORD,
+    }
+    context = browser.new_context()
+    page = context.new_page()
+    page.set_default_timeout(10000)
+    try:
+        register_user(page, server, creds["email"], creds["password"])
+    finally:
+        context.close()
     return creds
 
 
-def login_litestar_admin(page: Page, server: str) -> dict[str, str]:
-    """Login as Litestar admin user, creating if needed."""
-    creds = get_or_create_litestar_admin(page, server)
+@pytest.fixture(scope="session")
+def flask_admin_creds(browser: Browser, flask_server: str) -> dict[str, str]:
+    """Register and return Flask admin credentials (once per session)."""
+    return _create_admin_via_browser(browser, flask_server)
+
+
+@pytest.fixture(scope="session")
+def litestar_admin_creds(browser: Browser, litestar_server: str) -> dict[str, str]:
+    """Register and return Litestar admin credentials (once per session)."""
+    return _create_admin_via_browser(browser, litestar_server)
+
+
+def _login_with_creds(page: Page, server: str, creds: dict[str, str]) -> None:
+    """Clear cookies and log in with the given credentials."""
     page.context.clear_cookies()
     login_user(page, server, creds["email"], creds["password"])
-    return creds
 
 
 # =============================================================================
@@ -80,10 +74,13 @@ class TestFlaskAdminDashboard:
     """Tests for the Flask admin dashboard."""
 
     def test_admin_dashboard_shows_stats(
-        self, flask_page: Page, flask_server: str
+        self,
+        flask_page: Page,
+        flask_server: str,
+        flask_admin_creds: dict[str, str],
     ) -> None:
         """Admin dashboard should display statistics."""
-        login_flask_admin(flask_page, flask_server)
+        _login_with_creds(flask_page, flask_server, flask_admin_creds)
         flask_page.goto(f"{flask_server}/admin")
 
         content = flask_page.content()
@@ -93,10 +90,13 @@ class TestFlaskAdminDashboard:
         assert "user" in content.lower() or "total" in content.lower()
 
     def test_admin_dashboard_has_navigation(
-        self, flask_page: Page, flask_server: str
+        self,
+        flask_page: Page,
+        flask_server: str,
+        flask_admin_creds: dict[str, str],
     ) -> None:
         """Admin dashboard should have navigation links."""
-        login_flask_admin(flask_page, flask_server)
+        _login_with_creds(flask_page, flask_server, flask_admin_creds)
         flask_page.goto(f"{flask_server}/admin")
 
         # Should have links to users and sessions (via button role)
@@ -110,40 +110,49 @@ class TestFlaskAdminUsers:
     """Tests for Flask admin user management."""
 
     def test_admin_users_list_shows_users(
-        self, flask_page: Page, flask_server: str
+        self,
+        flask_page: Page,
+        flask_server: str,
+        flask_admin_creds: dict[str, str],
     ) -> None:
         """Admin users page should list registered users."""
-        creds = login_flask_admin(flask_page, flask_server)
+        _login_with_creds(flask_page, flask_server, flask_admin_creds)
         flask_page.goto(f"{flask_server}/admin/users")
 
         content = flask_page.content()
         # Should show the registered admin user's email
-        assert creds["email"] in content
+        assert flask_admin_creds["email"] in content
 
     def test_admin_users_list_shows_multiple_users(
-        self, flask_page: Page, flask_server: str
+        self,
+        flask_page: Page,
+        flask_server: str,
+        flask_admin_creds: dict[str, str],
     ) -> None:
         """Admin users page should list all registered users."""
-        creds = login_flask_admin(flask_page, flask_server)
-
         # Register another user
         flask_page.context.clear_cookies()
         second_email = generate_test_email()
-        register_user(flask_page, flask_server, second_email, "SecurePassword123!")
+        register_user(flask_page, flask_server, second_email, _ADMIN_PASSWORD)
 
-        # Login as admin again
-        login_user(flask_page, flask_server, creds["email"], creds["password"])
+        # Login as admin
+        _login_with_creds(flask_page, flask_server, flask_admin_creds)
 
         flask_page.goto(f"{flask_server}/admin/users")
 
         content = flask_page.content()
         # Should show both users
-        assert creds["email"] in content
+        assert flask_admin_creds["email"] in content
         assert second_email in content
 
-    def test_admin_user_detail_page(self, flask_page: Page, flask_server: str) -> None:
+    def test_admin_user_detail_page(
+        self,
+        flask_page: Page,
+        flask_server: str,
+        flask_admin_creds: dict[str, str],
+    ) -> None:
         """Admin user detail page should show user information."""
-        login_flask_admin(flask_page, flask_server)
+        _login_with_creds(flask_page, flask_server, flask_admin_creds)
         # Go to users list
         flask_page.goto(f"{flask_server}/admin/users")
 
@@ -157,17 +166,20 @@ class TestFlaskAdminUsers:
             # Should show user details
             assert "user" in content.lower() or "email" in content.lower()
 
-    def test_admin_toggle_user_role(self, flask_page: Page, flask_server: str) -> None:
+    def test_admin_toggle_user_role(
+        self,
+        flask_page: Page,
+        flask_server: str,
+        flask_admin_creds: dict[str, str],
+    ) -> None:
         """Admin should be able to toggle user roles."""
-        creds = login_flask_admin(flask_page, flask_server)
-
         # Register a second user to toggle roles on
         flask_page.context.clear_cookies()
         user_email = generate_test_email()
-        register_user(flask_page, flask_server, user_email, "SecurePassword123!")
+        register_user(flask_page, flask_server, user_email, _ADMIN_PASSWORD)
 
         # Login as admin
-        login_user(flask_page, flask_server, creds["email"], creds["password"])
+        _login_with_creds(flask_page, flask_server, flask_admin_creds)
 
         # Go to users list
         flask_page.goto(f"{flask_server}/admin/users")
@@ -188,9 +200,14 @@ class TestFlaskAdminUsers:
 class TestFlaskAdminSessions:
     """Tests for Flask admin session management."""
 
-    def test_admin_sessions_list(self, flask_page: Page, flask_server: str) -> None:
+    def test_admin_sessions_list(
+        self,
+        flask_page: Page,
+        flask_server: str,
+        flask_admin_creds: dict[str, str],
+    ) -> None:
         """Admin sessions page should list active sessions."""
-        login_flask_admin(flask_page, flask_server)
+        _login_with_creds(flask_page, flask_server, flask_admin_creds)
         flask_page.goto(f"{flask_server}/admin/sessions")
 
         content = flask_page.content()
@@ -198,23 +215,31 @@ class TestFlaskAdminSessions:
         assert "session" in content.lower()
 
     def test_admin_sessions_shows_user_info(
-        self, flask_page: Page, flask_server: str
+        self,
+        flask_page: Page,
+        flask_server: str,
+        flask_admin_creds: dict[str, str],
     ) -> None:
         """Admin sessions should show associated user information."""
-        creds = login_flask_admin(flask_page, flask_server)
+        _login_with_creds(flask_page, flask_server, flask_admin_creds)
         flask_page.goto(f"{flask_server}/admin/sessions")
 
         content = flask_page.content()
         # Should show user email or at least session info
         assert (
-            creds["email"] in content
+            flask_admin_creds["email"] in content
             or "user" in content.lower()
             or "token" in content.lower()
         )
 
-    def test_admin_revoke_session(self, flask_page: Page, flask_server: str) -> None:
+    def test_admin_revoke_session(
+        self,
+        flask_page: Page,
+        flask_server: str,
+        flask_admin_creds: dict[str, str],
+    ) -> None:
         """Admin should be able to revoke sessions."""
-        login_flask_admin(flask_page, flask_server)
+        _login_with_creds(flask_page, flask_server, flask_admin_creds)
         flask_page.goto(f"{flask_server}/admin/sessions")
 
         # Look for revoke button
@@ -234,10 +259,13 @@ class TestLitestarAdminDashboard:
     """Tests for the Litestar admin dashboard."""
 
     def test_admin_dashboard_shows_stats(
-        self, litestar_page: Page, litestar_server: str
+        self,
+        litestar_page: Page,
+        litestar_server: str,
+        litestar_admin_creds: dict[str, str],
     ) -> None:
         """Admin dashboard should display statistics."""
-        login_litestar_admin(litestar_page, litestar_server)
+        _login_with_creds(litestar_page, litestar_server, litestar_admin_creds)
         litestar_page.goto(f"{litestar_server}/admin")
 
         content = litestar_page.content()
@@ -245,10 +273,13 @@ class TestLitestarAdminDashboard:
         assert "admin" in content.lower() or "dashboard" in content.lower()
 
     def test_admin_dashboard_has_navigation(
-        self, litestar_page: Page, litestar_server: str
+        self,
+        litestar_page: Page,
+        litestar_server: str,
+        litestar_admin_creds: dict[str, str],
     ) -> None:
         """Admin dashboard should have navigation links."""
-        login_litestar_admin(litestar_page, litestar_server)
+        _login_with_creds(litestar_page, litestar_server, litestar_admin_creds)
         litestar_page.goto(f"{litestar_server}/admin")
 
         # Should have links to users and sessions
@@ -262,44 +293,49 @@ class TestLitestarAdminUsers:
     """Tests for Litestar admin user management."""
 
     def test_admin_users_list_shows_users(
-        self, litestar_page: Page, litestar_server: str
+        self,
+        litestar_page: Page,
+        litestar_server: str,
+        litestar_admin_creds: dict[str, str],
     ) -> None:
         """Admin users page should list registered users."""
-        creds = login_litestar_admin(litestar_page, litestar_server)
+        _login_with_creds(litestar_page, litestar_server, litestar_admin_creds)
         litestar_page.goto(f"{litestar_server}/admin/users")
 
         content = litestar_page.content()
         # Should show the registered admin user's email
-        assert creds["email"] in content
+        assert litestar_admin_creds["email"] in content
 
     def test_admin_users_list_shows_multiple_users(
-        self, litestar_page: Page, litestar_server: str
+        self,
+        litestar_page: Page,
+        litestar_server: str,
+        litestar_admin_creds: dict[str, str],
     ) -> None:
         """Admin users page should list all registered users."""
-        creds = login_litestar_admin(litestar_page, litestar_server)
-
         # Register another user
         litestar_page.context.clear_cookies()
         second_email = generate_test_email()
-        register_user(
-            litestar_page, litestar_server, second_email, "SecurePassword123!"
-        )
+        register_user(litestar_page, litestar_server, second_email, _ADMIN_PASSWORD)
 
-        # Login as admin again
-        login_user(litestar_page, litestar_server, creds["email"], creds["password"])
+        # Login as admin
+        _login_with_creds(litestar_page, litestar_server, litestar_admin_creds)
 
         litestar_page.goto(f"{litestar_server}/admin/users")
 
         content = litestar_page.content()
         # Should show both users
-        assert creds["email"] in content
+        assert litestar_admin_creds["email"] in content
         assert second_email in content
 
     def test_admin_user_detail_page(
-        self, litestar_page: Page, litestar_server: str
+        self,
+        litestar_page: Page,
+        litestar_server: str,
+        litestar_admin_creds: dict[str, str],
     ) -> None:
         """Admin user detail page should show user information."""
-        login_litestar_admin(litestar_page, litestar_server)
+        _login_with_creds(litestar_page, litestar_server, litestar_admin_creds)
         # Go to users list
         litestar_page.goto(f"{litestar_server}/admin/users")
 
@@ -314,18 +350,19 @@ class TestLitestarAdminUsers:
             assert "user" in content.lower() or "email" in content.lower()
 
     def test_admin_toggle_user_role(
-        self, litestar_page: Page, litestar_server: str
+        self,
+        litestar_page: Page,
+        litestar_server: str,
+        litestar_admin_creds: dict[str, str],
     ) -> None:
         """Admin should be able to toggle user roles."""
-        creds = login_litestar_admin(litestar_page, litestar_server)
-
         # Register a second user
         litestar_page.context.clear_cookies()
         user_email = generate_test_email()
-        register_user(litestar_page, litestar_server, user_email, "SecurePassword123!")
+        register_user(litestar_page, litestar_server, user_email, _ADMIN_PASSWORD)
 
         # Login as admin
-        login_user(litestar_page, litestar_server, creds["email"], creds["password"])
+        _login_with_creds(litestar_page, litestar_server, litestar_admin_creds)
 
         # Go to users list
         litestar_page.goto(f"{litestar_server}/admin/users")
@@ -346,10 +383,13 @@ class TestLitestarAdminSessions:
     """Tests for Litestar admin session management."""
 
     def test_admin_sessions_list(
-        self, litestar_page: Page, litestar_server: str
+        self,
+        litestar_page: Page,
+        litestar_server: str,
+        litestar_admin_creds: dict[str, str],
     ) -> None:
         """Admin sessions page should list active sessions."""
-        login_litestar_admin(litestar_page, litestar_server)
+        _login_with_creds(litestar_page, litestar_server, litestar_admin_creds)
         litestar_page.goto(f"{litestar_server}/admin/sessions")
 
         content = litestar_page.content()
@@ -357,25 +397,31 @@ class TestLitestarAdminSessions:
         assert "session" in content.lower()
 
     def test_admin_sessions_shows_user_info(
-        self, litestar_page: Page, litestar_server: str
+        self,
+        litestar_page: Page,
+        litestar_server: str,
+        litestar_admin_creds: dict[str, str],
     ) -> None:
         """Admin sessions should show associated user information."""
-        creds = login_litestar_admin(litestar_page, litestar_server)
+        _login_with_creds(litestar_page, litestar_server, litestar_admin_creds)
         litestar_page.goto(f"{litestar_server}/admin/sessions")
 
         content = litestar_page.content()
         # Should show user email or session info
         assert (
-            creds["email"] in content
+            litestar_admin_creds["email"] in content
             or "user" in content.lower()
             or "token" in content.lower()
         )
 
     def test_admin_revoke_session(
-        self, litestar_page: Page, litestar_server: str
+        self,
+        litestar_page: Page,
+        litestar_server: str,
+        litestar_admin_creds: dict[str, str],
     ) -> None:
         """Admin should be able to revoke sessions."""
-        login_litestar_admin(litestar_page, litestar_server)
+        _login_with_creds(litestar_page, litestar_server, litestar_admin_creds)
         litestar_page.goto(f"{litestar_server}/admin/sessions")
 
         # Look for revoke button
@@ -403,7 +449,7 @@ class TestStarletteAdminDashboard:
     ) -> None:
         """Admin dashboard should display statistics."""
         email = generate_test_email()
-        password = "SecurePassword123!"
+        password = _ADMIN_PASSWORD
 
         register_user(starlette_page, starlette_server, email, password)
         login_user(starlette_page, starlette_server, email, password)
@@ -423,18 +469,19 @@ class TestFlaskAdminWorkflow:
     """End-to-end admin workflow tests for Flask."""
 
     def test_complete_user_management_workflow(
-        self, flask_page: Page, flask_server: str
+        self,
+        flask_page: Page,
+        flask_server: str,
+        flask_admin_creds: dict[str, str],
     ) -> None:
         """Test complete admin workflow: view users, view details, check roles."""
-        creds = login_flask_admin(flask_page, flask_server)
-
         # Register another user to manage
         flask_page.context.clear_cookies()
         user_email = generate_test_email()
-        register_user(flask_page, flask_server, user_email, "SecurePassword123!")
+        register_user(flask_page, flask_server, user_email, _ADMIN_PASSWORD)
 
         # Login as admin
-        login_user(flask_page, flask_server, creds["email"], creds["password"])
+        _login_with_creds(flask_page, flask_server, flask_admin_creds)
 
         # 1. Go to admin dashboard
         flask_page.goto(f"{flask_server}/admin")
@@ -462,10 +509,13 @@ class TestFlaskAdminWorkflow:
                 )
 
     def test_session_management_workflow(
-        self, flask_page: Page, flask_server: str
+        self,
+        flask_page: Page,
+        flask_server: str,
+        flask_admin_creds: dict[str, str],
     ) -> None:
         """Test admin session management workflow."""
-        login_flask_admin(flask_page, flask_server)
+        _login_with_creds(flask_page, flask_server, flask_admin_creds)
         # Go to sessions page
         flask_page.goto(f"{flask_server}/admin/sessions")
 
@@ -485,18 +535,19 @@ class TestLitestarAdminWorkflow:
     """End-to-end admin workflow tests for Litestar."""
 
     def test_complete_user_management_workflow(
-        self, litestar_page: Page, litestar_server: str
+        self,
+        litestar_page: Page,
+        litestar_server: str,
+        litestar_admin_creds: dict[str, str],
     ) -> None:
         """Test complete admin workflow: view users, view details, check roles."""
-        creds = login_litestar_admin(litestar_page, litestar_server)
-
         # Register another user to manage
         litestar_page.context.clear_cookies()
         user_email = generate_test_email()
-        register_user(litestar_page, litestar_server, user_email, "SecurePassword123!")
+        register_user(litestar_page, litestar_server, user_email, _ADMIN_PASSWORD)
 
         # Login as admin
-        login_user(litestar_page, litestar_server, creds["email"], creds["password"])
+        _login_with_creds(litestar_page, litestar_server, litestar_admin_creds)
 
         # 1. Go to admin dashboard
         litestar_page.goto(f"{litestar_server}/admin")
@@ -527,10 +578,13 @@ class TestLitestarAdminWorkflow:
                 )
 
     def test_session_management_workflow(
-        self, litestar_page: Page, litestar_server: str
+        self,
+        litestar_page: Page,
+        litestar_server: str,
+        litestar_admin_creds: dict[str, str],
     ) -> None:
         """Test admin session management workflow."""
-        login_litestar_admin(litestar_page, litestar_server)
+        _login_with_creds(litestar_page, litestar_server, litestar_admin_creds)
         # Go to sessions page
         litestar_page.goto(f"{litestar_server}/admin/sessions")
 

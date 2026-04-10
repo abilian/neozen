@@ -123,7 +123,7 @@ class DatabaseContext:
             await self.engine.dispose()
 
 
-def with_database(
+def with_database[**P, R](
     func: Callable[Concatenate[AsyncSession, P], Coroutine[Any, Any, R]],
 ) -> Callable[P, R]:
     """Decorator to run async function with database context.
