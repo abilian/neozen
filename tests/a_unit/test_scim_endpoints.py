@@ -186,6 +186,57 @@ class TestUsersEndpoint:
         result = await users_endpoint.list({"count": "abc"})
         assert result["totalResults"] == 1
 
+    async def test_list_invalid_start_index(
+        self, users_endpoint: UsersEndpoint
+    ) -> None:
+        await users_endpoint.create({"userName": "alice"})
+        # Invalid startIndex -> defaults to 1
+        result = await users_endpoint.list({"startIndex": "xyz"})
+        assert result["startIndex"] == 1
+
+    async def test_replace_invalid_payload(self, users_endpoint: UsersEndpoint) -> None:
+        created = await users_endpoint.create({"userName": "alice"})
+        with pytest.raises(SCIMValidationError):
+            await users_endpoint.replace(created["id"], "not a dict")  # type: ignore[arg-type]
+
+    async def test_create_with_malformed_email(
+        self, users_endpoint: UsersEndpoint
+    ) -> None:
+        # Email object missing required 'value' key
+        with pytest.raises(SCIMValidationError):
+            await users_endpoint.create({
+                "userName": "alice",
+                "emails": [{"type": "work"}],  # No 'value'
+            })
+
+    async def test_replace_with_malformed_email(
+        self, users_endpoint: UsersEndpoint
+    ) -> None:
+        created = await users_endpoint.create({"userName": "alice"})
+        with pytest.raises(SCIMValidationError):
+            await users_endpoint.replace(
+                created["id"],
+                {
+                    "userName": "alice",
+                    "emails": [{"type": "work"}],
+                },
+            )
+
+    async def test_create_with_complex_user(
+        self, users_endpoint: UsersEndpoint
+    ) -> None:
+        result = await users_endpoint.create({
+            "userName": "alice",
+            "displayName": "Alice Smith",
+            "name": {"givenName": "Alice", "familyName": "Smith"},
+            "phoneNumbers": [{"value": "+1-555-0100", "type": "work"}],
+            "active": False,
+        })
+        assert result["displayName"] == "Alice Smith"
+        assert result["name"]["givenName"] == "Alice"
+        assert result["active"] is False
+        assert len(result["phoneNumbers"]) == 1
+
 
 @pytest.mark.anyio
 class TestGroupsEndpoint:
@@ -233,6 +284,75 @@ class TestGroupsEndpoint:
         await groups_endpoint.create({"displayName": "Designers"})
         result = await groups_endpoint.list()
         assert result["totalResults"] == 2
+
+    async def test_list_groups_with_filter(
+        self, groups_endpoint: GroupsEndpoint
+    ) -> None:
+        await groups_endpoint.create({"displayName": "Engineers"})
+        await groups_endpoint.create({"displayName": "Designers"})
+        result = await groups_endpoint.list({"filter": 'displayName eq "Engineers"'})
+        assert result["totalResults"] == 1
+
+    async def test_list_groups_pagination(
+        self, groups_endpoint: GroupsEndpoint
+    ) -> None:
+        for i in range(5):
+            await groups_endpoint.create({"displayName": f"Group{i}"})
+        result = await groups_endpoint.list({
+            "startIndex": "1",
+            "count": "2",
+        })
+        assert result["totalResults"] == 5
+        assert len(result["Resources"]) == 2
+
+    async def test_list_groups_invalid_params(
+        self, groups_endpoint: GroupsEndpoint
+    ) -> None:
+        await groups_endpoint.create({"displayName": "Engineers"})
+        result = await groups_endpoint.list({
+            "startIndex": "bad",
+            "count": "bad",
+        })
+        assert result["totalResults"] == 1
+
+    async def test_create_invalid_payload(
+        self, groups_endpoint: GroupsEndpoint
+    ) -> None:
+        with pytest.raises(SCIMValidationError):
+            await groups_endpoint.create("not a dict")  # type: ignore[arg-type]
+
+    async def test_replace_invalid_payload(
+        self, groups_endpoint: GroupsEndpoint
+    ) -> None:
+        created = await groups_endpoint.create({"displayName": "Engineers"})
+        with pytest.raises(SCIMValidationError):
+            await groups_endpoint.replace(created["id"], "not a dict")  # type: ignore[arg-type]
+
+    async def test_get_unknown_group(self, groups_endpoint: GroupsEndpoint) -> None:
+        with pytest.raises(SCIMNotFoundError):
+            await groups_endpoint.get("nope")
+
+    async def test_create_with_malformed_member(
+        self, groups_endpoint: GroupsEndpoint
+    ) -> None:
+        with pytest.raises(SCIMValidationError):
+            await groups_endpoint.create({
+                "displayName": "Engineers",
+                "members": [{"type": "User"}],  # Missing 'value'
+            })
+
+    async def test_replace_with_malformed_member(
+        self, groups_endpoint: GroupsEndpoint
+    ) -> None:
+        created = await groups_endpoint.create({"displayName": "Engineers"})
+        with pytest.raises(SCIMValidationError):
+            await groups_endpoint.replace(
+                created["id"],
+                {
+                    "displayName": "Engineers",
+                    "members": [{"type": "User"}],
+                },
+            )
 
 
 # =============================================================================

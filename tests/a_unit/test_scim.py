@@ -287,6 +287,69 @@ class TestFilterMatching:
         expr = parse_filter('userName eq "alice"')
         assert expr.matches({"userName": "alice"})  # type: ignore[union-attr]
 
+    def test_gt_ge_lt_le(self) -> None:
+        expr = parse_filter("count gt 5")
+        assert expr.matches({"count": 10})  # type: ignore[union-attr]
+        assert not expr.matches({"count": 3})  # type: ignore[union-attr]
+
+        expr = parse_filter("count ge 5")
+        assert expr.matches({"count": 5})  # type: ignore[union-attr]
+        assert not expr.matches({"count": 4})  # type: ignore[union-attr]
+
+        expr = parse_filter("count lt 5")
+        assert expr.matches({"count": 3})  # type: ignore[union-attr]
+        assert not expr.matches({"count": 5})  # type: ignore[union-attr]
+
+        expr = parse_filter("count le 5")
+        assert expr.matches({"count": 5})  # type: ignore[union-attr]
+        assert not expr.matches({"count": 6})  # type: ignore[union-attr]
+
+    def test_null_value(self) -> None:
+        expr = parse_filter("title eq null")
+        assert isinstance(expr, SimpleExpression)
+        assert expr.value is None
+
+    def test_float_value(self) -> None:
+        expr = parse_filter("score gt 2.5")
+        assert isinstance(expr, SimpleExpression)
+        assert expr.value == pytest.approx(2.5)
+
+    def test_pr_with_empty_string(self) -> None:
+        expr = parse_filter("displayName pr")
+        assert not expr.matches({"displayName": ""})  # type: ignore[union-attr]
+        assert not expr.matches({"displayName": []})  # type: ignore[union-attr]
+        assert expr.matches({"displayName": "Alice"})  # type: ignore[union-attr]
+
+    def test_pr_on_missing_attribute(self) -> None:
+        expr = parse_filter("missing pr")
+        assert not expr.matches({"userName": "alice"})  # type: ignore[union-attr]
+
+    def test_op_on_none_returns_false(self) -> None:
+        expr = parse_filter('missing eq "value"')
+        assert not expr.matches({"userName": "alice"})  # type: ignore[union-attr]
+
+
+class TestFilterParserErrors:
+    def test_unexpected_character(self) -> None:
+        with pytest.raises(SCIMFilterError):
+            parse_filter("@@@")
+
+    def test_missing_value(self) -> None:
+        with pytest.raises(SCIMFilterError):
+            parse_filter("userName eq")
+
+    def test_missing_operator(self) -> None:
+        with pytest.raises(SCIMFilterError):
+            parse_filter("userName")
+
+    def test_bareword_value(self) -> None:
+        with pytest.raises(SCIMFilterError):
+            parse_filter("userName eq alice")
+
+    def test_unexpected_token_at_top_level(self) -> None:
+        with pytest.raises(SCIMFilterError):
+            parse_filter('userName eq "a" "extra"')
+
 
 # =============================================================================
 # Service Layer
