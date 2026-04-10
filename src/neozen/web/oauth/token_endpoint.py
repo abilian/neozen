@@ -37,6 +37,10 @@ from neozen.core.oauth.models import (
 )
 from neozen.core.oauth.services import OAuthTokenService
 
+if typing.TYPE_CHECKING:
+    from neozen.core.oidc.claims import ClaimsProvider
+    from neozen.core.oidc.id_token import IDTokenGenerator
+
 # =============================================================================
 # Request Models (HTTP layer)
 # =============================================================================
@@ -88,6 +92,7 @@ class TokenResponse:
     expires_in: int
     refresh_token: str | None = None
     scope: str | None = None
+    id_token: str | None = None
 
     def to_dict(self) -> dict[str, typing.Any]:
         """Convert to dictionary for JSON response."""
@@ -100,6 +105,8 @@ class TokenResponse:
             result["refresh_token"] = self.refresh_token
         if self.scope:
             result["scope"] = self.scope
+        if self.id_token:
+            result["id_token"] = self.id_token
         return result
 
 
@@ -131,13 +138,27 @@ class TokenEndpoint[
         response = await endpoint(request_payload)
     """
 
-    def __init__(self, service: OAuthTokenService[OC, OAC, OAT, ORT]) -> None:
+    def __init__(
+        self,
+        service: OAuthTokenService[OC, OAC, OAT, ORT],
+        *,
+        id_token_generator: IDTokenGenerator | None = None,
+        claims_provider: ClaimsProvider | None = None,
+    ) -> None:
         """Initialize the token endpoint.
 
         Args:
             service: The OAuth token service for business logic.
+            id_token_generator: Optional ID token generator. When set,
+                the endpoint will include `id_token` in the response
+                whenever the request includes the `openid` scope.
+            claims_provider: Optional claims provider used to populate
+                the ID token's profile/email claims. Required when
+                `id_token_generator` is set.
         """
         self.service = service
+        self.id_token_generator = id_token_generator
+        self.claims_provider = claims_provider
 
     async def __call__(
         self,
@@ -225,12 +246,20 @@ class TokenEndpoint[
         # Exchange for tokens
         token_pair = await self.service.exchange_authorization_code(auth_code, client)
 
+        # Generate ID token if openid scope was granted
+        id_token = await self._maybe_generate_id_token(
+            subject_id=auth_code.subject_id,
+            client_id=client.client_id,
+            scope=token_pair.scope,
+        )
+
         return TokenResponse(
             access_token=token_pair.access_token,
             token_type="Bearer",
             expires_in=int(self.service.access_token_lifetime.total_seconds()),
             refresh_token=token_pair.refresh_token,
             scope=token_pair.scope,
+            id_token=id_token,
         )
 
     async def _handle_refresh_token(
@@ -287,12 +316,20 @@ class TokenEndpoint[
         # Generate new access token
         result = await self.service.refresh_access_token(stored_refresh, client, scope)
 
+        # Generate ID token if openid scope was granted
+        id_token = await self._maybe_generate_id_token(
+            subject_id=stored_refresh.subject_id,
+            client_id=client.client_id,
+            scope=scope,
+        )
+
         return TokenResponse(
             access_token=result.access_token,
             token_type="Bearer",
             expires_in=int(self.service.access_token_lifetime.total_seconds()),
             refresh_token=result.new_refresh_token,
             scope=scope if scope != stored_refresh.scope else None,
+            id_token=id_token,
         )
 
     async def _handle_client_credentials(
@@ -357,6 +394,45 @@ class TokenEndpoint[
                 raise TokenInvalidRequestError(msg) from e
             msg = "Invalid request"
             raise TokenInvalidRequestError(msg) from e
+
+    async def _maybe_generate_id_token(
+        self,
+        *,
+        subject_id: typing.Any,
+        client_id: str,
+        scope: str | None,
+    ) -> str | None:
+        """Generate an ID token if openid scope is present and OIDC is configured.
+
+        Returns None if either:
+        - No id_token_generator is configured
+        - The scope does not include "openid"
+        """
+        if self.id_token_generator is None:
+            return None
+        if not scope:
+            return None
+        scopes = scope.split()
+        if "openid" not in scopes:
+            return None
+
+        # Look up claims if a provider is configured
+        claims_dict: dict[str, typing.Any] = {}
+        if self.claims_provider is not None:
+            subject_claims = await self.claims_provider.get_claims(
+                str(subject_id), scopes
+            )
+            if subject_claims is not None:
+                claims_dict = subject_claims.to_dict()
+                # Remove sub from claims dict; it goes into the JWT's sub
+                claims_dict.pop("sub", None)
+
+        return await self.id_token_generator.generate(
+            subject_id=str(subject_id),
+            client_id=client_id,
+            scopes=scopes,
+            claims=claims_dict,
+        )
 
     def _parse_authorization_code_request(
         self, payload: dict[str, typing.Any]

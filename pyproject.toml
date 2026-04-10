@@ -36,6 +36,9 @@ oauth-client = [
 webauthn = [
     "webauthn>=2.0.0",
 ]
+oidc = [
+    "pyjwt[crypto]>=2.10.0",
+]
 sqlalchemy = [
     "sqlalchemy>=2.0.0",
     "advanced-alchemy>=0.30.0",
@@ -60,7 +63,7 @@ demo = [
     "itsdangerous>=2.0.0",
 ]
 all = [
-    "neozen[password,phone,totp,oauth-client,webauthn,sqlalchemy,peewee,tortoise,databases,demo]",
+    "neozen[password,phone,totp,oauth-client,webauthn,oidc,sqlalchemy,peewee,tortoise,databases,demo]",
 ]
 
 [project.scripts]

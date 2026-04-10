@@ -476,6 +476,163 @@ class TestRefreshTokenGrant:
 
 
 # =============================================================================
+# Tests: ID Token Integration (OIDC)
+# =============================================================================
+
+
+@pytest.mark.anyio
+class TestIDTokenIntegration:
+    async def _build_endpoint_with_oidc(
+        self,
+        token_service: OAuthTokenService,
+    ) -> TokenEndpoint:
+        from neozen.core.oidc.claims import DefaultClaimsProvider
+        from neozen.core.oidc.id_token import IDTokenGenerator
+        from neozen.core.oidc.keys import InMemoryKeyManager
+
+        class _StubLookup:
+            async def get_subject(self, subject_id: str) -> dict | None:
+                if subject_id == "user_1":
+                    return {
+                        "id": "user_1",
+                        "email": "alice@example.com",
+                        "is_verified": True,
+                        "name": "Alice",
+                    }
+                return None
+
+        # Wrap dict access via getattr-friendly object
+        class _Wrap:
+            def __init__(self, data: dict) -> None:
+                for k, v in data.items():
+                    setattr(self, k, v)
+
+        class _Lookup:
+            async def get_subject(self, subject_id: str) -> object | None:
+                stub = _StubLookup()
+                data = await stub.get_subject(subject_id)
+                if data is None:
+                    return None
+                return _Wrap(data)
+
+        return TokenEndpoint(
+            token_service,
+            id_token_generator=IDTokenGenerator(
+                key_manager=InMemoryKeyManager(),
+                issuer="https://auth.test",
+            ),
+            claims_provider=DefaultClaimsProvider(_Lookup()),
+        )
+
+    async def test_authorization_code_returns_id_token_with_openid_scope(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+        token_service: OAuthTokenService,
+    ) -> None:
+        endpoint = await self._build_endpoint_with_oidc(token_service)
+
+        await client_storage.create(client_id="client_1")
+        verifier = "a" * 43
+        await auth_code_storage.create(
+            code="oidc_code",
+            client_id="client_1",
+            subject_id="user_1",
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            response_type="code",
+            redirect_uri="https://example.com/callback",
+            scope="openid email",
+            code_challenge=verifier,
+            code_challenge_method="plain",
+        )
+
+        response = await endpoint({
+            "grant_type": "authorization_code",
+            "code": "oidc_code",
+            "redirect_uri": "https://example.com/callback",
+            "client_id": "client_1",
+            "code_verifier": verifier,
+        })
+
+        assert response.id_token is not None
+        # JWT structure
+        assert response.id_token.count(".") == 2
+
+    async def test_no_id_token_without_openid_scope(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+        token_service: OAuthTokenService,
+    ) -> None:
+        endpoint = await self._build_endpoint_with_oidc(token_service)
+
+        await client_storage.create(client_id="client_1")
+        verifier = "a" * 43
+        await auth_code_storage.create(
+            code="non_oidc_code",
+            client_id="client_1",
+            subject_id="user_1",
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            response_type="code",
+            redirect_uri="https://example.com/callback",
+            scope="api:read",
+            code_challenge=verifier,
+            code_challenge_method="plain",
+        )
+
+        response = await endpoint({
+            "grant_type": "authorization_code",
+            "code": "non_oidc_code",
+            "redirect_uri": "https://example.com/callback",
+            "client_id": "client_1",
+            "code_verifier": verifier,
+        })
+
+        assert response.id_token is None
+
+    async def test_no_id_token_when_oidc_not_configured(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+        token_endpoint: TokenEndpoint,  # uses the standard fixture without OIDC
+    ) -> None:
+        await client_storage.create(client_id="client_1")
+        verifier = "a" * 43
+        await auth_code_storage.create(
+            code="code_without_oidc",
+            client_id="client_1",
+            subject_id="user_1",
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            response_type="code",
+            redirect_uri="https://example.com/callback",
+            scope="openid email",
+            code_challenge=verifier,
+            code_challenge_method="plain",
+        )
+
+        response = await token_endpoint({
+            "grant_type": "authorization_code",
+            "code": "code_without_oidc",
+            "redirect_uri": "https://example.com/callback",
+            "client_id": "client_1",
+            "code_verifier": verifier,
+        })
+
+        # No ID token because endpoint has no id_token_generator
+        assert response.id_token is None
+
+    async def test_id_token_response_serialization(self) -> None:
+        response = TokenResponse(
+            access_token="at_123",
+            token_type="Bearer",
+            expires_in=3600,
+            id_token="eyJhbG.payload.sig",
+        )
+        d = response.to_dict()
+        assert d["id_token"] == "eyJhbG.payload.sig"
+
+
+# =============================================================================
 # Tests: Client Credentials Grant
 # =============================================================================
 

@@ -1415,6 +1415,7 @@ all = [
     { name = "peewee" },
     { name = "phonenumbers" },
     { name = "pwdlib", extra = ["argon2"] },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "pyotp" },
     { name = "qrcode", extra = ["pil"] },
     { name = "sqlalchemy" },
@@ -1436,6 +1437,9 @@ demo = [
 ]
 oauth-client = [
     { name = "httpx" },
+]
+oidc = [
+    { name = "pyjwt", extra = ["crypto"] },
 ]
 password = [
     { name = "pwdlib", extra = ["argon2"] },
@@ -1520,11 +1524,12 @@ requires-dist = [
     { name = "jinja2", marker = "extra == 'demo'", specifier = ">=3.1.0" },
     { name = "litestar", marker = "extra == 'demo'", specifier = ">=2.0.0" },
     { name = "litestar", extras = ["standard"], specifier = ">=2.19.0" },
-    { name = "neozen", extras = ["password", "phone", "totp", "oauth-client", "webauthn", "sqlalchemy", "peewee", "tortoise", "databases", "demo"], marker = "extra == 'all'" },
+    { name = "neozen", extras = ["password", "phone", "totp", "oauth-client", "webauthn", "oidc", "sqlalchemy", "peewee", "tortoise", "databases", "demo"], marker = "extra == 'all'" },
     { name = "peewee", marker = "extra == 'peewee'", specifier = ">=3.17.0" },
     { name = "phonenumbers", marker = "extra == 'phone'", specifier = ">=9.0.0" },
     { name = "pwdlib", extras = ["argon2"], marker = "extra == 'password'", specifier = ">=0.3.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'oidc'", specifier = ">=2.10.0" },
     { name = "pyotp", marker = "extra == 'totp'", specifier = ">=2.9.0" },
     { name = "qrcode", extras = ["pil"], marker = "extra == 'totp'", specifier = ">=8.0" },
     { name = "sqlalchemy", specifier = ">=2.0.45" },
@@ -1535,7 +1540,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'demo'", specifier = ">=0.30.0" },
     { name = "webauthn", marker = "extra == 'webauthn'", specifier = ">=2.0.0" },
 ]
-provides-extras = ["password", "phone", "totp", "oauth-client", "webauthn", "sqlalchemy", "peewee", "tortoise", "databases", "demo", "all"]
+provides-extras = ["password", "phone", "totp", "oauth-client", "webauthn", "oidc", "sqlalchemy", "peewee", "tortoise", "databases", "demo", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1933,6 +1938,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b0/77/a5b8c569bf593b0140bde72ea885a803b82086995367bf2037de0159d924/pygments-2.19.2.tar.gz", hash = "sha256:636cb2477cec7f8952536970bc533bc43743542f70392ae026374600add5b887", size = 4968631, upload-time = "2025-06-21T13:39:12.283Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl", hash = "sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b", size = 1225217, upload-time = "2025-06-21T13:39:07.939Z" },
+]
+
+[[package]]
+name = "pyjwt"
+version = "2.12.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/27/a3b6e5bf6ff856d2509292e95c8f57f0df7017cf5394921fc4e4ef40308a/pyjwt-2.12.1.tar.gz", hash = "sha256:c74a7a2adf861c04d002db713dd85f84beb242228e671280bf709d765b03672b", size = 102564, upload-time = "2026-03-13T19:27:37.25Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e5/7a/8dd906bd22e79e47397a61742927f6747fe93242ef86645ee9092e610244/pyjwt-2.12.1-py3-none-any.whl", hash = "sha256:28ca37c070cad8ba8cd9790cd940535d40274d22f80ab87f3ac6a713e6e8454c", size = 29726, upload-time = "2026-03-13T19:27:35.677Z" },
+]
+
+[package.optional-dependencies]
+crypto = [
+    { name = "cryptography" },
 ]
 
 [[package]]
