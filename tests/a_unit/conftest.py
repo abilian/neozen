@@ -15,6 +15,6 @@ def mock_repository():
     the RepositoryProtocol contract using an in-memory mock.
     """
     # Import here to avoid circular import
-    from tests.a_unit.test_repository_protocol import SampleEntity
+    from tests.a_unit.core.test_repository_protocol import SampleEntity
 
     return MockStorage(SampleEntity, [])
