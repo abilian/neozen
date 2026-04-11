@@ -50,7 +50,8 @@ nav:
   - Cheat Sheet: cheat-sheet.md
   - Getting Started:
       - Installation: getting-started/installation.md
-      - Quick Start: getting-started/quickstart.md
+      - Developer Quickstart (5 min): getting-started/quickstart.md
+      - Self-Hosted Quickstart (10 min): getting-started/self-hosted.md
   - Guides:
       - Bring Your Own Model: guides/bring-your-own-model.md
       - Flask Integration: guides/flask.md

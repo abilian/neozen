@@ -1,6 +1,9 @@
 # Cheat Sheet
 
-Everything essential on one page.
+Everything essential on one page — focused on the **library /
+embed-in-your-app** path. If you're looking for the
+`docker compose up` self-hosted IAM path, see the
+[Self-Hosted Quickstart](getting-started/self-hosted.md) instead.
 
 ## Install
 
