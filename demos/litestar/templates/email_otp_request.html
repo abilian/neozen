@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Email OTP Login - NeoZen{% endblock %}
+
+{% block content %}
+<h1>Sign in with Email OTP</h1>
+<p>Enter your email and we'll send you a 6-digit code.</p>
+
+<article>
+    <form action="/email-otp" method="post">
+        <label for="email">
+            Email
+            <input type="email"
+                   id="email"
+                   name="email"
+                   required
+                   autofocus
+                   autocomplete="email"
+                   placeholder="alice@example.com">
+        </label>
+        <button type="submit">Send code</button>
+    </form>
+</article>
+
+<p><small>
+    Prefer a different sign-in method?
+    <a href="/login">Password</a> &middot;
+    <a href="/magic-login">Magic link</a>
+</small></p>
+{% endblock %}

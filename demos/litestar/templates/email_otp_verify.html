@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Verify Email OTP - NeoZen{% endblock %}
+
+{% block content %}
+<h1>Enter your code</h1>
+<p>We sent a 6-digit code to <strong>{{ pending_email }}</strong>.
+The code expires in 10 minutes.</p>
+
+<article>
+    <form action="/email-otp/verify" method="post">
+        <label for="code">
+            6-digit code
+            <input type="text"
+                   id="code"
+                   name="code"
+                   inputmode="numeric"
+                   pattern="[0-9]*"
+                   maxlength="6"
+                   required
+                   autofocus
+                   autocomplete="one-time-code">
+        </label>
+        <button type="submit">Verify and sign in</button>
+    </form>
+</article>
+
+<p><small>
+    Didn't get the code? <a href="/email-otp">Request a new one</a>.
+    In this demo the code is printed to the server's console output —
+    look for "Email OTP" in the terminal running the demo.
+</small></p>
+{% endblock %}

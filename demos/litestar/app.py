@@ -12,7 +12,7 @@ import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader
 from pwdlib import PasswordHash
@@ -28,6 +28,7 @@ from litestar.response import Redirect
 from litestar.stores.memory import MemoryStore
 from neozen.admin.services import AdminService
 from neozen.core.email.console import ConsoleEmailSender
+from neozen.core.factors.email_otp import EmailOTPConfig, EmailOTPFactor
 from neozen.core.factors.magic_link import MagicLinkConfig, MagicLinkFactor
 from neozen.core.factors.totp import (
     InvalidTOTPCodeError,
@@ -197,6 +198,89 @@ totp_factor: TOTPFactor = TOTPFactor(
 
 # Session key used to remember a subject between password+TOTP steps.
 PENDING_TOTP_SUBJECT_KEY = "pending_totp_subject_id"
+
+
+# =============================================================================
+# Email OTP setup
+# =============================================================================
+
+
+class InMemoryEmailOTPCodeRepository:
+    """In-memory EmailOTPCode store for the demo.
+
+    Mirrors the InMemoryMagicLinkTokenRepository pattern: a dict
+    keyed by code id, plus convenience indexes for the protocol's
+    query methods. Production deployments should use the SQLAlchemy
+    backend instead.
+    """
+
+    def __init__(self) -> None:
+        self._codes: dict[str, Any] = {}
+        self._counter = 0
+
+    async def create(self, **kwargs):
+        from types import SimpleNamespace
+
+        self._counter += 1
+        code_id = f"otp_{self._counter}"
+        code = SimpleNamespace(id=code_id, **kwargs)
+        self._codes[code_id] = code
+        return code
+
+    async def get_latest_pending(self, subject_id: str, now: datetime):
+        latest = None
+        for c in self._codes.values():
+            if c.subject_id != subject_id:
+                continue
+            if c.used_at is not None:
+                continue
+            if c.expires_at <= now:
+                continue
+            if latest is None or c.created_at > latest.created_at:
+                latest = c
+        return latest
+
+    async def mark_used(self, code_id: str, used_at: datetime) -> None:
+        if code_id in self._codes:
+            self._codes[code_id].used_at = used_at
+
+    async def increment_attempts(self, code_id: str) -> int:
+        if code_id not in self._codes:
+            return 0
+        self._codes[code_id].attempts += 1
+        return self._codes[code_id].attempts
+
+    async def count_pending(self, subject_id: str, since: datetime) -> int:
+        now = datetime.now(UTC)
+        return sum(
+            1
+            for c in self._codes.values()
+            if c.subject_id == subject_id
+            and c.created_at >= since
+            and c.used_at is None
+            and c.expires_at > now
+        )
+
+    async def invalidate_all(self, subject_id: str) -> int:
+        now = datetime.now(UTC)
+        count = 0
+        for c in self._codes.values():
+            if c.subject_id == subject_id and c.used_at is None:
+                c.used_at = now
+                count += 1
+        return count
+
+
+email_otp_factor: EmailOTPFactor = EmailOTPFactor(
+    config=EmailOTPConfig(app_name="NeoZen Demo (Litestar)"),
+    code_repository=InMemoryEmailOTPCodeRepository(),
+    subject_email_lookup=SubjectEmailLookupAdapter(session_factory),
+    email_sender=email_sender,
+    code_hash_key=SECRET_KEY,
+)
+
+# Session key remembering the email between OTP request and verification.
+PENDING_EMAIL_OTP_KEY = "pending_email_otp"
 
 
 # =============================================================================
@@ -438,6 +522,130 @@ def api_last_magic_link(request: Request) -> Response:
             if "magic-login/verify?token=" in line:
                 return json_response({"url": line.strip()})
     return json_response({"url": None})
+
+
+# =============================================================================
+# Email OTP routes
+# =============================================================================
+
+
+@get("/email-otp", sync_to_thread=False)
+def email_otp_request_page(request: Request) -> Response:
+    """Email OTP login: request a code."""
+    if is_authenticated(request):
+        return Redirect(path="/dashboard")
+    return render_template(request, "email_otp_request.html", {"current_user": None})
+
+
+@post("/email-otp")
+async def email_otp_request_submit(request: Request) -> Response:
+    """Send an Email OTP code to the requested email.
+
+    Anti-enumeration: always returns the same success message
+    regardless of whether the email exists. The factor itself also
+    silently no-ops on missing emails.
+    """
+    if is_authenticated(request):
+        return Redirect(path="/dashboard")
+
+    form = await request.form()
+    email = str(form.get("email", "")).lower().strip()
+    if not email or "@" not in email:
+        flash(request, "Please enter a valid email address.", "error")
+        return Redirect(path="/email-otp")
+
+    async with session_factory() as db_session:
+        repo = SubjectRepository(session=db_session)
+        try:
+            subject = await repo.get_one_by(email=email)
+            await email_otp_factor.begin_authentication(subject.id)
+        except DoesNotExist:
+            pass  # Don't reveal whether the account exists.
+
+    # Stash the email so the verify page can show it (and so we can
+    # look the subject up again on submit without re-asking).
+    request.session[PENDING_EMAIL_OTP_KEY] = email
+    flash(
+        request,
+        "If an account exists with that email, a code has been sent. "
+        "Check the demo's console output for the code.",
+        "success",
+    )
+    return Redirect(path="/email-otp/verify")
+
+
+@get("/email-otp/verify", sync_to_thread=False)
+def email_otp_verify_page(request: Request) -> Response:
+    """Show the code-entry form."""
+    if is_authenticated(request):
+        return Redirect(path="/dashboard")
+    pending_email = request.session.get(PENDING_EMAIL_OTP_KEY)
+    if not pending_email:
+        flash(request, "Request a code first.", "error")
+        return Redirect(path="/email-otp")
+    return render_template(
+        request,
+        "email_otp_verify.html",
+        {"current_user": None, "pending_email": pending_email},
+    )
+
+
+@post("/email-otp/verify")
+async def email_otp_verify_submit(request: Request) -> Response:
+    """Verify the OTP code and complete the login."""
+    if is_authenticated(request):
+        return Redirect(path="/dashboard")
+
+    pending_email = request.session.get(PENDING_EMAIL_OTP_KEY)
+    if not pending_email:
+        flash(request, "Request a code first.", "error")
+        return Redirect(path="/email-otp")
+
+    form = await request.form()
+    code = str(form.get("code", "")).strip()
+    if not code:
+        flash(request, "Please enter the code from your email.", "error")
+        return Redirect(path="/email-otp/verify")
+
+    async with session_factory() as db_session:
+        repo = SubjectRepository(session=db_session)
+        try:
+            subject = await repo.get_one_by(email=pending_email)
+        except DoesNotExist:
+            request.session.pop(PENDING_EMAIL_OTP_KEY, None)
+            flash(request, "Invalid or expired code.", "error")
+            return Redirect(path="/email-otp")
+
+    valid = await email_otp_factor.complete_authentication(subject.id, response=code)
+    if not valid:
+        flash(request, "Invalid or expired code.", "error")
+        return Redirect(path="/email-otp/verify")
+
+    request.session.pop(PENDING_EMAIL_OTP_KEY, None)
+    response = Redirect(path="/dashboard")
+    await login_user(request, response, subject)
+    flash(request, "Login successful via email OTP.", "success")
+    return response
+
+
+@get("/api/test/last-email-otp", sync_to_thread=False)
+def api_last_email_otp(request: Request) -> Response:
+    """Test endpoint: return the last Email OTP code sent (dev only).
+
+    Mirrors /api/test/last-magic-link. Tests use this to capture the
+    code from the in-memory ConsoleEmailSender output.
+    """
+    import re
+
+    if not email_sender.sent_messages:
+        return json_response({"code": None})
+    last = email_sender.sent_messages[-1]
+    # The email_otp_email template renders the code on its own line
+    # like "Your verification code is: 123456" — pull the digits out.
+    match = re.search(r"\b(\d{6})\b", last.body_text)
+    if match:
+        return json_response({"code": match.group(1), "to": last.to})
+    return json_response({"code": None})
 
 
 # =============================================================================
@@ -910,6 +1118,12 @@ def create_app() -> Litestar:
             register_submit,
             dashboard,
             logout_submit,
+            # Email OTP routes
+            email_otp_request_page,
+            email_otp_request_submit,
+            email_otp_verify_page,
+            email_otp_verify_submit,
+            api_last_email_otp,
             # TOTP routes
             totp_enroll_page,
             totp_enroll_confirm,
