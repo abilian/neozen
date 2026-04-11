@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Enable Two-Factor Authentication - NeoZen{% endblock %}
+
+{% block content %}
+<h1>Enable Two-Factor Authentication</h1>
+<p>Scan the QR code below with your authenticator app (Google Authenticator,
+1Password, Authy, etc.), then enter the 6-digit code it shows to confirm.</p>
+
+<article>
+    {% if qr_code_data_uri %}
+    <div style="text-align: center;">
+        <img src="{{ qr_code_data_uri }}"
+             alt="TOTP QR code"
+             style="max-width: 300px; height: auto;">
+    </div>
+    {% else %}
+    <p><em>QR code rendering is unavailable (install <code>qrcode[pil]</code>
+    via <code>pip install neozen[totp]</code>).</em></p>
+    {% endif %}
+
+    <details>
+        <summary>Can't scan? Enter the secret manually</summary>
+        <p>In your authenticator app, choose <strong>Add by manual entry</strong>
+        and use:</p>
+        <ul>
+            <li><strong>Account name:</strong> {{ current_user.email }}</li>
+            <li><strong>Issuer:</strong> NeoZen Demo (Litestar)</li>
+            <li><strong>Secret:</strong> <code>{{ secret }}</code></li>
+            <li><strong>Type:</strong> Time-based</li>
+            <li><strong>Digits:</strong> 6</li>
+            <li><strong>Interval:</strong> 30 seconds</li>
+        </ul>
+    </details>
+</article>
+
+<form action="/totp/enroll" method="post">
+    <label for="code">
+        6-digit code from your authenticator
+        <input type="text"
+               id="code"
+               name="code"
+               inputmode="numeric"
+               pattern="[0-9]*"
+               maxlength="6"
+               required
+               autofocus
+               autocomplete="one-time-code">
+    </label>
+
+    <div class="grid">
+        <a href="/dashboard" role="button" class="secondary outline">Cancel</a>
+        <button type="submit">Confirm and enable</button>
+    </div>
+</form>
+{% endblock %}

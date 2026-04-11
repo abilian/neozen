@@ -29,6 +29,13 @@ from litestar.stores.memory import MemoryStore
 from neozen.admin.services import AdminService
 from neozen.core.email.console import ConsoleEmailSender
 from neozen.core.factors.magic_link import MagicLinkConfig, MagicLinkFactor
+from neozen.core.factors.totp import (
+    InvalidTOTPCodeError,
+    TOTPAlreadyEnabledError,
+    TOTPConfig,
+    TOTPFactor,
+    TOTPNotEnabledError,
+)
 from neozen.ext.litestar import (
     NeoZenConfig,
     NeoZenPlugin,
@@ -155,6 +162,44 @@ magic_link_factor = MagicLinkFactor(
 
 
 # =============================================================================
+# TOTP setup
+# =============================================================================
+
+
+class TOTPSubjectRepoAdapter:
+    """Adapter that satisfies TOTPFactor's subject_repository protocol.
+
+    Each call opens a fresh session, refetches the subject by id, applies
+    the update, and commits. This matches the magic-link adapter pattern
+    so the TOTPFactor can stay as a module-level singleton.
+    """
+
+    def __init__(self, sf):
+        self._sf = sf
+
+    async def update_obj(self, obj, **data):
+        async with self._sf() as session:
+            repo = SubjectRepository(session=session)
+            fresh = await repo.get_one_by(id=obj.id)
+            updated = await repo.update_obj(fresh, **data)
+            await session.commit()
+            # Refresh local obj attributes so callers see the updates
+            for key, value in data.items():
+                setattr(obj, key, value)
+            return updated
+
+
+totp_factor: TOTPFactor = TOTPFactor(
+    config=TOTPConfig(issuer="NeoZen Demo (Litestar)"),
+    subject_repository=TOTPSubjectRepoAdapter(session_factory),
+    backup_code_repository=None,  # Backup codes deferred for the demo
+)
+
+# Session key used to remember a subject between password+TOTP steps.
+PENDING_TOTP_SUBJECT_KEY = "pending_totp_subject_id"
+
+
+# =============================================================================
 # NeoZen Config Setup
 # =============================================================================
 
@@ -261,7 +306,12 @@ def login_page(request: Request) -> Response:
 
 @post("/login")
 async def login_submit(request: Request) -> Response:
-    """Login form submission (POST)."""
+    """Login form submission (POST).
+
+    Two-step when the subject has TOTP enabled: password verification
+    here, then TOTP code at /totp/verify. We stash the subject id in
+    the session under PENDING_TOTP_SUBJECT_KEY between the two steps.
+    """
     if is_authenticated(request):
         return Redirect(path="/dashboard")
 
@@ -276,6 +326,12 @@ async def login_submit(request: Request) -> Response:
             if subject.hashed_password:
                 valid, _ = hasher.verify_and_update(password, subject.hashed_password)
                 if valid:
+                    if subject.totp_enabled:
+                        # Two-factor required: stash the pending subject and
+                        # bounce to the TOTP step. The session is NOT yet
+                        # authenticated; only TOTP verification completes it.
+                        request.session[PENDING_TOTP_SUBJECT_KEY] = subject.id
+                        return Redirect(path="/totp/verify")
                     response = Redirect(path="/dashboard")
                     await login_user(request, response, subject)
                     flash(request, "Login successful!", "success")
@@ -382,6 +438,133 @@ def api_last_magic_link(request: Request) -> Response:
             if "magic-login/verify?token=" in line:
                 return json_response({"url": line.strip()})
     return json_response({"url": None})
+
+
+# =============================================================================
+# TOTP routes
+# =============================================================================
+
+
+@get("/totp/enroll", guards=[login_required()])
+async def totp_enroll_page(request: Request) -> Response:
+    """Show TOTP enrollment page (QR code + verify form)."""
+    user = await get_current_user(request)
+    if user.totp_enabled:
+        flash(request, "TOTP is already enabled for this account.", "info")
+        return Redirect(path="/dashboard")
+
+    try:
+        result = await totp_factor.begin_enrollment(user, account_name=user.email)
+    except TOTPAlreadyEnabledError:
+        flash(request, "TOTP is already enabled for this account.", "info")
+        return Redirect(path="/dashboard")
+
+    return render_template(
+        request,
+        "totp_enroll.html",
+        {
+            "current_user": user,
+            "secret": result.secret,
+            "provisioning_uri": result.provisioning_uri,
+            "qr_code_data_uri": result.qr_code_data_uri,
+        },
+    )
+
+
+@post("/totp/enroll", guards=[login_required()])
+async def totp_enroll_confirm(request: Request) -> Response:
+    """Confirm TOTP enrollment by verifying the first code."""
+    user = await get_current_user(request)
+    form = await request.form()
+    code = str(form.get("code", "")).strip()
+
+    if not code:
+        flash(
+            request, "Please enter the 6-digit code from your authenticator.", "error"
+        )
+        return Redirect(path="/totp/enroll")
+
+    try:
+        await totp_factor.confirm_enrollment(user, code)
+    except InvalidTOTPCodeError:
+        flash(request, "Invalid TOTP code. Try again.", "error")
+        return Redirect(path="/totp/enroll")
+    except TOTPAlreadyEnabledError:
+        flash(request, "TOTP is already enabled for this account.", "info")
+        return Redirect(path="/dashboard")
+
+    flash(request, "Two-factor authentication enabled.", "success")
+    return Redirect(path="/dashboard")
+
+
+@get("/totp/verify", sync_to_thread=False)
+def totp_verify_page(request: Request) -> Response:
+    """Second-factor verification page after a successful password step."""
+    pending_id = request.session.get(PENDING_TOTP_SUBJECT_KEY)
+    if not pending_id:
+        flash(request, "No pending login. Sign in again.", "error")
+        return Redirect(path="/login")
+    return render_template(request, "totp_verify.html", {"current_user": None})
+
+
+@post("/totp/verify")
+async def totp_verify_submit(request: Request) -> Response:
+    """Verify the TOTP code and complete the login."""
+    pending_id = request.session.get(PENDING_TOTP_SUBJECT_KEY)
+    if not pending_id:
+        flash(request, "No pending login. Sign in again.", "error")
+        return Redirect(path="/login")
+
+    form = await request.form()
+    code = str(form.get("code", "")).strip()
+    if not code:
+        flash(request, "Please enter your 6-digit code.", "error")
+        return Redirect(path="/totp/verify")
+
+    async with session_factory() as db_session:
+        repo = SubjectRepository(session=db_session)
+        try:
+            subject = await repo.get_one_by(id=pending_id)
+        except DoesNotExist:
+            request.session.pop(PENDING_TOTP_SUBJECT_KEY, None)
+            flash(request, "Invalid login state. Sign in again.", "error")
+            return Redirect(path="/login")
+
+    try:
+        await totp_factor.authenticate(subject, code)
+    except (InvalidTOTPCodeError, TOTPNotEnabledError):
+        flash(request, "Invalid TOTP code. Try again.", "error")
+        return Redirect(path="/totp/verify")
+
+    # Complete the login: clear the pending marker and grant the session.
+    request.session.pop(PENDING_TOTP_SUBJECT_KEY, None)
+    response = Redirect(path="/dashboard")
+    await login_user(request, response, subject)
+    flash(request, "Two-factor authentication successful.", "success")
+    return response
+
+
+@post("/totp/disable", guards=[login_required()])
+async def totp_disable(request: Request) -> Response:
+    """Disable TOTP for the current user. Demo convenience."""
+    user = await get_current_user(request)
+    if not user.totp_enabled:
+        flash(request, "TOTP is not enabled.", "info")
+        return Redirect(path="/dashboard")
+
+    async with session_factory() as db_session:
+        repo = SubjectRepository(session=db_session)
+        fresh = await repo.get_one_by(id=user.id)
+        await repo.update_obj(
+            fresh,
+            totp_enabled=False,
+            totp_secret=None,
+            totp_confirmed_at=None,
+        )
+        await db_session.commit()
+
+    flash(request, "Two-factor authentication disabled.", "success")
+    return Redirect(path="/dashboard")
 
 
 @get("/register", sync_to_thread=False)
@@ -727,6 +910,12 @@ def create_app() -> Litestar:
             register_submit,
             dashboard,
             logout_submit,
+            # TOTP routes
+            totp_enroll_page,
+            totp_enroll_confirm,
+            totp_verify_page,
+            totp_verify_submit,
+            totp_disable,
             # Admin routes
             admin_dashboard,
             admin_users,

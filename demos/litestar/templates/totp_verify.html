@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Two-Factor Authentication - NeoZen{% endblock %}
+
+{% block content %}
+<h1>Two-Factor Authentication</h1>
+<p>Enter the 6-digit code from your authenticator app to finish signing in.</p>
+
+<article>
+    <form action="/totp/verify" method="post">
+        <label for="code">
+            Authenticator code
+            <input type="text"
+                   id="code"
+                   name="code"
+                   inputmode="numeric"
+                   pattern="[0-9]*"
+                   maxlength="6"
+                   required
+                   autofocus
+                   autocomplete="one-time-code">
+        </label>
+        <button type="submit">Verify</button>
+    </form>
+</article>
+
+<p><small>
+    Lost access to your authenticator? <a href="/login">Sign in with a different account</a>
+    or contact an administrator. (Backup codes are not enabled in this demo.)
+</small></p>
+{% endblock %}
