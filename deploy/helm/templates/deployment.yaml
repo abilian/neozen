@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "neozen.fullname" . }}
+  labels:
+    {{- include "neozen.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate  # single replica, simple swap; multi-replica is 2.x
+  selector:
+    matchLabels:
+      {{- include "neozen.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "neozen.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: neozen
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.neozen.bindPort }}
+              protocol: TCP
+          env:
+            - name: NEOZEN_BIND_HOST
+              value: {{ .Values.neozen.bindHost | quote }}
+            - name: NEOZEN_BIND_PORT
+              value: {{ .Values.neozen.bindPort | quote }}
+            - name: NEOZEN_LOG_LEVEL
+              value: {{ .Values.neozen.logLevel | quote }}
+            - name: NEOZEN_BOOTSTRAP_ADMIN
+              value: {{ .Values.neozen.bootstrapAdmin | quote }}
+            - name: NEOZEN_BOOTSTRAP_ADMIN_EMAIL
+              value: {{ .Values.neozen.bootstrapAdminEmail | quote }}
+            - name: NEOZEN_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "neozen.secretName" . }}
+                  key: NEOZEN_SECRET_KEY
+            - name: NEOZEN_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "neozen.secretName" . }}
+                  key: NEOZEN_DATABASE_URL
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

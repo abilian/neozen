@@ -1,0 +1,54 @@
+# NeoZen self-hosted compose stack
+#
+# Single-command self-hosted IAM with PostgreSQL persistence:
+#
+#     docker compose up -d
+#     docker compose logs neozen | grep NEOZEN-BOOTSTRAP-CREDENTIALS
+#
+# The bootstrap admin credentials are printed once on first start.
+# Copy them and change the password on first login.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: neozen
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neozen-dev-password}
+      POSTGRES_DB: neozen
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neozen"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  neozen:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: neozen:dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NEOZEN_DATABASE_URL: postgresql+asyncpg://neozen:${POSTGRES_PASSWORD:-neozen-dev-password}@postgres:5432/neozen
+      NEOZEN_SECRET_KEY: ${NEOZEN_SECRET_KEY:-change-me-in-production}
+      NEOZEN_BIND_HOST: 0.0.0.0
+      NEOZEN_BIND_PORT: 8000
+      NEOZEN_LOG_LEVEL: INFO
+      NEOZEN_BOOTSTRAP_ADMIN: "true"
+      NEOZEN_BOOTSTRAP_ADMIN_EMAIL: admin@localhost
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  postgres_data:

@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from neozen.cli.commands import client, config, data, role, subject
+from neozen.cli.commands import client, config, data, role, serve as serve_cmd, subject
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -38,6 +38,8 @@ Examples:
   neozen data dump --output backup.json
   neozen data restore --input backup.json
   neozen data populate --count 50
+  neozen serve
+  neozen serve --host 0.0.0.0 --port 8000
 """,
     )
 
@@ -488,6 +490,42 @@ Examples:
         help="Number of test users to create (default: 10)",
     )
     data_populate.set_defaults(func=data.populate)
+
+    # Serve command (production-mode unified Litestar app)
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Run the production server",
+        description=(
+            "Boot the unified Litestar app exposing the admin console "
+            "and health endpoints. Configuration is read from environment "
+            "variables (NEOZEN_*); CLI flags override env vars."
+        ),
+    )
+    serve_parser.add_argument(
+        "--host",
+        help="Bind host (default: 0.0.0.0, env: NEOZEN_BIND_HOST)",
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=int,
+        help="Bind port (default: 8000, env: NEOZEN_BIND_PORT)",
+    )
+    serve_parser.add_argument(
+        "--workers",
+        type=int,
+        help="Number of worker processes (default: 1, env: NEOZEN_WORKERS)",
+    )
+    serve_parser.add_argument(
+        "--log-level",
+        choices=["debug", "info", "warning", "error", "critical"],
+        help="Log level (default: info, env: NEOZEN_LOG_LEVEL)",
+    )
+    serve_parser.add_argument(
+        "--no-bootstrap",
+        action="store_true",
+        help="Skip first-run admin bootstrap (env: NEOZEN_BOOTSTRAP_ADMIN=false)",
+    )
+    serve_parser.set_defaults(func=serve_cmd.serve)
 
     return parser
 

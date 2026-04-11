@@ -1,0 +1,71 @@
+# Default values for the NeoZen Helm chart.
+#
+# This is a STARTER chart for small self-hosted deployments. It runs
+# a single replica with externally-managed PostgreSQL. For multi-replica,
+# HPA, PDB, NetworkPolicies, etc., extend this chart.
+
+image:
+  repository: ghcr.io/abilian/neozen
+  tag: ""  # defaults to .Chart.appVersion
+  pullPolicy: IfNotPresent
+
+# Number of replicas. Multi-replica is not yet supported (no leader
+# election for background tasks). Stays 1 for 1.0; revisited in 2.x.
+replicaCount: 1
+
+# Pod resource requests/limits — adjust to your scale.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: neozen.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# NeoZen runtime configuration. These map to NEOZEN_* env vars in the
+# Deployment. The secret_key and database_url MUST be set in production
+# (use existingSecret to inject from a separate Secret).
+neozen:
+  bindHost: "0.0.0.0"
+  bindPort: 8000
+  logLevel: INFO
+  bootstrapAdmin: true
+  bootstrapAdminEmail: admin@localhost
+
+# Secret values: secret_key + database_url. By default the chart
+# generates a Secret from these values. For production, set
+# `existingSecret` to the name of a pre-existing Secret with the same
+# keys (NEOZEN_SECRET_KEY, NEOZEN_DATABASE_URL).
+secrets:
+  existingSecret: ""
+  # Inline values used only when existingSecret is empty.
+  secretKey: "change-me-in-production"
+  databaseUrl: "sqlite+aiosqlite:///data/neozen.db"
+
+# Liveness/readiness probe settings — usually fine as-is.
+probes:
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
