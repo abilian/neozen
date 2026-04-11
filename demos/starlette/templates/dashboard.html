@@ -65,6 +65,31 @@
 </section>
 
 <section>
+    <h2>Two-Factor Authentication</h2>
+    <article>
+        {% if current_user.totp_enabled %}
+        <header>
+            <strong style="color: var(--pico-ins-color);">✓ Enabled</strong>
+        </header>
+        <p>You'll be prompted for a 6-digit code from your authenticator app
+        on your next sign-in.</p>
+        <form action="/totp/disable" method="post">
+            <button type="submit" class="outline secondary">
+                Disable two-factor authentication
+            </button>
+        </form>
+        {% else %}
+        <header>
+            <span style="color: var(--pico-muted-color);">Not enabled</span>
+        </header>
+        <p>Add a second factor using a TOTP authenticator app
+        (Google Authenticator, 1Password, Authy, etc.).</p>
+        <a href="/totp/enroll" role="button">Enable two-factor authentication</a>
+        {% endif %}
+    </article>
+</section>
+
+<section>
     <h2>Protected Resources</h2>
     <p>As an authenticated user, you have access to protected resources.</p>
     <article>
