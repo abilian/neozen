@@ -9,14 +9,14 @@ console for day-to-day user management.
 If instead you want to embed NeoZen as a library inside your own
 Python app, see the [Developer Quickstart](quickstart.md).
 
-!!! note "What ships in 1.0"
+!!! note "What ships in 0.9"
 
-    The 1.0 reference deployment exposes the **admin console** plus
+    The 0.9 reference deployment exposes the **admin console** plus
     `/healthz` and `/readyz` health endpoints. The OIDC provider and
     SCIM endpoints already exist in the codebase but mounting them
     into the unified `neozen serve` Litestar app is scheduled for a
-    1.x point release. The library half (embed via `pip install`)
-    has full OIDC and SCIM support today.
+    later 0.x point release. The library half (embed via
+    `pip install`) has full OIDC and SCIM support today.
 
 ---
 
@@ -229,7 +229,7 @@ running application and the migration tooling.
 | `NEOZEN_SECRET_KEY` | `change-me-in-production` | **Required in production**. Used for session HMAC and token hashing. The `_FILE` variant reads from a file. |
 | `NEOZEN_BIND_HOST` | `0.0.0.0` | Bind interface for the HTTP server. |
 | `NEOZEN_BIND_PORT` | `8000` | Bind port. |
-| `NEOZEN_WORKERS` | `1` | Uvicorn worker processes. Multi-replica is 2.x. |
+| `NEOZEN_WORKERS` | `1` | Uvicorn worker processes. Multi-replica is deferred to a future enterprise-focused release. |
 | `NEOZEN_LOG_LEVEL` | `INFO` | Standard Python log levels. |
 | `NEOZEN_BOOTSTRAP_ADMIN` | `true` | If true and the database is empty, create a bootstrap admin and print the credentials once. |
 | `NEOZEN_BOOTSTRAP_ADMIN_EMAIL` | `admin@localhost` | Email for the bootstrap admin. |
@@ -250,6 +250,6 @@ neozen serve --host 127.0.0.1 --port 9000 --workers 4 --log-level debug --no-boo
   permissions
 - [SCIM 2.0](../guides/scim.md) — provisioning users and groups
   from an upstream IdP (currently library-only; mounting under
-  `neozen serve` is a 1.x follow-up)
+  `neozen serve` is a later 0.x follow-up)
 - [LDAP backend](../guides/ldap.md) — authenticate against a
   corporate LDAP/Active Directory directory

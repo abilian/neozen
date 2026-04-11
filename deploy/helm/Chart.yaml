@@ -2,8 +2,8 @@ apiVersion: v2
 name: neozen
 description: NeoZen — framework-agnostic Python auth toolkit and lightweight self-hosted IAM
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.9.0
+appVersion: "0.9.0"
 home: https://github.com/abilian/neozen
 sources:
   - https://github.com/abilian/neozen

@@ -1,6 +1,6 @@
 [project]
 name = "neozen"
-version = "0.1.0"
+version = "0.9.0"
 description = "Streamlined authentication and authorization for modern Python applications"
 readme = "README.md"
 license = "Apache-2.0"

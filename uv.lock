@@ -1400,7 +1400,7 @@ wheels = [
 
 [[package]]
 name = "neozen"
-version = "0.1.0"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "advanced-alchemy" },

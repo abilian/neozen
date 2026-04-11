@@ -99,11 +99,14 @@ No paid tier, no open-core gating.
 
 ## Project Status
 
-NeoZen is preparing for the 1.0 release. Core authentication,
-authorization, session management, framework integrations, OIDC
-provider, SCIM server, LDAP backend, and admin console all ship
-with extensive test coverage. The 1.0 release scope is documented
-in [release-1.0.md](https://github.com/abilian/neozen/blob/main/notes/plan/release-1.0.md).
+NeoZen is preparing for its **0.9 first public release**. Core
+authentication, authorization, session management, framework
+integrations, OIDC provider, SCIM server, LDAP backend, and admin
+console all ship with extensive test coverage. 0.9 is not yet
+semver-stable — the API may still evolve before 1.0 — but the bar
+is "clean": docs, tests, packaging, and the reference deployment
+are all in good shape. The 0.9 release scope is documented in
+[release-0.9.md](https://github.com/abilian/neozen/blob/main/notes/plan/release-0.9.md).
 
 ## Getting Started
 
