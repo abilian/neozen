@@ -6,8 +6,6 @@ Enterprise-grade admin console built with HTMX + Alpine.js + Tailwind CSS.
 from __future__ import annotations
 
 import contextlib
-import csv
-import io
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -175,6 +173,33 @@ async def dashboard(request: Request) -> Response:
                 "recent_activity": recent_activity,
             },
         )
+
+
+@get("/dashboard/stats")
+async def dashboard_stats(request: Request) -> Response:
+    """HTMX live-polling endpoint for the main dashboard counters.
+
+    Returns just the dashboard stats partial. The dashboard polls
+    this every 15s.
+    """
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        stats = await service.get_dashboard_stats()
+
+    stats_dict = {
+        "total_users": stats.total_subjects,
+        "active_sessions": stats.active_sessions,
+        "total_roles": stats.total_roles,
+        "total_assignments": stats.total_subjects,
+    }
+
+    templates: Environment = request.app.state.templates
+    content = templates.get_template("dashboard/_stats.html").render(
+        stats=stats_dict,
+        live=True,
+    )
+    return Response(content=content, media_type="text/html")
 
 
 # -----------------------------------------------------------------------------
@@ -399,75 +424,109 @@ async def remove_user_role(request: Request, user_id: str, role_name: str) -> Re
 @get("/users/import", sync_to_thread=False)
 def import_users_form(request: Request) -> Response:
     """Show bulk import form."""
-    return render_template(request, "users/import.html", {})
+    return render_template(request, "users/import.html", {"result": None})
 
 
 @post("/users/import")
 async def import_users(request: Request) -> Response:
-    """Process bulk user import from CSV."""
+    """Process bulk user import from CSV via the bulk-ops module.
+
+    Supports two modes via the form's `action` field:
+    - `dry_run`: parse + validate, show preview, do not commit
+    - `apply`: parse + validate + commit
+
+    The `update_existing` checkbox toggles update vs skip semantics for
+    rows whose email matches an existing user.
+    """
+    from neozen.admin.bulk import import_subjects_from_csv  # noqa: PLC0415
+
     form_data = await request.form()
     csv_file = form_data.get("csv_file")
+    action = (form_data.get("action") or "dry_run").strip()
+    update_existing = bool(form_data.get("update_existing"))
 
     if not csv_file or not hasattr(csv_file, "read"):
         flash(request, "Please upload a CSV file.", "error")
         return redirect("/users/import")
 
     try:
-        # Read and parse CSV
         content = (await csv_file.read()).decode("utf-8")
-        reader = csv.DictReader(io.StringIO(content))
+    except UnicodeDecodeError:
+        flash(request, "Could not decode CSV: file is not UTF-8.", "error")
+        return redirect("/users/import")
 
-        session_factory: async_sessionmaker = request.app.state.session_factory
-        async with session_factory() as session:
-            service = AdminService(session)
-
-            imported = 0
-            errors = []
-
-            for row_num, row in enumerate(
-                reader, start=2
-            ):  # Start at 2 (header is row 1)
-                email = row.get("email", "").strip()
-                username = row.get("username", "").strip() or None
-                is_active = row.get("is_active", "true").lower() in ("true", "1", "yes")
-                is_verified = row.get("is_verified", "false").lower() in (
-                    "true",
-                    "1",
-                    "yes",
-                )
-
-                if not email:
-                    errors.append(f"Row {row_num}: Missing email")
-                    continue
-
-                try:
-                    await service.create_subject(
-                        email=email,
-                        username=username,
-                        is_active=is_active,
-                        is_verified=is_verified,
-                    )
-                    imported += 1
-                except Exception as e:
-                    errors.append(f"Row {row_num} ({email}): {e}")
-
+    dry_run = action != "apply"
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        result = await import_subjects_from_csv(
+            service,
+            content,
+            dry_run=dry_run,
+            update_existing=update_existing,
+        )
+        if not dry_run:
             await session.commit()
 
-            if imported > 0:
-                flash(request, f"Successfully imported {imported} user(s).", "success")
-            if errors:
-                flash(
-                    request,
-                    f"Errors: {'; '.join(errors[:5])}"
-                    + (f" (+{len(errors) - 5} more)" if len(errors) > 5 else ""),
-                    "error",
-                )
+    if dry_run:
+        if result.has_failures:
+            flash(
+                request,
+                f"Dry run: {result.failed} row(s) would fail. "
+                "Review the preview before applying.",
+                "error",
+            )
+        else:
+            flash(
+                request,
+                f"Dry run OK: {result.created} to create, "
+                f"{result.updated} to update, {result.skipped} to skip.",
+                "success",
+            )
+    else:
+        msg_parts = []
+        if result.created:
+            msg_parts.append(f"created {result.created}")
+        if result.updated:
+            msg_parts.append(f"updated {result.updated}")
+        if result.skipped:
+            msg_parts.append(f"skipped {result.skipped}")
+        if result.failed:
+            msg_parts.append(f"failed {result.failed}")
+        category = "error" if result.has_failures else "success"
+        flash(
+            request,
+            "Import done: " + ", ".join(msg_parts) if msg_parts else "Import done.",
+            category,
+        )
 
-            return redirect("/users")
+    return render_template(
+        request,
+        "users/import.html",
+        {
+            "result": result,
+            "update_existing": update_existing,
+        },
+    )
 
-    except Exception as e:
-        flash(request, f"Error processing CSV: {e}", "error")
-        return redirect("/users/import")
+
+@get("/users/export")
+async def export_users(request: Request) -> Response:
+    """Export all subjects as CSV."""
+    from neozen.admin.bulk import export_subjects_to_csv  # noqa: PLC0415
+
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        csv_text = await export_subjects_to_csv(service)
+
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="neozen-users.csv"',
+        },
+    )
 
 
 @post("/users/{user_id:str}/impersonate")
@@ -1130,6 +1189,10 @@ async def list_audit_logs(request: Request) -> Response:
         event_types = sorted({log.event_type for log in all_logs if log.event_type})
         actions = sorted({log.action for log in all_logs if log.action})
 
+        # Live tail enabled only when viewing page 1 with no filters.
+        # This avoids the polling endpoint clobbering filtered views.
+        live_tail = page == 1 and not (search or event_type or action or outcome)
+
         return render_template(
             request,
             "audit/list.html",
@@ -1145,8 +1208,41 @@ async def list_audit_logs(request: Request) -> Response:
                 "per_page": per_page,
                 "total": total,
                 "total_pages": (total + per_page - 1) // per_page,
+                "live_tail": live_tail,
             },
         )
+
+
+@get("/audit/tail")
+async def audit_log_tail(request: Request) -> Response:
+    """HTMX live-tail endpoint for the audit log table.
+
+    Returns just the audit log table partial. The audit list page polls
+    this every 10s when viewing page 1 without filters. Always returns
+    the most recent N events; ignores filter params (the live tail is
+    a fixed view).
+    """
+    per_page = 50
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        logs = await service.list_audit_logs(limit=per_page)
+        total = await service.count_audit_logs()
+
+    templates: Environment = request.app.state.templates
+    content = templates.get_template("audit/_log_table.html").render(
+        logs=logs,
+        search=None,
+        event_type=None,
+        action=None,
+        outcome=None,
+        page=1,
+        per_page=per_page,
+        total=total,
+        total_pages=1,
+        live_tail=True,
+    )
+    return Response(content=content, media_type="text/html")
 
 
 @get("/audit/{entry_id:str}")
@@ -1222,10 +1318,40 @@ async def security_dashboard(request: Request) -> Response:
                 "total_users": total_users,
                 "mfa_enabled_users": mfa_enabled_users,
                 "mfa_adoption": mfa_adoption,
-                "active_sessions": active_session_count,
+                "active_session_count": active_session_count,
                 "recent_events": recent_events,
             },
         )
+
+
+@get("/security/stats")
+async def security_stats(request: Request) -> Response:
+    """HTMX live-polling endpoint for the security dashboard counters.
+
+    Returns just the security stats partial. The security dashboard
+    polls this every 15s.
+    """
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        service = AdminService(session)
+        stats = await service.get_audit_stats(days=7)
+        subjects = await service.list_subjects(limit=1000)
+        total_users = len(subjects)
+        mfa_enabled_users = sum(1 for s in subjects if s.totp_enabled)
+        mfa_adoption = (mfa_enabled_users / total_users * 100) if total_users > 0 else 0
+        sessions = await service.list_sessions(active_only=True)
+        active_session_count = len(sessions)
+
+    templates: Environment = request.app.state.templates
+    content = templates.get_template("security/_stats.html").render(
+        stats=stats,
+        total_users=total_users,
+        mfa_enabled_users=mfa_enabled_users,
+        mfa_adoption=mfa_adoption,
+        active_session_count=active_session_count,
+        live=True,
+    )
+    return Response(content=content, media_type="text/html")
 
 
 @get("/security/policies", sync_to_thread=False)
@@ -1390,12 +1516,14 @@ def create_admin_app(config: AdminConfig | None = None) -> Litestar:
             logout,
             # Dashboard
             dashboard,
+            dashboard_stats,
             # Users
             list_users,
             create_user_form,
             create_user,
             import_users_form,
             import_users,
+            export_users,
             user_detail,
             activate_user,
             deactivate_user,
@@ -1440,9 +1568,11 @@ def create_admin_app(config: AdminConfig | None = None) -> Litestar:
             access_analyzer,
             # Audit
             list_audit_logs,
+            audit_log_tail,
             audit_log_detail,
             # Security
             security_dashboard,
+            security_stats,
             security_policies,
             # Settings
             settings,

@@ -15,52 +15,8 @@
 
 {% block content %}
 <div class="space-y-6">
-    <!-- Stats Overview -->
-    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <!-- Total Events (7 days) -->
-        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-            <dt class="truncate text-sm font-medium text-gray-500">Events (7 days)</dt>
-            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
-                {{ stats.total_events | default(0) }}
-            </dd>
-        </div>
-
-        <!-- Failed Logins -->
-        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-            <dt class="truncate text-sm font-medium text-gray-500">Failed Events</dt>
-            <dd class="mt-1 flex items-baseline gap-2">
-                <span class="text-3xl font-semibold tracking-tight {% if stats.failed_events > 0 %}text-red-600{% else %}text-gray-900{% endif %}">
-                    {{ stats.failed_events | default(0) }}
-                </span>
-                {% if stats.total_events > 0 %}
-                <span class="text-sm text-gray-500">
-                    ({{ ((stats.failed_events / stats.total_events) * 100) | round(1) }}%)
-                </span>
-                {% endif %}
-            </dd>
-        </div>
-
-        <!-- Active Sessions -->
-        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-            <dt class="truncate text-sm font-medium text-gray-500">Active Sessions</dt>
-            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
-                {{ active_session_count }}
-            </dd>
-        </div>
-
-        <!-- MFA Adoption -->
-        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-            <dt class="truncate text-sm font-medium text-gray-500">MFA Adoption</dt>
-            <dd class="mt-1 flex items-baseline gap-2">
-                <span class="text-3xl font-semibold tracking-tight {% if mfa_adoption >= 80 %}text-green-600{% elif mfa_adoption >= 50 %}text-yellow-600{% else %}text-red-600{% endif %}">
-                    {{ mfa_adoption | round(1) }}%
-                </span>
-                <span class="text-sm text-gray-500">
-                    ({{ mfa_enabled_users }}/{{ total_users }} users)
-                </span>
-            </dd>
-        </div>
-    </div>
+    <!-- Stats Overview (live polling) -->
+    {% with live = True %}{% include "security/_stats.html" %}{% endwith %}
 
     <!-- Charts Row -->
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -88,9 +44,10 @@
                 <h3 class="text-base font-semibold leading-6 text-gray-900">Event Types</h3>
             </div>
             <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
-                {% if stats.event_types %}
+                {% set event_types = stats.event_types | default({}) %}
+                {% if event_types %}
                 <div class="space-y-3">
-                    {% for event_type, count in stats.event_types.items() %}
+                    {% for event_type, count in event_types.items() %}
                     <div>
                         <div class="flex justify-between text-sm mb-1">
                             <span class="text-gray-600">{{ event_type }}</span>
@@ -151,7 +108,7 @@
                 <h3 class="text-base font-semibold leading-6 text-gray-900">Security Alerts</h3>
             </div>
             <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
-                {% if stats.failed_events > 10 %}
+                {% if (stats.failure_count | default(0)) > 10 %}
                 <div class="rounded-md bg-red-50 p-4">
                     <div class="flex">
                         <div class="flex-shrink-0">
@@ -162,12 +119,12 @@
                         <div class="ml-3">
                             <h3 class="text-sm font-medium text-red-800">High failure rate</h3>
                             <p class="mt-1 text-sm text-red-700">
-                                {{ stats.failed_events }} failed events in the last 7 days.
+                                {{ (stats.failure_count | default(0)) }} failed events in the last 7 days.
                             </p>
                         </div>
                     </div>
                 </div>
-                {% elif stats.failed_events > 0 %}
+                {% elif (stats.failure_count | default(0)) > 0 %}
                 <div class="rounded-md bg-yellow-50 p-4">
                     <div class="flex">
                         <div class="flex-shrink-0">
@@ -178,7 +135,7 @@
                         <div class="ml-3">
                             <h3 class="text-sm font-medium text-yellow-800">Some failures detected</h3>
                             <p class="mt-1 text-sm text-yellow-700">
-                                {{ stats.failed_events }} failed events in the last 7 days.
+                                {{ (stats.failure_count | default(0)) }} failed events in the last 7 days.
                             </p>
                         </div>
                     </div>

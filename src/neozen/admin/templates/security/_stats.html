@@ -1,0 +1,71 @@
+{#
+  Partial: security dashboard counter cards.
+
+  Used by:
+  - security/dashboard.html (full page)
+  - /security/stats endpoint (HTMX live polling)
+
+  Context:
+  - stats: AuditStats
+  - active_session_count: int
+  - mfa_adoption: float (0..100)
+  - mfa_enabled_users, total_users: int
+  - live: bool — when True, the wrapping div polls /security/stats
+
+  This partial owns the wrapping `<div id="security-stats">` so it can
+  replace itself on swap.
+#}
+<div id="security-stats"
+     class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4"
+     {% if live %}
+     hx-get="/security/stats"
+     hx-trigger="every 15s"
+     hx-swap="outerHTML"
+     {% endif %}
+     >
+    <!-- Total Events (7 days) -->
+    <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+        <dt class="truncate text-sm font-medium text-gray-500">Events (7 days)</dt>
+        <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
+            {{ stats.total_events | default(0) }}
+        </dd>
+    </div>
+
+    <!-- Failed Events -->
+    {% set failed = stats.failure_count | default(0) %}
+    {% set total = stats.total_events | default(0) %}
+    <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+        <dt class="truncate text-sm font-medium text-gray-500">Failed Events</dt>
+        <dd class="mt-1 flex items-baseline gap-2">
+            <span class="text-3xl font-semibold tracking-tight {% if failed > 0 %}text-red-600{% else %}text-gray-900{% endif %}">
+                {{ failed }}
+            </span>
+            {% if total > 0 %}
+            <span class="text-sm text-gray-500">
+                ({{ ((failed / total) * 100) | round(1) }}%)
+            </span>
+            {% endif %}
+        </dd>
+    </div>
+
+    <!-- Active Sessions -->
+    <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+        <dt class="truncate text-sm font-medium text-gray-500">Active Sessions</dt>
+        <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
+            {{ active_session_count }}
+        </dd>
+    </div>
+
+    <!-- MFA Adoption -->
+    <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+        <dt class="truncate text-sm font-medium text-gray-500">MFA Adoption</dt>
+        <dd class="mt-1 flex items-baseline gap-2">
+            <span class="text-3xl font-semibold tracking-tight {% if mfa_adoption >= 80 %}text-green-600{% elif mfa_adoption >= 50 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                {{ mfa_adoption | round(1) }}%
+            </span>
+            <span class="text-sm text-gray-500">
+                ({{ mfa_enabled_users }}/{{ total_users }} users)
+            </span>
+        </dd>
+    </div>
+</div>

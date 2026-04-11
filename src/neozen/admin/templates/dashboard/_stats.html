@@ -1,0 +1,38 @@
+{#
+  Partial: main dashboard counter cards.
+
+  Used by:
+  - dashboard/index.html (full page)
+  - /dashboard/stats endpoint (HTMX live polling)
+
+  Context:
+  - stats: dict with total_users, active_sessions, total_roles,
+                     total_assignments
+  - live: bool — when True, the wrapping div polls /dashboard/stats
+#}
+<div id="dashboard-stats"
+     {% if live %}
+     hx-get="/dashboard/stats"
+     hx-trigger="every 15s"
+     hx-swap="outerHTML"
+     {% endif %}
+     >
+    <dl class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow ring-1 ring-gray-900/5 sm:p-6">
+            <dt class="truncate text-sm font-medium text-gray-500">Total Users</dt>
+            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{{ stats.total_users }}</dd>
+        </div>
+        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow ring-1 ring-gray-900/5 sm:p-6">
+            <dt class="truncate text-sm font-medium text-gray-500">Active Sessions</dt>
+            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{{ stats.active_sessions }}</dd>
+        </div>
+        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow ring-1 ring-gray-900/5 sm:p-6">
+            <dt class="truncate text-sm font-medium text-gray-500">Total Roles</dt>
+            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{{ stats.total_roles }}</dd>
+        </div>
+        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow ring-1 ring-gray-900/5 sm:p-6">
+            <dt class="truncate text-sm font-medium text-gray-500">Role Assignments</dt>
+            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{{ stats.total_assignments }}</dd>
+        </div>
+    </dl>
+</div>

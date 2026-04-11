@@ -22,26 +22,9 @@
 {% endblock %}
 
 {% block content %}
-<!-- Stats -->
+<!-- Stats (live polling) -->
 <div class="mb-8">
-    <dl class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow ring-1 ring-gray-900/5 sm:p-6">
-            <dt class="truncate text-sm font-medium text-gray-500">Total Users</dt>
-            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{{ stats.total_users }}</dd>
-        </div>
-        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow ring-1 ring-gray-900/5 sm:p-6">
-            <dt class="truncate text-sm font-medium text-gray-500">Active Sessions</dt>
-            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{{ stats.active_sessions }}</dd>
-        </div>
-        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow ring-1 ring-gray-900/5 sm:p-6">
-            <dt class="truncate text-sm font-medium text-gray-500">Total Roles</dt>
-            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{{ stats.total_roles }}</dd>
-        </div>
-        <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow ring-1 ring-gray-900/5 sm:p-6">
-            <dt class="truncate text-sm font-medium text-gray-500">Role Assignments</dt>
-            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{{ stats.total_assignments }}</dd>
-        </div>
-    </dl>
+    {% with live = True %}{% include "dashboard/_stats.html" %}{% endwith %}
 </div>
 
 <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
