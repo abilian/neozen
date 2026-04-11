@@ -5,10 +5,34 @@ Provides account lockout functionality after multiple failed login attempts.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Protocol, runtime_checkable
 
 from neozen.core.security.rate_limit_store import RateLimitEntry, RateLimitStore
+
+_log = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class LockoutNotifierProtocol(Protocol):
+    """Notifier called when an account transitions to locked.
+
+    Implement this to send a notification (email, SMS, push, log)
+    when a lockout fires. The default `LockoutManager` accepts an
+    optional notifier; it is called only on the locking transition,
+    not on every failed attempt.
+    """
+
+    async def on_lockout(
+        self,
+        subject_id: str,
+        *,
+        locked_until: datetime,
+        failed_attempts: int,
+        ip_address: str | None = None,
+    ) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -80,15 +104,20 @@ class LockoutManager:
         self,
         config: LockoutConfig,
         store: RateLimitStore,
+        notifier: LockoutNotifierProtocol | None = None,
     ) -> None:
         """Initialize lockout manager.
 
         Args:
             config: Lockout configuration.
             store: Storage backend for lockout data.
+            notifier: Optional notifier called when an account just
+                got locked. Failures from the notifier are logged but
+                never block the lockout itself.
         """
         self.config = config
         self.store = store
+        self.notifier = notifier
 
     def _make_key(self, subject_id: str) -> str:
         """Create storage key for subject."""
@@ -147,11 +176,18 @@ class LockoutManager:
             failed_attempts=entry.attempts,
         )
 
-    async def record_failed_attempt(self, subject_id: str) -> LockoutStatus:
+    async def record_failed_attempt(
+        self,
+        subject_id: str,
+        *,
+        ip_address: str | None = None,
+    ) -> LockoutStatus:
         """Record failed login attempt.
 
         Args:
             subject_id: Subject identifier.
+            ip_address: Requester IP, forwarded to the notifier when
+                a lockout fires. Optional.
 
         Returns:
             Updated lockout status.
@@ -182,6 +218,19 @@ class LockoutManager:
                 locked_until=locked_until,
             )
             await self.store.set(key, new_entry, ttl=duration)
+
+            # Fire notifier on the locking transition. Failures here
+            # never block the lockout itself.
+            if self.notifier is not None:
+                try:
+                    await self.notifier.on_lockout(
+                        subject_id,
+                        locked_until=locked_until,
+                        failed_attempts=entry.attempts,
+                        ip_address=ip_address,
+                    )
+                except Exception:
+                    _log.exception("Lockout notifier failed for subject %s", subject_id)
 
             return LockoutStatus(
                 is_locked=True,
@@ -231,5 +280,6 @@ class LockoutManager:
 __all__ = [
     "LockoutConfig",
     "LockoutManager",
+    "LockoutNotifierProtocol",
     "LockoutStatus",
 ]

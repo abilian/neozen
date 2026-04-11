@@ -61,6 +61,7 @@ lint.extend-ignore = [
     "B903", #    [ ] class-as-data-structure
     "E402", #    [ ] module-import-not-at-top-of-file
     "RUF100", #  [*] unused-noqa
+    "RUF029", #  async stubs conforming to a protocol may not await
     "FBT",
     "DTZ005",
     "S603",
