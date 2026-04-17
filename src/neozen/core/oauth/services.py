@@ -286,6 +286,11 @@ class OAuthTokenService[
             access_token_hash=access_token_hash,
         )
 
+        # OAuth 2.1 §4.1.2: authorization codes MUST be single-use.
+        # Delete the code after successful exchange so a second submission
+        # fails with AuthorizationCodeNotFoundError.
+        await self.authorization_code_repository.delete(auth_code)
+
         return TokenPair(
             access_token=access_token,
             access_token_hash=access_token_hash,

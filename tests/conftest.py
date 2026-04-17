@@ -14,9 +14,24 @@ Run specific test types:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
+
+# Quiet INFO-level lifecycle logs from `tortoise` and `databases`.
+#
+# Both libraries emit INFO-level startup/shutdown messages from background
+# threads during fixture teardown ("Tortoise-ORM shutdown", "Connected to
+# database ...", "Disconnected from database ..."). Those emissions race
+# with pytest's capture teardown: when the captured stderr stream is closed
+# before the thread's log record reaches its StreamHandler, we get a
+# spurious `ValueError: I/O operation on closed file` traceback printed to
+# the terminal. The log records themselves carry no diagnostic value for
+# test runs, so raising the level eliminates both the noise and the race at
+# the source.
+logging.getLogger("tortoise").setLevel(logging.WARNING)
+logging.getLogger("databases").setLevel(logging.WARNING)
 
 
 def pytest_collection_modifyitems(config, items):

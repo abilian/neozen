@@ -221,6 +221,26 @@ class TestFilterTokenizer:
         with pytest.raises(SCIMFilterError):
             parse_filter('(userName eq "alice"')
 
+    def test_rejects_deeply_nested_filter(self) -> None:
+        """DoS defense: reject filters nested past the hard depth cap.
+
+        Without a depth limit, a deeply nested filter like
+        ``(((...(a eq "b")...)))`` exhausts the Python recursion stack
+        and raises RecursionError. We want a structured SCIMFilterError
+        well before that.
+        """
+        depth = 500  # well past the 100-level cap
+        nested = "(" * depth + 'userName eq "alice"' + ")" * depth
+        with pytest.raises(SCIMFilterError, match="nesting depth"):
+            parse_filter(nested)
+
+    def test_accepts_reasonably_nested_filter(self) -> None:
+        """Legitimate filters with a few levels of grouping still parse."""
+        # 5 levels of nesting, well under the 100-level cap.
+        nested = '(((((userName eq "alice")))))'
+        expr = parse_filter(nested)
+        assert expr is not None
+
 
 class TestFilterMatching:
     def test_eq_string_case_insensitive(self) -> None:

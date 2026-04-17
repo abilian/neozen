@@ -488,6 +488,34 @@ class TestExchangeAuthorizationCode:
         assert len(access_token_storage._data) == 1
         assert len(refresh_token_storage._data) == 1
 
+    async def test_deletes_authorization_code_after_exchange(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+        token_service: OAuthTokenService,
+    ) -> None:
+        """OAuth 2.1 §4.1.2: authorization codes MUST be single-use.
+
+        After a successful exchange, the code row must be gone so that a
+        second exchange attempt raises AuthorizationCodeNotFoundError.
+        """
+        client = await client_storage.create(client_id="client_1")
+        auth_code = await auth_code_storage.create(
+            code="test_code_single_use",
+            client_id="client_1",
+            subject_id="user_1",
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            response_type="code",
+            redirect_uri=None,
+            scope="read",
+            code_challenge="a" * 43,
+            code_challenge_method="plain",
+        )
+
+        assert len(auth_code_storage._data) == 1
+        await token_service.exchange_authorization_code(auth_code, client)
+        assert len(auth_code_storage._data) == 0
+
 
 # =============================================================================
 # Tests: refresh_access_token

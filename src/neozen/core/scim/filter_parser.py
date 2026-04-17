@@ -258,11 +258,18 @@ def _tokenize(text: str) -> list[Token]:
 _KEYWORDS = {"and", "or", "not"}
 _OPERATORS = {op.value for op in FilterOp}
 
+# Hard cap on nested parenthesis depth. Each level costs ~5 stack frames
+# (parse_or → parse_and → parse_not → parse_primary → parse_or), so Python's
+# default recursion limit of 1000 is reached around ~200 levels. 100 is
+# well below that and more than any legitimate SCIM filter needs.
+_MAX_PAREN_DEPTH = 100
+
 
 class _Parser:
     def __init__(self, tokens: list[Token]) -> None:
         self.tokens = tokens
         self.pos = 0
+        self._paren_depth = 0
 
     def peek(self) -> Token | None:
         if self.pos >= len(self.tokens):
@@ -310,8 +317,15 @@ class _Parser:
             raise SCIMFilterError(msg)
 
         if token.type == "lparen":
+            if self._paren_depth >= _MAX_PAREN_DEPTH:
+                msg = f"Filter exceeds maximum nesting depth of {_MAX_PAREN_DEPTH}"
+                raise SCIMFilterError(msg)
             self.consume()
-            expr = self._parse_or()
+            self._paren_depth += 1
+            try:
+                expr = self._parse_or()
+            finally:
+                self._paren_depth -= 1
             close = self.peek()
             if close is None or close.type != "rparen":
                 msg = "Missing closing parenthesis"

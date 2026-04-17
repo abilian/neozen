@@ -13,6 +13,7 @@ a file path — for Docker / Kubernetes secret mounts.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -55,7 +56,7 @@ class ServeConfig:
     warnings: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_env(cls, env: dict[str, str] | None = None) -> ServeConfig:
+    def from_env(cls, env: Mapping[str, str] | None = None) -> ServeConfig:
         """Build a ServeConfig from environment variables.
 
         Honours `NEOZEN_*_FILE` for any string field, so Docker secret
@@ -105,7 +106,7 @@ class ServeConfig:
         return warnings
 
 
-def _str_env(env: dict[str, str], name: str, default: str) -> str:
+def _str_env(env: Mapping[str, str], name: str, default: str) -> str:
     """Read an env var, falling back to `<NAME>_FILE` then to default."""
     if env.get(name):
         return env[name]
@@ -117,7 +118,7 @@ def _str_env(env: dict[str, str], name: str, default: str) -> str:
     return default
 
 
-def _bool_env(env: dict[str, str], name: str, *, default: bool) -> bool:
+def _bool_env(env: Mapping[str, str], name: str, *, default: bool) -> bool:
     if name not in env:
         return default
     raw = env[name].strip().lower()

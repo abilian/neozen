@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 
 from neozen.core.oauth.exceptions import PKCEVerificationFailedError
 from neozen.core.oauth.types import CodeChallengeMethod
@@ -28,12 +29,14 @@ def verify_pkce(
     Raises:
         PKCEVerificationFailedError: If verification fails.
     """
+    # Constant-time comparison on both branches to avoid leaking byte
+    # positions via response-time side channel.
     if method == "plain":
-        if code_verifier != code_challenge:
+        if not hmac.compare_digest(code_verifier, code_challenge):
             raise PKCEVerificationFailedError
     elif method == "S256":
         computed = compute_s256_challenge(code_verifier)
-        if computed != code_challenge:
+        if not hmac.compare_digest(computed, code_challenge):
             raise PKCEVerificationFailedError
     else:
         raise PKCEVerificationFailedError
