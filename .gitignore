@@ -16,3 +16,6 @@ wheels/
 /sandbox/
 data/
 site/
+
+# Generated artifacts from markdown notes
+notes/**/*.pdf
