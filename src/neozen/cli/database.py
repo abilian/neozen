@@ -10,6 +10,7 @@ import os
 from collections.abc import Callable, Coroutine
 from functools import wraps
 from pathlib import Path
+from types import TracebackType
 from typing import Any, Concatenate, ParamSpec, TypeVar
 
 from sqlalchemy import Result, select
@@ -112,7 +113,12 @@ class DatabaseContext:
         self.session = get_session(self.engine)
         return self.session
 
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         if self.session:
             if exc_type is None:
                 await self.session.commit()

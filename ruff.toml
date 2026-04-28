@@ -39,19 +39,17 @@ lint.extend-ignore = [
     "S107", #   	hardcoded-password-default (same)
 
     # Fix later (or not)
-    "ANN401", # 	any-type
-    "BLE001", # 	blind-except
-    "SLF001", # 	private-member-access
-    "E501", #   	line-too-long
-    "ARG002", # 	unused-method-argument
-    "ARG001", # 	unused-function-argument
-    "N818", #   	error-suffix-on-exception-name
-    "S110", #   	try-except-pass
-    "FURB113", #	repeated-append
-    "PLW2901", #	redefined-loop-name
-    "PYI036", # 	bad-exit-annotation
-    # "UP047", #  	non-pep695-generic-function
-    "UP049", #  	private-type-parameter
+    "ANN401", #  any-type
+    "BLE001", #  blind-except
+    "SLF001", #  private-member-access
+    "E501", #    line-too-long
+    "ARG002", #  unused-method-argument
+    "ARG001", #  unused-function-argument
+    "N818", #    error-suffix-on-exception-name
+    "S110", #    try-except-pass
+    "FURB113", # repeated-append
+    "PLW2901", # redefined-loop-name
+    "UP049", #   private-type-parameter
 ]
 
 [lint.extend-per-file-ignores]
