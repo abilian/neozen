@@ -401,7 +401,7 @@ class SQLAlchemyPasswordResetTokenRepository:
             )
             result = await session.execute(stmt)
             await session.commit()
-            return result.rowcount or 0  # type: ignore[attr-defined]
+            return result.rowcount or 0  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
 
 # =============================================================================
@@ -480,7 +480,7 @@ class SQLAlchemyMagicLinkTokenRepository:
             )
             result = await session.execute(stmt)
             await session.commit()
-            return result.rowcount or 0  # type: ignore[attr-defined]
+            return result.rowcount or 0  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
 
 __all__ = [

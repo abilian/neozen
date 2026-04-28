@@ -7,7 +7,7 @@ import json
 import operator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any, overload
+from typing import Any, cast, overload
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -208,8 +208,8 @@ class AdminService:
         self.organization_repo = OrganizationRepository(session=session)
         self.audit_log_repo = AuditLogRepository(session=session)
         self.role_service = RoleService(
-            role_repository=self.role_repo,  # type: ignore[arg-type]
-            role_assignment_repository=self.role_assignment_repo,  # type: ignore[arg-type]
+            role_repository=self.role_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+            role_assignment_repository=self.role_assignment_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
         )
 
     # -------------------------------------------------------------------------
@@ -606,7 +606,7 @@ class AdminService:
             permissions=permissions,
             description=description,
         )
-        return role  # type: ignore[return-value]
+        return cast(Role, role)
 
     async def delete_role(self, name: str) -> None:
         """Delete a role.

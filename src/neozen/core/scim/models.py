@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -304,7 +305,7 @@ class Group(SCIMResource):
 class ListResponse:
     """SCIM ListResponse (RFC 7644 Section 3.4.2)."""
 
-    resources: list[SCIMResource]
+    resources: Sequence[SCIMResource]
     total_results: int
     start_index: int = 1
     items_per_page: int = 0

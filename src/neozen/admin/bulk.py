@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+import typing
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -137,7 +138,7 @@ def _parse_bool(value: str | bool | None, *, default: bool) -> bool:  # noqa: FB
     raise ValueError(msg)
 
 
-def validate_row(row: dict[str, str]) -> tuple[str, dict[str, object]]:
+def validate_row(row: dict[str, str]) -> tuple[str, dict[str, typing.Any]]:
     """Validate a CSV row and return (email, normalized fields).
 
     Raises ValueError with a descriptive message on validation failure.
@@ -156,7 +157,7 @@ def validate_row(row: dict[str, str]) -> tuple[str, dict[str, object]]:
         msg = f"invalid username: {username!r}"
         raise ValueError(msg)
 
-    fields: dict[str, object] = {
+    fields: dict[str, typing.Any] = {
         "email": email,
         "username": username,
         "is_active": _parse_bool(row.get("is_active"), default=True),
@@ -320,9 +321,9 @@ async def _process_row(
             updated = await service.update_subject(
                 existing.id,
                 email=email,
-                username=fields["username"],  # type: ignore[arg-type]
-                is_active=fields["is_active"],  # type: ignore[arg-type]
-                is_verified=fields["is_verified"],  # type: ignore[arg-type]
+                username=fields["username"],
+                is_active=fields["is_active"],
+                is_verified=fields["is_verified"],
             )
         except Exception as e:
             result.add(
@@ -358,9 +359,9 @@ async def _process_row(
     try:
         created = await service.create_subject(
             email=email,
-            username=fields["username"],  # type: ignore[arg-type]
-            is_active=fields["is_active"],  # type: ignore[arg-type]
-            is_verified=fields["is_verified"],  # type: ignore[arg-type]
+            username=fields["username"],
+            is_active=fields["is_active"],
+            is_verified=fields["is_verified"],
         )
     except Exception as e:
         result.add(

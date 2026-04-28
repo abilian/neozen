@@ -34,7 +34,7 @@ class RoleModelProtocol(typing.Protocol):
     description: str
     permissions: str  # Comma-separated permission strings
     is_system: bool
-    created_at: datetime | None
+    created_at: datetime
 
     def get_permissions_list(self) -> list[str]:
         """Return permissions as a list."""
@@ -50,7 +50,7 @@ class RoleAssignmentModelProtocol(typing.Protocol):
     scope_type: ScopeType
     scope_id: str | None
     granted_by: str | None
-    granted_at: datetime | None
+    granted_at: datetime
     expires_at: datetime | None
 
 

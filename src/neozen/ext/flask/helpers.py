@@ -33,7 +33,7 @@ def _get_current_user() -> Subject | AnonymousUser:
 
 # LocalProxy for accessing current user
 # This allows `current_user` to work like Flask-Login's current_user
-current_user: Subject | AnonymousUser = LocalProxy(_get_current_user)  # type: ignore[assignment]
+current_user: Subject | AnonymousUser = LocalProxy(_get_current_user)  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
 
 
 def login_user(

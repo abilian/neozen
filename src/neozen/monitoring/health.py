@@ -200,7 +200,7 @@ def create_database_check(
             session = session_factory()
             # Try to execute a simple query
             if hasattr(session, "execute"):
-                await session.execute("SELECT 1")  # type: ignore[attr-defined]
+                await session.execute("SELECT 1")  # type: ignore[attr-defined]  # ty: ignore[call-non-callable]
             return CheckResult(
                 name="database",
                 healthy=True,

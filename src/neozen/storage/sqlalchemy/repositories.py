@@ -59,12 +59,12 @@ class NeoZenRepository[Model: ModelProtocol](SQLAlchemyAsyncRepository[Model]):
         results = await self.list(pagination, **filters)
         return list(results)
 
-    async def count(self, **filters: typing.Any) -> int:  # type: ignore[override]
+    async def count(self, **filters: typing.Any) -> int:  # type: ignore[override]  # ty: ignore[invalid-method-override]
         """Count models matching the given filters."""
         # Advanced-Alchemy's count method accepts filters
         return await super().count(**filters)
 
-    async def exists(self, **filters: typing.Any) -> bool:  # type: ignore[override]
+    async def exists(self, **filters: typing.Any) -> bool:  # type: ignore[override]  # ty: ignore[invalid-method-override]
         """Check if any model exists matching the given filters."""
         # Advanced-Alchemy's exists method accepts filters
         return await super().exists(**filters)
@@ -80,7 +80,7 @@ class NeoZenRepository[Model: ModelProtocol](SQLAlchemyAsyncRepository[Model]):
             setattr(obj, key, value)
         return await self.update(obj)
 
-    async def delete(self, obj: Model) -> None:  # type: ignore[override]
+    async def delete(self, obj: Model) -> None:  # type: ignore[override]  # ty: ignore[invalid-method-override]
         """Delete a model instance."""
         await super().delete(self.get_id_attribute_value(obj))
 

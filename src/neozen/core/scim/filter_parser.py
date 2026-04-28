@@ -50,6 +50,11 @@ class FilterOp(StrEnum):
 class FilterExpression:
     """Base class for filter AST nodes."""
 
+    def matches(self, item: Any) -> bool:
+        """Evaluate the expression against an item. Overridden by subclasses."""
+        _ = item
+        return False
+
 
 def _eval_string_op(op: FilterOp, actual: Any, expected: Any) -> bool:
     """Evaluate string-style comparison operators."""
@@ -283,8 +288,9 @@ class _Parser:
 
     def parse(self) -> FilterExpression:
         expr = self._parse_or()
-        if self.peek() is not None:
-            msg = f"Unexpected token at position {self.peek().pos}"  # type: ignore[union-attr]
+        remaining = self.peek()
+        if remaining is not None:
+            msg = f"Unexpected token at position {remaining.pos}"
             raise SCIMFilterError(msg)
         return expr
 

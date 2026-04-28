@@ -81,7 +81,7 @@ def rate_limit(
 
     def decorator(f: F) -> F:
         @wraps(f)
-        def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> Response:
+        def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
             import asyncio  # noqa: PLC0415
 
             # Get client identifiers
@@ -145,7 +145,7 @@ def rate_limit(
 
             return response
 
-        return decorated_function  # type: ignore[return-value]
+        return decorated_function  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
 
     return decorator
 

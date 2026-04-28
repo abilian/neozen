@@ -255,7 +255,7 @@ class NeoZen:
             subject = loader(subject_id)
 
         g._neozen_user = subject
-        return subject or AnonymousUser()  # type: ignore[return-value]
+        return subject or AnonymousUser()  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
 
     def _handle_session_cookie(self, response: Response) -> Response:
         """After request hook to set/clear session cookie."""

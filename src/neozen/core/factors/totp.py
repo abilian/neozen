@@ -214,7 +214,7 @@ class TOTPFactor[S: TOTPSubjectModel]:
 
             img = qr.make_image(fill_color="black", back_color="white")
             buffer = io.BytesIO()
-            img.save(buffer, format="PNG")  # type: ignore[call-arg]
+            img.save(buffer, format="PNG")  # type: ignore[call-arg]  # ty: ignore[unknown-argument]
             buffer.seek(0)
 
             base64_data = base64.b64encode(buffer.getvalue()).decode("utf-8")

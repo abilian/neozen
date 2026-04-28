@@ -5,7 +5,7 @@ from __future__ import annotations
 import typing
 from functools import wraps
 
-from flask import Response, jsonify
+from flask import jsonify
 
 from .helpers import current_user
 
@@ -56,17 +56,17 @@ def login_required[F: Callable[..., typing.Any]](
 
     def decorator(f: F) -> F:
         @wraps(f)
-        def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> Response:
+        def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
             if not getattr(current_user, "is_authenticated", False):
                 if redirect:
                     from .extension import _get_neozen  # noqa: PLC0415
 
                     neozen = _get_neozen()
                     return neozen.handle_unauthorized()
-                return jsonify({"error": "Unauthorized"}), 401  # type: ignore[return-value]
+                return jsonify({"error": "Unauthorized"}), 401
             return f(*args, **kwargs)
 
-        return decorated_function  # type: ignore[return-value]
+        return decorated_function  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
 
     if func is not None:
         # Called without arguments: @login_required
@@ -105,7 +105,7 @@ def fresh_login_required[F: Callable[..., typing.Any]](
     """
     # TODO: Implement fresh session checking
     # For now, just use regular login_required
-    return login_required(func, redirect=redirect)
+    return login_required(func, redirect=redirect)  # pyrefly: ignore[bad-return]
 
 
 def roles_required(*roles: str) -> Callable[[F], F]:
@@ -131,7 +131,7 @@ def roles_required(*roles: str) -> Callable[[F], F]:
 
     def decorator(f: F) -> F:
         @wraps(f)
-        def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> Response:
+        def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
             # Check authentication first
             if not getattr(current_user, "is_authenticated", False):
                 from .extension import _get_neozen  # noqa: PLC0415
@@ -148,7 +148,7 @@ def roles_required(*roles: str) -> Callable[[F], F]:
 
             return f(*args, **kwargs)
 
-        return decorated_function  # type: ignore[return-value]
+        return decorated_function  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
 
     return decorator
 
@@ -186,7 +186,7 @@ def permissions_required(*permissions: str) -> Callable[[F], F]:
 
     def decorator(f: F) -> F:
         @wraps(f)
-        def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> Response:
+        def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
             # Check authentication first
             if not getattr(current_user, "is_authenticated", False):
                 from .extension import _get_neozen  # noqa: PLC0415
@@ -201,7 +201,7 @@ def permissions_required(*permissions: str) -> Callable[[F], F]:
 
                 # Try has_permission method first
                 if hasattr(current_user, "has_permission"):
-                    has_perm = current_user.has_permission(required)  # type: ignore[operator]
+                    has_perm = current_user.has_permission(required)  # type: ignore[operator]  # ty: ignore[call-non-callable]
                 else:
                     # Fall back to checking permissions attribute
                     user_perms = getattr(current_user, "permissions", [])
@@ -218,7 +218,7 @@ def permissions_required(*permissions: str) -> Callable[[F], F]:
 
             return f(*args, **kwargs)
 
-        return decorated_function  # type: ignore[return-value]
+        return decorated_function  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
 
     return decorator
 

@@ -223,7 +223,7 @@ class SCIMUserService:
             _populate_meta(u, resource_type="User", base_url=self.base_url)
 
         return ListResponse(
-            resources=page,  # type: ignore[arg-type]
+            resources=page,
             total_results=len(filtered),
             start_index=start_index,
             items_per_page=len(page),
@@ -316,7 +316,7 @@ class SCIMGroupService:
             _populate_meta(g, resource_type="Group", base_url=self.base_url)
 
         return ListResponse(
-            resources=page,  # type: ignore[arg-type]
+            resources=page,
             total_results=len(filtered),
             start_index=start_index,
             items_per_page=len(page),
@@ -325,9 +325,7 @@ class SCIMGroupService:
 
 def _matches_filter(expr: FilterExpression, item: Any) -> bool:
     """Helper that handles all FilterExpression subtypes."""
-    if hasattr(expr, "matches"):
-        return bool(expr.matches(item))  # type: ignore[union-attr]
-    return False
+    return bool(expr.matches(item))
 
 
 __all__ = [
