@@ -31,8 +31,10 @@ dependencies = [
     "asyncpg>=0.31.0",
     "dishka>=1.0.0",
     "email-validator>=2.3.0",
+    "ldap3>=2.9.1",
     "litestar[standard]>=2.19.0",
     "pydantic>=2.0.0",
+    "pyjwt>=2.12.1",
     "sqlalchemy>=2.0.45",
     "uvicorn>=0.40.0",
 ]
