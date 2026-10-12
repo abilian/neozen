@@ -13,14 +13,12 @@ sources:
 tasks:
   - install: |
       cd neozen
-      uv sync
+      # Playwright has no musl wheels; browser tests run on Ubuntu.
+      uv sync --no-group playwright
   - test: |
       cd neozen
-      uv run pytest -q --tb=short
+      uv run --no-group playwright pytest -q --tb=short
   - lint: |
       cd neozen
-      uv run ruff check
-      uv run ty check src
-  - nox: |
-      cd neozen
-      uvx nox
+      uv run --no-group playwright ruff check
+      uv run --no-group playwright ty check src

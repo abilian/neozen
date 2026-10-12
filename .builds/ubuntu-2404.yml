@@ -24,6 +24,7 @@ tasks:
       sudo pip install --break-system-packages -U uv nox
       cd neozen
       uv sync
+      uv run playwright install --with-deps chromium
 
   - test: |
       cd neozen

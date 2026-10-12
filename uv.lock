@@ -1596,7 +1596,6 @@ dev = [
     { name = "pytest-archon" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
-    { name = "pytest-playwright" },
     { name = "python-multipart" },
     { name = "qrcode", extra = ["pil"] },
     { name = "ruff" },
@@ -1609,6 +1608,9 @@ dev = [
     { name = "types-qrcode" },
     { name = "uvicorn" },
     { name = "webauthn" },
+]
+playwright = [
+    { name = "pytest-playwright" },
 ]
 
 [package.metadata]
@@ -1675,7 +1677,6 @@ dev = [
     { name = "pytest-archon", specifier = ">=0.0.7" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "pytest-playwright", specifier = ">=0.7.0" },
     { name = "python-multipart", specifier = ">=0.0.21" },
     { name = "qrcode", extras = ["pil"], specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.14.11" },
@@ -1689,6 +1690,7 @@ dev = [
     { name = "uvicorn", specifier = ">=0.30.0" },
     { name = "webauthn", specifier = ">=2.0.0" },
 ]
+playwright = [{ name = "pytest-playwright", specifier = ">=0.7.0" }]
 
 [[package]]
 name = "nodeenv"

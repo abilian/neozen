@@ -14,10 +14,14 @@ Run specific test types:
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 from pathlib import Path
 
 import pytest
+
+# Playwright has no musl wheels, so Alpine CI syncs without it.
+collect_ignore = [] if importlib.util.find_spec("playwright") else ["d_playwright"]
 
 # Quiet INFO-level lifecycle logs from `tortoise` and `databases`.
 #
