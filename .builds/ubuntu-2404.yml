@@ -8,6 +8,11 @@ secrets:
   - b88a4c2c-944c-42a6-9fbb-7483049c458a
 
 
+environment:
+  # System Python is 3.12.3; NeoZen needs >=3.12.4 (PEP 695 get_type_hints fix).
+  UV_PYTHON_PREFERENCE: only-managed
+  UV_PYTHON: "3.12"
+
 packages:
   # Build tools
   - software-properties-common
