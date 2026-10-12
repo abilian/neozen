@@ -155,6 +155,21 @@ class AuthenticationOptions:
     challenge: str
 
 
+def _load_webauthn_modules() -> tuple[typing.Any, typing.Any, typing.Any]:
+    """Lazily import the optional ``webauthn`` package and its helpers.
+
+    Returns ``(webauthn, webauthn_structs, webauthn_helpers)``. Raises
+    ``ImportError`` if the package isn't installed; callers decide whether
+    that's a hard failure (registration / authentication) or a soft no-op
+    (``__post_init__`` lazy-load).
+    """
+    import webauthn  # noqa: PLC0415
+    from webauthn import helpers as webauthn_helpers  # noqa: PLC0415
+    from webauthn.helpers import structs as webauthn_structs  # noqa: PLC0415
+
+    return webauthn, webauthn_structs, webauthn_helpers
+
+
 @dataclass
 class WebAuthnFactor[S: Subject]:
     """WebAuthn/Passkey authentication factor.
@@ -171,17 +186,14 @@ class WebAuthnFactor[S: Subject]:
     _webauthn_helpers: typing.Any = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
-        """Import webauthn lazily."""
+        """Import webauthn lazily (no-op if the optional dep is absent)."""
         try:
-            import webauthn  # noqa: PLC0415
-            from webauthn import helpers as webauthn_helpers  # noqa: PLC0415
-            from webauthn.helpers import structs as webauthn_structs  # noqa: PLC0415
-
-            object.__setattr__(self, "_webauthn", webauthn)
-            object.__setattr__(self, "_webauthn_structs", webauthn_structs)
-            object.__setattr__(self, "_webauthn_helpers", webauthn_helpers)
+            modules = _load_webauthn_modules()
         except ImportError:
-            pass
+            return
+        object.__setattr__(self, "_webauthn", modules[0])
+        object.__setattr__(self, "_webauthn_structs", modules[1])
+        object.__setattr__(self, "_webauthn_helpers", modules[2])
 
     def _generate_id(self) -> str:
         """Generate a unique ID."""
@@ -458,49 +470,7 @@ class WebAuthnFactor[S: Subject]:
             raise WebAuthnChallengeExpiredError
 
         try:
-            # Parse the authentication response
-            credential = self._webauthn_structs.AuthenticationCredential.model_validate(
-                response
-            )
-
-            # Find the credential in storage
-            credential_id_b64 = self._webauthn_helpers.bytes_to_base64url(
-                credential.raw_id
-            )
-
-            try:
-                cred_record = await self.credential_repository.get_one_by(
-                    credential_id=credential_id_b64
-                )
-            except DoesNotExist:
-                raise WebAuthnCredentialNotFoundError(credential_id_b64) from None
-
-            # Verify the authentication
-            verification = self._webauthn.verify_authentication_response(
-                credential=credential,
-                expected_challenge=self._webauthn.base64url_to_bytes(
-                    challenge_record.challenge
-                ),
-                expected_rp_id=self.config.rp_id,
-                expected_origin=self.config.origin,
-                credential_public_key=self._webauthn.base64url_to_bytes(
-                    cred_record.public_key
-                ),
-                credential_current_sign_count=cred_record.sign_count,
-            )
-
-            # Update sign count and last used
-            updated_cred = await self.credential_repository.update_obj(
-                cred_record,
-                sign_count=verification.new_sign_count,
-                last_used_at=datetime.now(UTC),
-            )
-
-            # Clean up challenge
-            await self.challenge_repository.delete(challenge_record)
-
-            return cred_record.subject_id, updated_cred
-
+            return await self._verify_authentication_inner(challenge_record, response)
         except Exception as e:
             if isinstance(
                 e,
@@ -513,6 +483,49 @@ class WebAuthnFactor[S: Subject]:
                 raise
             msg = f"Authentication verification failed: {e}"
             raise WebAuthnAuthenticationError(msg) from e
+
+    async def _verify_authentication_inner(
+        self,
+        challenge_record: typing.Any,
+        response: dict[str, typing.Any],
+    ) -> tuple[str, typing.Any]:
+        """Parse + verify the authentication response and update sign count.
+
+        Raises ``WebAuthnCredentialNotFoundError`` if the credential isn't
+        registered; any other failure propagates and is wrapped by the
+        caller as ``WebAuthnAuthenticationError``.
+        """
+        credential = self._webauthn_structs.AuthenticationCredential.model_validate(
+            response
+        )
+        credential_id_b64 = self._webauthn_helpers.bytes_to_base64url(credential.raw_id)
+        try:
+            cred_record = await self.credential_repository.get_one_by(
+                credential_id=credential_id_b64
+            )
+        except DoesNotExist:
+            raise WebAuthnCredentialNotFoundError(credential_id_b64) from None
+
+        verification = self._webauthn.verify_authentication_response(
+            credential=credential,
+            expected_challenge=self._webauthn.base64url_to_bytes(
+                challenge_record.challenge
+            ),
+            expected_rp_id=self.config.rp_id,
+            expected_origin=self.config.origin,
+            credential_public_key=self._webauthn.base64url_to_bytes(
+                cred_record.public_key
+            ),
+            credential_current_sign_count=cred_record.sign_count,
+        )
+
+        updated_cred = await self.credential_repository.update_obj(
+            cred_record,
+            sign_count=verification.new_sign_count,
+            last_used_at=datetime.now(UTC),
+        )
+        await self.challenge_repository.delete(challenge_record)
+        return cred_record.subject_id, updated_cred
 
     async def list_credentials(self, subject: S) -> list[typing.Any]:
         """List all WebAuthn credentials for a subject.

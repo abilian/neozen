@@ -32,6 +32,17 @@ from neozen.config.loader import (
 )
 
 
+def _assert_google_provider_loaded(toml_path: str) -> None:
+    """Load + verify the google OAuth provider config from a TOML file."""
+    config = load_config(toml_path)
+    assert "google" in config.oauth.providers
+    google = config.oauth.providers["google"]
+    assert google.enabled is True
+    assert google.client_id == "google-client-id"
+    assert google.client_secret == "google-secret"
+    assert google.scopes == ("openid", "email")
+
+
 class TestParseDuration:
     """Tests for duration parsing."""
 
@@ -222,13 +233,7 @@ scopes = ["openid", "email"]
             f.write(toml_content)
             f.flush()
             try:
-                config = load_config(f.name)
-                assert "google" in config.oauth.providers
-                google = config.oauth.providers["google"]
-                assert google.enabled is True
-                assert google.client_id == "google-client-id"
-                assert google.client_secret == "google-secret"
-                assert google.scopes == ("openid", "email")
+                _assert_google_provider_loaded(f.name)
             finally:
                 Path(f.name).unlink()
 

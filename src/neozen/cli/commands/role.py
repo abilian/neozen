@@ -229,15 +229,15 @@ def create(args: argparse.Namespace) -> int:
         async with DatabaseContext(db_url) as session:
             try:
                 result = await _create_role(session, name, permissions, description)
-                print("Role created successfully!")
-                print(f"  ID:          {result['id']}")
-                print(f"  Name:        {result['name']}")
-                print(f"  Description: {result['description'] or '(none)'}")
-                print(f"  Permissions: {', '.join(result['permissions'])}")
-                return 0
             except ValueError as e:
                 print(f"Error: {e}")
                 return 1
+            print("Role created successfully!")
+            print(f"  ID:          {result['id']}")
+            print(f"  Name:        {result['name']}")
+            print(f"  Description: {result['description'] or '(none)'}")
+            print(f"  Permissions: {', '.join(result['permissions'])}")
+            return 0
 
     return asyncio.run(run())
 
@@ -311,16 +311,16 @@ def assign(args: argparse.Namespace) -> int:
                 result = await _assign_role(
                     session, subject_id, role_name, scope_type, scope_id
                 )
-                print("Role assigned successfully!")
-                print(f"  Subject: {result['subject_id']}")
-                print(f"  Role:    {result['role_id']}")
-                print(f"  Scope:   {result['scope_type']}")
-                if result["scope_id"]:
-                    print(f"  Scope ID: {result['scope_id']}")
-                return 0
             except Exception as e:
                 print(f"Error: {e}")
                 return 1
+            print("Role assigned successfully!")
+            print(f"  Subject: {result['subject_id']}")
+            print(f"  Role:    {result['role_id']}")
+            print(f"  Scope:   {result['scope_type']}")
+            if result["scope_id"]:
+                print(f"  Scope ID: {result['scope_id']}")
+            return 0
 
     return asyncio.run(run())
 

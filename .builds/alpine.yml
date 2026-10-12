@@ -24,8 +24,3 @@ tasks:
   - nox: |
       cd neozen
       uvx nox
-
-triggers:
-  - action: email
-    condition: failure
-    to: sf@fermigier.com

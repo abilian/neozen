@@ -826,19 +826,31 @@ class AdminService:
         )
         for gra in group_assignments:
             try:
-                group = await self.get_group(gra.group_id)
-                members = await self.get_group_members(gra.group_id)
-                for member, _member_role in members:
-                    if member.id in seen:
-                        continue
-                    result.append({
-                        "subject": member,
-                        "source_type": "group",
-                        "source_name": f"{group.name} ({role.name})",
-                    })
-                    seen.add(member.id)
+                group, members = await self._load_group_with_members(gra.group_id)
             except Exception:  # noqa: S112
                 continue
+            for member, _member_role in members:
+                if member.id in seen:
+                    continue
+                result.append({
+                    "subject": member,
+                    "source_type": "group",
+                    "source_name": f"{group.name} ({role.name})",
+                })
+                seen.add(member.id)
+
+    async def _load_group_with_members(
+        self, group_id: str
+    ) -> tuple[Any, list[tuple[Any, Any]]]:
+        """Fetch a group + its members in one helper.
+
+        Raises whatever ``get_group`` / ``get_group_members`` raise; the
+        caller decides whether a load failure is fatal or "skip this
+        group".
+        """
+        group = await self.get_group(group_id)
+        members = await self.get_group_members(group_id)
+        return group, members
 
     # -------------------------------------------------------------------------
     # Session Management

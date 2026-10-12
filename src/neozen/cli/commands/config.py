@@ -69,28 +69,25 @@ def validate_command(args: argparse.Namespace) -> int:
 def show_command(args: argparse.Namespace) -> int:
     """Show effective configuration."""
     try:
-        config_path = getattr(args, "config_file", None)
-        config = load_config(config_path)
-        data = asdict(config)
-
-        # Filter to specific section if requested
-        section = getattr(args, "section", None)
-        if section:
-            if section not in data:
-                print(f"Unknown section: {section}", file=sys.stderr)
-                print(f"Available sections: {', '.join(data.keys())}", file=sys.stderr)
-                return 1
-            data = {section: data[section]}
-
-        # Mask secrets unless --show-secrets is passed
-        if not getattr(args, "show_secrets", False):
-            data = _mask_secrets(data)
-
-        print(json.dumps(data, indent=2, default=_json_serializer))
-        return 0
+        config = load_config(getattr(args, "config_file", None))
     except ConfigError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    data = asdict(config)
+    section = getattr(args, "section", None)
+    if section:
+        if section not in data:
+            print(f"Unknown section: {section}", file=sys.stderr)
+            print(f"Available sections: {', '.join(data.keys())}", file=sys.stderr)
+            return 1
+        data = {section: data[section]}
+
+    if not getattr(args, "show_secrets", False):
+        data = _mask_secrets(data)
+
+    print(json.dumps(data, indent=2, default=_json_serializer))
+    return 0
 
 
 def path_command(args: argparse.Namespace) -> int:

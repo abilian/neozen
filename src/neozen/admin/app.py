@@ -628,27 +628,40 @@ async def role_detail(request: Request, role_name: str) -> Response:
         try:
             role = await service.get_role(role_name)
             assignments = await service.get_role_assignments(role_name)
-
-            # Get subject info for each assignment
-            assignments_with_subjects: list[tuple[RoleAssignment, Subject | None]] = []
-            for assignment in assignments:
-                try:
-                    subject = await service.get_subject(assignment.subject_id)
-                    assignments_with_subjects.append((assignment, subject))
-                except Exception:
-                    assignments_with_subjects.append((assignment, None))
-
-            return render_template(
-                request,
-                "roles/detail.html",
-                {
-                    "role": role,
-                    "assignments": assignments_with_subjects,
-                },
-            )
         except Exception:
             flash(request, f"Role not found: {role_name}", "error")
             return redirect("/roles")
+
+        assignments_with_subjects = await _resolve_assignment_subjects(
+            service, assignments
+        )
+        return render_template(
+            request,
+            "roles/detail.html",
+            {
+                "role": role,
+                "assignments": assignments_with_subjects,
+            },
+        )
+
+
+async def _resolve_assignment_subjects(
+    service: AdminService,
+    assignments: list[RoleAssignment],
+) -> list[tuple[RoleAssignment, Subject | None]]:
+    """Map each role assignment to ``(assignment, subject_or_None)``.
+
+    Lookup failures collapse to ``None`` so an orphan FK doesn't break
+    the page render.
+    """
+    result: list[tuple[RoleAssignment, Subject | None]] = []
+    for assignment in assignments:
+        try:
+            subject = await service.get_subject(assignment.subject_id)
+        except Exception:
+            subject = None
+        result.append((assignment, subject))
+    return result
 
 
 @post("/roles/{role_name:str}/delete")

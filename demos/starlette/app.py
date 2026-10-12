@@ -12,6 +12,7 @@ import secrets
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 from pwdlib import PasswordHash
@@ -142,6 +143,23 @@ def render_template(
     return HTMLResponse(content=content, status_code=status_code)
 
 
+async def _verify_credentials(session: Any, email: str, password: str) -> Any:
+    """Look up subject by email + verify password.
+
+    Returns the subject on a match, None on no-such-email or password
+    mismatch. Shared by the form-based login and the JSON API login.
+    """
+    repo = SubjectRepository(session=session)
+    try:
+        subject = await repo.get_one_by(email=email)
+    except DoesNotExist:
+        return None
+    if not subject.hashed_password:
+        return None
+    valid, _ = hasher.verify_and_update(password, subject.hashed_password)
+    return subject if valid else None
+
+
 def flash(request: Request, message: str, category: str = "info") -> None:
     """Add a flash message."""
     if "messages" not in request.session:
@@ -187,26 +205,21 @@ async def login_submit(request: Request) -> Response:
     password = str(form.get("password", ""))
 
     async with session_factory() as db_session:
-        repo = SubjectRepository(session=db_session)
-        try:
-            subject = await repo.get_one_by(email=email)
-            if subject.hashed_password:
-                valid, _ = hasher.verify_and_update(password, subject.hashed_password)
-                if valid:
-                    if subject.totp_enabled:
-                        request.session[PENDING_TOTP_SUBJECT_KEY] = subject.id
-                        return RedirectResponse(url="/totp/verify", status_code=303)
-                    response = RedirectResponse(url="/dashboard", status_code=303)
-                    await login_user(request, response, subject)
-                    flash(request, "Login successful!", "success")
-                    return response
-        except DoesNotExist:
-            pass
+        subject = await _verify_credentials(db_session, email, password)
 
-    flash(request, "Invalid email or password", "error")
-    return render_template(
-        "login.html", request, {"current_user": None, "email": email}
-    )
+    if subject is None:
+        flash(request, "Invalid email or password", "error")
+        return render_template(
+            "login.html", request, {"current_user": None, "email": email}
+        )
+
+    if subject.totp_enabled:
+        request.session[PENDING_TOTP_SUBJECT_KEY] = subject.id
+        return RedirectResponse(url="/totp/verify", status_code=303)
+    response = RedirectResponse(url="/dashboard", status_code=303)
+    await login_user(request, response, subject)
+    flash(request, "Login successful!", "success")
+    return response
 
 
 async def register_page(request: Request) -> Response:
@@ -464,22 +477,14 @@ async def api_login(request: Request) -> Response:
     password = body.get("password", "")
 
     async with session_factory() as db_session:
-        repo = SubjectRepository(session=db_session)
-        try:
-            subject = await repo.get_one_by(email=email)
-            if subject.hashed_password:
-                valid, _ = hasher.verify_and_update(password, subject.hashed_password)
-                if valid:
-                    response = JSONResponse({
-                        "message": "Logged in",
-                        "user_id": subject.id,
-                    })
-                    await login_user(request, response, subject)
-                    return response
-        except DoesNotExist:
-            pass
+        subject = await _verify_credentials(db_session, email, password)
 
-    return JSONResponse({"error": "Invalid credentials"}, status_code=401)
+    if subject is None:
+        return JSONResponse({"error": "Invalid credentials"}, status_code=401)
+
+    response = JSONResponse({"message": "Logged in", "user_id": subject.id})
+    await login_user(request, response, subject)
+    return response
 
 
 @login_required

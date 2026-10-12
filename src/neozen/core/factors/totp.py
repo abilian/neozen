@@ -152,6 +152,32 @@ class TOTPEnrollmentResult:
     qr_code_data_uri: str | None = None
 
 
+def _render_qr_data_uri(provisioning_uri: str) -> str:
+    """Render the provisioning URI as a base64-encoded PNG data URI.
+
+    Raises ``ImportError`` if the optional ``qrcode`` dependency is not
+    installed; callers decide whether that's a hard failure or a soft
+    "no QR code today" outcome.
+    """
+    import qrcode  # noqa: PLC0415
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")  # type: ignore[call-arg]  # ty: ignore[unknown-argument]
+    buffer.seek(0)
+    base64_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return f"data:image/png;base64,{base64_data}"
+
+
 @dataclass
 class TOTPFactor[S: TOTPSubjectModel]:
     """TOTP-based two-factor authentication.
@@ -199,26 +225,12 @@ class TOTPFactor[S: TOTPSubjectModel]:
         )
 
     def _generate_qr_code(self, provisioning_uri: str) -> str | None:
-        """Generate a QR code data URI for the provisioning URI."""
+        """Generate a QR code data URI for the provisioning URI.
+
+        Returns None if the optional ``qrcode`` dependency is not installed.
+        """
         try:
-            import qrcode  # noqa: PLC0415
-
-            qr = qrcode.QRCode(
-                version=1,
-                error_correction=qrcode.constants.ERROR_CORRECT_L,
-                box_size=10,
-                border=4,
-            )
-            qr.add_data(provisioning_uri)
-            qr.make(fit=True)
-
-            img = qr.make_image(fill_color="black", back_color="white")
-            buffer = io.BytesIO()
-            img.save(buffer, format="PNG")  # type: ignore[call-arg]  # ty: ignore[unknown-argument]
-            buffer.seek(0)
-
-            base64_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
-            return f"data:image/png;base64,{base64_data}"
+            return _render_qr_data_uri(provisioning_uri)
         except ImportError:
             return None
 

@@ -16,6 +16,27 @@ logger = logging.getLogger(__name__)
 HookHandler = Callable[[HookContext], Awaitable[HookResult | None]]
 
 
+def _apply_pre_hook_result(
+    context: HookContext, hook_point: str, result: HookResult | None
+) -> bool:
+    """Fold a pre-hook handler's result into the context.
+
+    Returns True if the chain should stop (handler cancelled the operation);
+    False otherwise. Splitting this out keeps the per-handler ``try`` in
+    ``execute_pre_hook`` narrow.
+    """
+    if result is None:
+        return False
+    if not result.proceed:
+        context.cancelled = True
+        context.cancel_reason = result.cancel_reason
+        logger.debug("Hook cancelled %s: %s", hook_point, result.cancel_reason)
+        return True
+    if result.modified_data:
+        context.data.update(result.modified_data)
+    return False
+
+
 class HookManager:
     """Manages hook registration and execution.
 
@@ -124,24 +145,6 @@ class HookManager:
         for priority, handler in handlers:
             try:
                 result = await handler(context)
-
-                if result is not None:
-                    # Handler returned a result
-                    if not result.proceed:
-                        # Operation cancelled
-                        context.cancelled = True
-                        context.cancel_reason = result.cancel_reason
-                        logger.debug(
-                            "Hook cancelled %s: %s",
-                            hook_point,
-                            result.cancel_reason,
-                        )
-                        break
-
-                    if result.modified_data:
-                        # Merge modified data
-                        context.data.update(result.modified_data)
-
             except Exception:
                 logger.exception(
                     "Error in pre-hook handler for %s (priority %d)",
@@ -149,6 +152,9 @@ class HookManager:
                     priority,
                 )
                 # Continue with other handlers
+                continue
+            if _apply_pre_hook_result(context, hook_point, result):
+                break
 
         return context
 

@@ -59,58 +59,64 @@ class GitHubProvider(OAuthProvider):
             raise OAuthUserInfoError(msg)
 
         try:
-            # Get basic user info
-            response = await self.http_client.get(
-                "https://api.github.com/user",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                },
+            user_data = await self._fetch_user_data(access_token)
+            primary_email, email_verified = await self._fetch_primary_email(
+                access_token
             )
-
-            if response.status_code != 200:
-                msg = f"User info request failed: {response.status_code}"
-                raise OAuthUserInfoError(msg)
-
-            user_data = response.json()
-
-            # Get email addresses
-            email_response = await self.http_client.get(
-                "https://api.github.com/user/emails",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                },
-            )
-
-            primary_email = None
-            email_verified = False
-
-            if email_response.status_code == 200:
-                emails = email_response.json()
-                for email_data in emails:
-                    if email_data.get("primary"):
-                        primary_email = email_data.get("email")
-                        email_verified = email_data.get("verified", False)
-                        break
-
-            return OAuthUserInfo(
-                provider_id="github",
-                provider_user_id=str(user_data.get("id", "")),
-                email=primary_email or user_data.get("email"),
-                email_verified=email_verified,
-                display_name=user_data.get("name") or user_data.get("login"),
-                avatar_url=user_data.get("avatar_url"),
-                raw_data=user_data,
-            )
-
         except OAuthUserInfoError:
             raise
         except Exception as e:
             msg = f"User info request failed: {e}"
             raise OAuthUserInfoError(msg) from e
+
+        return OAuthUserInfo(
+            provider_id="github",
+            provider_user_id=str(user_data.get("id", "")),
+            email=primary_email or user_data.get("email"),
+            email_verified=email_verified,
+            display_name=user_data.get("name") or user_data.get("login"),
+            avatar_url=user_data.get("avatar_url"),
+            raw_data=user_data,
+        )
+
+    _GH_HEADERS_TEMPLATE: typing.ClassVar[dict[str, str]] = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    async def _fetch_user_data(self, access_token: str) -> dict[str, typing.Any]:
+        """GET /user; raises OAuthUserInfoError on non-200."""
+        response = await self.http_client.get(  # type: ignore[union-attr]
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                **self._GH_HEADERS_TEMPLATE,
+            },
+        )
+        if response.status_code != 200:
+            msg = f"User info request failed: {response.status_code}"
+            raise OAuthUserInfoError(msg)
+        return response.json()
+
+    async def _fetch_primary_email(self, access_token: str) -> tuple[str | None, bool]:
+        """GET /user/emails; return (primary_email, email_verified) tuple.
+
+        Returns ``(None, False)`` if the call fails or no primary email is
+        flagged -- the caller falls back to ``user_data.get("email")``.
+        """
+        email_response = await self.http_client.get(  # type: ignore[union-attr]
+            "https://api.github.com/user/emails",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                **self._GH_HEADERS_TEMPLATE,
+            },
+        )
+        if email_response.status_code != 200:
+            return None, False
+        for email_data in email_response.json():
+            if email_data.get("primary"):
+                return email_data.get("email"), email_data.get("verified", False)
+        return None, False
 
     def _parse_user_info(self, data: dict[str, typing.Any]) -> OAuthUserInfo:
         """Parse GitHub user info response."""

@@ -251,6 +251,23 @@ def run_async(coro: Any) -> Any:
         loop.close()
 
 
+def _render_totp_qr_data_uri(provisioning_uri: str) -> str:
+    """Render a TOTP provisioning URI as a base64 PNG data URI.
+
+    Raises ``ImportError`` if the optional ``qrcode`` dep is missing;
+    the caller decides whether to surface a fallback.
+    """
+    import qrcode
+
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}"
+
+
 # =============================================================================
 # User Model Wrapper
 # =============================================================================
@@ -1056,22 +1073,11 @@ def security_setup_totp():
 
     result = run_async(begin_enrollment())
 
-    # Generate QR code as data URL
-    qr_code_url = ""
+    # Generate QR code as data URL (no-op if ``qrcode`` not installed).
     try:
-        import qrcode
-
-        qr = qrcode.QRCode(version=1, box_size=10, border=5)
-        qr.add_data(result.provisioning_uri)
-        qr.make(fit=True)
-        img = qr.make_image(fill_color="black", back_color="white")
-        buffer = io.BytesIO()
-        img.save(buffer, format="PNG")
-        qr_code_url = (
-            f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}"
-        )
+        qr_code_url = _render_totp_qr_data_uri(result.provisioning_uri)
     except ImportError:
-        pass
+        qr_code_url = ""
 
     return render_template(
         "security_totp_setup.html",
@@ -1503,31 +1509,36 @@ def oauth_callback(provider: str):
 
     try:
         result = run_async(handle_callback())
-
-        if result[0] == "linked":
-            flash(f"Successfully linked {provider} account!", "success")
-            return redirect(url_for("security_settings"))
-
-        subject_id = result[1]
-        user = User.get(subject_id)
-
-        if result[0] == "register":
-            is_first_user = result[2]
-            if is_first_user:
-                run_async(role_service.assign_role(subject_id, "admin"))
-                run_async(role_service.assign_role(subject_id, "user"))
-            else:
-                run_async(role_service.assign_role(subject_id, "user"))
-            flash("Account created successfully!", "success")
-        else:
-            flash("Login successful!", "success")
-
-        login_user(user, remember=True)
-        return redirect(url_for("dashboard"))
-
     except Exception as e:
         flash(f"OAuth error: {e}", "error")
         return redirect(url_for("login"))
+
+    if result[0] == "linked":
+        flash(f"Successfully linked {provider} account!", "success")
+        return redirect(url_for("security_settings"))
+
+    subject_id = result[1]
+    user = User.get(subject_id)
+
+    if result[0] == "register":
+        is_first_user = result[2]
+        _assign_initial_roles(subject_id, is_first_user=is_first_user)
+        flash("Account created successfully!", "success")
+    else:
+        flash("Login successful!", "success")
+
+    login_user(user, remember=True)
+    return redirect(url_for("dashboard"))
+
+
+def _assign_initial_roles(subject_id: str, *, is_first_user: bool) -> None:
+    """Assign the default role set to a freshly-registered subject.
+
+    First user gets ``admin`` + ``user``; everyone else gets ``user``.
+    """
+    if is_first_user:
+        run_async(role_service.assign_role(subject_id, "admin"))
+    run_async(role_service.assign_role(subject_id, "user"))
 
 
 @app.route("/security/social/<provider_id>/unlink", methods=["POST"])

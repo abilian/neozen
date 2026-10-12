@@ -333,6 +333,24 @@ def json_error(message: str, status_code: int = 400) -> Response:
     return json_response({"error": message}, status_code=status_code)
 
 
+async def _verify_credentials(session: Any, email: str, password: str) -> Any:
+    """Look up subject by email + verify password.
+
+    Returns the subject on a match, None on no-such-email or password
+    mismatch (collapsed for non-enumeration). Used by both the
+    form-based login and the JSON API login.
+    """
+    repo = SubjectRepository(session=session)
+    try:
+        subject = await repo.get_one_by(email=email)
+    except DoesNotExist:
+        return None
+    if not subject.hashed_password:
+        return None
+    valid, _ = hasher.verify_and_update(password, subject.hashed_password)
+    return subject if valid else None
+
+
 def admin_required() -> Callable:
     """Guard that requires admin role."""
 
@@ -404,29 +422,24 @@ async def login_submit(request: Request) -> Response:
     password = str(form.get("password", ""))
 
     async with session_factory() as db_session:
-        repo = SubjectRepository(session=db_session)
-        try:
-            subject = await repo.get_one_by(email=email)
-            if subject.hashed_password:
-                valid, _ = hasher.verify_and_update(password, subject.hashed_password)
-                if valid:
-                    if subject.totp_enabled:
-                        # Two-factor required: stash the pending subject and
-                        # bounce to the TOTP step. The session is NOT yet
-                        # authenticated; only TOTP verification completes it.
-                        request.session[PENDING_TOTP_SUBJECT_KEY] = subject.id
-                        return Redirect(path="/totp/verify")
-                    response = Redirect(path="/dashboard")
-                    await login_user(request, response, subject)
-                    flash(request, "Login successful!", "success")
-                    return response
-        except DoesNotExist:
-            pass
+        subject = await _verify_credentials(db_session, email, password)
 
-    flash(request, "Invalid email or password", "error")
-    return render_template(
-        request, "login.html", {"current_user": None, "email": email}
-    )
+    if subject is None:
+        flash(request, "Invalid email or password", "error")
+        return render_template(
+            request, "login.html", {"current_user": None, "email": email}
+        )
+
+    if subject.totp_enabled:
+        # Two-factor required: stash the pending subject and bounce to
+        # the TOTP step. The session is NOT yet authenticated; only
+        # TOTP verification completes it.
+        request.session[PENDING_TOTP_SUBJECT_KEY] = subject.id
+        return Redirect(path="/totp/verify")
+    response = Redirect(path="/dashboard")
+    await login_user(request, response, subject)
+    flash(request, "Login successful!", "success")
+    return response
 
 
 @get("/magic-login", sync_to_thread=False)
@@ -1048,22 +1061,14 @@ async def api_login(request: Request) -> Response:
     password = body.get("password", "")
 
     async with session_factory() as db_session:
-        repo = SubjectRepository(session=db_session)
-        try:
-            subject = await repo.get_one_by(email=email)
-            if subject.hashed_password:
-                valid, _ = hasher.verify_and_update(password, subject.hashed_password)
-                if valid:
-                    response = json_response({
-                        "message": "Logged in",
-                        "user_id": subject.id,
-                    })
-                    await login_user(request, response, subject)
-                    return response
-        except DoesNotExist:
-            pass
+        subject = await _verify_credentials(db_session, email, password)
 
-    return json_error("Invalid credentials", status_code=401)
+    if subject is None:
+        return json_error("Invalid credentials", status_code=401)
+
+    response = json_response({"message": "Logged in", "user_id": subject.id})
+    await login_user(request, response, subject)
+    return response
 
 
 @post("/api/logout", guards=[login_required(redirect=False)])

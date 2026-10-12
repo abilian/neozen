@@ -120,19 +120,7 @@ class SMTPEmailSender:
             mime_msg[key] = value
 
         try:
-            if self.use_ssl:
-                context = ssl.create_default_context()
-                with smtplib.SMTP_SSL(
-                    self.host, self.port, timeout=self.timeout, context=context
-                ) as server:
-                    self._authenticate_and_send(server, from_addr, message, mime_msg)
-            else:
-                with smtplib.SMTP(self.host, self.port, timeout=self.timeout) as server:
-                    if self.use_tls:
-                        context = ssl.create_default_context()
-                        server.starttls(context=context)
-                    self._authenticate_and_send(server, from_addr, message, mime_msg)
-
+            self._connect_and_send(from_addr, message, mime_msg)
         except smtplib.SMTPException as e:
             msg = f"SMTP error: {e}"
             raise EmailSendError(msg, original_error=e) from e
@@ -142,6 +130,26 @@ class SMTPEmailSender:
         except OSError as e:
             msg = f"Network error: {e}"
             raise EmailSendError(msg, original_error=e) from e
+
+    def _connect_and_send(
+        self,
+        from_addr: str,
+        message: EmailMessage,
+        mime_msg: MIMEMultipart | MIMEText,
+    ) -> None:
+        """Open the SMTP connection (SSL or STARTTLS) and dispatch."""
+        if self.use_ssl:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(
+                self.host, self.port, timeout=self.timeout, context=context
+            ) as server:
+                self._authenticate_and_send(server, from_addr, message, mime_msg)
+            return
+        with smtplib.SMTP(self.host, self.port, timeout=self.timeout) as server:
+            if self.use_tls:
+                context = ssl.create_default_context()
+                server.starttls(context=context)
+            self._authenticate_and_send(server, from_addr, message, mime_msg)
 
     def _authenticate_and_send(
         self,

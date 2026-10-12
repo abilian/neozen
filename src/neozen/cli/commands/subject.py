@@ -119,17 +119,17 @@ def create(args: argparse.Namespace) -> int:
         async with DatabaseContext(db_url) as session:
             try:
                 result = await _create_subject(session, email, password, username)
-                print("Subject created successfully!")
-                print(f"  ID:       {result['id']}")
-                print(f"  Email:    {result['email']}")
-                if result["username"]:
-                    print(f"  Username: {result['username']}")
-                print(f"  Active:   {result['is_active']}")
-                print(f"  Verified: {result['is_verified']}")
-                return 0
             except ValueError as e:
                 print(f"Error: {e}")
                 return 1
+            print("Subject created successfully!")
+            print(f"  ID:       {result['id']}")
+            print(f"  Email:    {result['email']}")
+            if result["username"]:
+                print(f"  Username: {result['username']}")
+            print(f"  Active:   {result['is_active']}")
+            print(f"  Verified: {result['is_verified']}")
+            return 0
 
     return asyncio.run(run())
 
