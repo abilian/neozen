@@ -142,7 +142,7 @@ full release checklist.
 
 - License: Apache 2.0, with Apache-2.0 SPDX + classifier in
   `pyproject.toml`
-- Python requirement: 3.12+
+- Python requirement: 3.12.4+ (3.12.0–3.12.3 can't resolve PEP 695 type parameters in `typing.get_type_hints`, which the dependency-injection layer relies on)
 - Version: 0.1.0 → 0.9.0 across `pyproject.toml`, CLI `--version`,
   and `deploy/helm/Chart.yaml`
 

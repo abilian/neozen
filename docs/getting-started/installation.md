@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.12.4+
 - A database backend (SQLite for development, PostgreSQL for production)
 
 ## Install with uv
