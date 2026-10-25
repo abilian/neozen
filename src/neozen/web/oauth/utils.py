@@ -9,6 +9,25 @@ import base64
 from dataclasses import dataclass
 from typing import Any
 
+# RFC 6749 §5.1: responses carrying tokens or credentials must not be cached.
+NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+
+
+def token_error_headers(error: str) -> dict[str, str]:
+    """Headers for a token endpoint error response.
+
+    ``invalid_client`` also gets the ``WWW-Authenticate`` challenge that
+    goes with its 401 status (RFC 6749 §5.2).
+    """
+    if error == "invalid_client":
+        return {**NO_STORE_HEADERS, "WWW-Authenticate": 'Basic realm="oauth"'}
+    return NO_STORE_HEADERS
+
+
+def token_error_status(error: str) -> int:
+    """HTTP status for a token endpoint error code (RFC 6749 §5.2)."""
+    return 401 if error == "invalid_client" else 400
+
 
 def parse_basic_auth(header: str | None) -> tuple[str | None, str | None]:
     """Parse Basic auth header to get client_id and client_secret.

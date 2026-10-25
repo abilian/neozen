@@ -33,11 +33,14 @@ from neozen.core.oauth.models import (
 )
 from neozen.core.oauth.services import OAuthTokenService
 from neozen.web.oauth import (
+    NO_STORE_HEADERS,
     AuthorizationEndpoint,
     IntrospectionEndpoint,
     RevocationEndpoint,
     TokenEndpoint,
     parse_basic_auth,
+    token_error_headers,
+    token_error_status,
 )
 
 
@@ -78,9 +81,15 @@ def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
             response = await token_ep(
                 dict(form), client_id=client_id, client_secret=client_secret
             )
-            return _json_response(response.to_dict())
         except TokenError as e:
-            return _error_response(e.error, e.error_description, 400)
+            error = _error_response(
+                e.error, e.error_description, token_error_status(e.error)
+            )
+            error.headers.update(token_error_headers(e.error))
+            return error
+        success = _json_response(response.to_dict())
+        success.headers.update(NO_STORE_HEADERS)
+        return success
 
     return token_handler
 

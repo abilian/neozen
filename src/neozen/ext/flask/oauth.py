@@ -42,11 +42,14 @@ from neozen.core.oauth.models import (
 )
 from neozen.core.oauth.services import OAuthTokenService
 from neozen.web.oauth import (
+    NO_STORE_HEADERS,
     AuthorizationEndpoint,
     IntrospectionEndpoint,
     RevocationEndpoint,
     TokenEndpoint,
     parse_basic_auth,
+    token_error_headers,
+    token_error_status,
 )
 
 # Flask route return type - includes all valid Flask return types
@@ -75,12 +78,17 @@ def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
             response = await token_ep(
                 payload, client_id=client_id, client_secret=client_secret
             )
-            return jsonify(response.to_dict())
         except TokenError as e:
-            return jsonify({
+            error = jsonify({
                 "error": e.error,
                 "error_description": e.error_description,
-            }), 400
+            })
+            error.status_code = token_error_status(e.error)
+            error.headers.update(token_error_headers(e.error))
+            return error
+        success = jsonify(response.to_dict())
+        success.headers.update(NO_STORE_HEADERS)
+        return success
 
     return token
 
