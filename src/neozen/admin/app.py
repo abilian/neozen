@@ -6,6 +6,7 @@ Enterprise-grade admin console built with HTMX + Alpine.js + Tailwind CSS.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -14,22 +15,29 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader
 from litestar import Litestar, Request, Response, get, post
 from litestar.datastructures import State
+from litestar.exceptions import NotAuthorizedException
+from litestar.middleware import DefineMiddleware
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.status_codes import HTTP_303_SEE_OTHER
+from markupsafe import escape
+from pwdlib import PasswordHash
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from neozen.admin.auth import (
-    AdminRole,
+    AdminAuthMiddleware,
     AdminUser,
+    admin_role_for,
     clear_current_admin,
     get_current_admin,
     get_impersonation,
+    redirect_to_login_handler,
     set_current_admin,
     start_impersonation,
     stop_impersonation,
 )
 from neozen.admin.config import AdminConfig
 from neozen.admin.services import AdminService, UserListFilters
+from neozen.storage import DoesNotExist
 from neozen.storage.sqlalchemy.base import Base
 from neozen.storage.sqlalchemy.models import RoleAssignment, Session, Subject
 
@@ -89,7 +97,38 @@ async def get_admin_service(request: Request) -> AsyncGenerator[AdminService, No
 # -----------------------------------------------------------------------------
 
 
-@get("/login", sync_to_thread=False)
+_password_hash = PasswordHash.recommended()
+
+
+async def _authenticate_admin(
+    service: AdminService, email: str, password: str, require_role: str
+) -> AdminUser | None:
+    """Return the admin for valid credentials, or None.
+
+    The subject must exist, be active, have a password that matches, and
+    hold a role that grants admin console access (see ``admin_role_for``).
+    """
+    try:
+        subject = await service.subject_repo.get_one_by(email=email)
+    except DoesNotExist:
+        return None
+    if not subject.is_active or not subject.hashed_password:
+        return None
+    if not _password_hash.verify(password, subject.hashed_password):
+        return None
+    roles = await service.get_subject_roles(subject.id)
+    role = admin_role_for({r.name for r in roles}, require_role)
+    if role is None:
+        return None
+    return AdminUser(
+        id=subject.id,
+        email=subject.email,
+        name=subject.username or subject.email,
+        role=role,
+    )
+
+
+@get("/login", sync_to_thread=False, exclude_from_auth=True)
 def login_page(request: Request) -> Response:
     """Show login page."""
     # If already logged in, redirect to dashboard
@@ -98,40 +137,30 @@ def login_page(request: Request) -> Response:
     return render_template(request, "auth/login.html")
 
 
-@post("/login")
+@post("/login", exclude_from_auth=True)
 async def login(request: Request) -> Response:
     """Process login form."""
     form_data = await request.form()
     email = form_data.get("email", "").strip()
     password = form_data.get("password", "")
+    config: AdminConfig = request.app.state.config
 
-    # Demo authentication - accepts any @admin.local email with password "admin123"
-    # In production, this would validate against a real admin user database
-    if email.endswith("@admin.local") and password == "admin123":
-        # Determine role from email prefix
-        role = AdminRole.SUPERADMIN
-        if "support@" in email:
-            role = AdminRole.SUPPORT
-        elif "auditor@" in email:
-            role = AdminRole.AUDITOR
-        elif "admin@" in email:
-            role = AdminRole.ADMIN
-
-        admin = AdminUser(
-            id=email.split("@")[0],
-            email=email,
-            name=email.split("@")[0].replace(".", " ").title(),
-            role=role,
+    session_factory: async_sessionmaker = request.app.state.session_factory
+    async with session_factory() as session:
+        admin = await _authenticate_admin(
+            AdminService(session), email, password, config.require_role
         )
-        set_current_admin(request, admin)
-        flash(request, f"Welcome back, {admin.name}!", "success")
-        return redirect("/")
 
-    flash(request, "Invalid email or password.", "error")
-    return redirect("/login")
+    if admin is None:
+        flash(request, "Invalid email or password.", "error")
+        return redirect("/login")
+
+    set_current_admin(request, admin)
+    flash(request, f"Welcome back, {admin.name}!", "success")
+    return redirect("/")
 
 
-@get("/logout", sync_to_thread=False)
+@get("/logout", sync_to_thread=False, exclude_from_auth=True)
 def logout(request: Request) -> Response:
     """Log out the current admin user."""
     clear_current_admin(request)
@@ -1060,34 +1089,43 @@ async def toggle_permission(request: Request) -> Response:
         service = AdminService(session)
         try:
             role = await service.get_role(role_name)
-            if role.is_system:
-                # Return error response for system roles
-                return Response(
-                    content='<span class="text-red-500 text-xs">System role</span>',
-                    status_code=200,
-                    media_type="text/html",
-                )
+        except DoesNotExist:
+            return _permission_cell_error("Role not found")
+        if role.is_system:
+            return _permission_cell_error("System role")
 
-            await service.toggle_role_permission(role_name, permission, enabled=enabled)
-            await session.commit()
+        await service.toggle_role_permission(role_name, permission, enabled=enabled)
+        await session.commit()
 
-            # Return updated checkbox
-            checked = "checked" if enabled else ""
-            return Response(
-                content=f"""<input type="checkbox" {checked}
-                    class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
-                    hx-post="/permissions/toggle"
-                    hx-vals='{{"role_name": "{role_name}", "permission": "{permission}", "enabled": "{"false" if enabled else "true"}"}}'
-                    hx-swap="outerHTML">""",
-                status_code=200,
-                media_type="text/html",
-            )
-        except Exception as e:
-            return Response(
-                content=f'<span class="text-red-500 text-xs">{e}</span>',
-                status_code=200,
-                media_type="text/html",
-            )
+    # Return the updated checkbox. Every interpolated value is escaped: role
+    # and permission names come from the client.
+    hx_vals = json.dumps({
+        "role_name": role_name,
+        "permission": permission,
+        "enabled": "false" if enabled else "true",
+    })
+    checked = "checked" if enabled else ""
+    return Response(
+        content=f"""<input type="checkbox" {checked}
+            class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+            hx-post="/permissions/toggle"
+            hx-vals="{escape(hx_vals)}"
+            hx-swap="outerHTML">""",
+        status_code=200,
+        media_type="text/html",
+    )
+
+
+def _permission_cell_error(message: str) -> Response:
+    """Inline error shown in place of a permission checkbox.
+
+    Status 200 so HTMX swaps it in (it ignores 4xx responses by default).
+    """
+    return Response(
+        content=f'<span class="text-red-500 text-xs">{escape(message)}</span>',
+        status_code=200,
+        media_type="text/html",
+    )
 
 
 @get("/permissions/role-builder", sync_to_thread=False)
@@ -1477,6 +1515,99 @@ def system_health(request: Request) -> Response:
 # -----------------------------------------------------------------------------
 
 
+# Every admin console route, shared with `neozen serve`.
+ROUTE_HANDLERS: list[Any] = [
+    # Authentication
+    login_page,
+    login,
+    logout,
+    # Dashboard
+    dashboard,
+    dashboard_stats,
+    # Users
+    list_users,
+    create_user_form,
+    create_user,
+    import_users_form,
+    import_users,
+    export_users,
+    user_detail,
+    activate_user,
+    deactivate_user,
+    delete_user,
+    revoke_user_sessions,
+    add_user_role,
+    remove_user_role,
+    impersonate_user,
+    end_impersonation,
+    list_subjects,  # Legacy redirect
+    # Roles
+    list_roles,
+    create_role_form,
+    create_role,
+    role_detail,
+    delete_role,
+    # Sessions
+    list_sessions,
+    revoke_session,
+    # Groups
+    list_groups,
+    create_group_form,
+    create_group,
+    group_detail,
+    add_group_member,
+    remove_group_member,
+    add_group_role,
+    remove_group_role,
+    delete_group,
+    # Organizations
+    list_organizations,
+    create_organization_form,
+    create_organization,
+    organization_detail,
+    update_organization,
+    delete_organization,
+    # Permissions & RBAC Visual Editor
+    permission_matrix,
+    toggle_permission,
+    role_builder_form,
+    create_custom_role,
+    access_analyzer,
+    # Audit
+    list_audit_logs,
+    audit_log_tail,
+    audit_log_detail,
+    # Security
+    security_dashboard,
+    security_stats,
+    security_policies,
+    # Settings
+    settings,
+    identity_providers,
+    social_providers,
+    api_keys,
+    webhooks,
+    oauth_clients,
+    branding,
+    email_templates,
+    system_health,
+]
+
+# Authentication setup, shared with `neozen serve`. The session middleware
+# must come before AUTH_MIDDLEWARE.
+AUTH_MIDDLEWARE = DefineMiddleware(AdminAuthMiddleware)
+EXCEPTION_HANDLERS: dict[Any, Any] = {NotAuthorizedException: redirect_to_login_handler}
+
+
+def session_config(config: AdminConfig) -> ServerSideSessionConfig:
+    """Session settings for the admin console (login state and flash messages)."""
+    return ServerSideSessionConfig(
+        key=config.cookie_name,
+        max_age=86400,
+        secure=config.cookie_secure,
+    )
+
+
 def create_admin_app(config: AdminConfig | None = None) -> Litestar:
     """Create the admin Litestar application.
 
@@ -1515,90 +1646,12 @@ def create_admin_app(config: AdminConfig | None = None) -> Litestar:
         """Initialize app state."""
         return app_config
 
-    # Session middleware for flash messages
-    session_config = ServerSideSessionConfig(
-        key="neozen_admin_session",
-        max_age=86400,
-    )
+    sessions = session_config(config)
 
     app = Litestar(
-        route_handlers=[
-            # Authentication
-            login_page,
-            login,
-            logout,
-            # Dashboard
-            dashboard,
-            dashboard_stats,
-            # Users
-            list_users,
-            create_user_form,
-            create_user,
-            import_users_form,
-            import_users,
-            export_users,
-            user_detail,
-            activate_user,
-            deactivate_user,
-            delete_user,
-            revoke_user_sessions,
-            add_user_role,
-            remove_user_role,
-            impersonate_user,
-            end_impersonation,
-            list_subjects,  # Legacy redirect
-            # Roles
-            list_roles,
-            create_role_form,
-            create_role,
-            role_detail,
-            delete_role,
-            # Sessions
-            list_sessions,
-            revoke_session,
-            # Groups
-            list_groups,
-            create_group_form,
-            create_group,
-            group_detail,
-            add_group_member,
-            remove_group_member,
-            add_group_role,
-            remove_group_role,
-            delete_group,
-            # Organizations
-            list_organizations,
-            create_organization_form,
-            create_organization,
-            organization_detail,
-            update_organization,
-            delete_organization,
-            # Permissions & RBAC Visual Editor
-            permission_matrix,
-            toggle_permission,
-            role_builder_form,
-            create_custom_role,
-            access_analyzer,
-            # Audit
-            list_audit_logs,
-            audit_log_tail,
-            audit_log_detail,
-            # Security
-            security_dashboard,
-            security_stats,
-            security_policies,
-            # Settings
-            settings,
-            identity_providers,
-            social_providers,
-            api_keys,
-            webhooks,
-            oauth_clients,
-            branding,
-            email_templates,
-            system_health,
-        ],
-        middleware=[session_config.middleware],
+        route_handlers=ROUTE_HANDLERS,
+        middleware=[sessions.middleware, AUTH_MIDDLEWARE],
+        exception_handlers=EXCEPTION_HANDLERS,
         on_startup=[on_startup],
         state=State({
             "config": config,
@@ -1610,4 +1663,11 @@ def create_admin_app(config: AdminConfig | None = None) -> Litestar:
     return app
 
 
-__all__ = ["AdminConfig", "create_admin_app"]
+__all__ = [
+    "AUTH_MIDDLEWARE",
+    "EXCEPTION_HANDLERS",
+    "ROUTE_HANDLERS",
+    "AdminConfig",
+    "create_admin_app",
+    "session_config",
+]

@@ -15,7 +15,10 @@ import secrets
 import string
 from dataclasses import dataclass
 
+from pwdlib import PasswordHash
 from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from neozen.admin.auth import SUPERUSER_ROLE
 
 # Banner is exposed for tests so they can assert on the marker text
 # without depending on the exact wording of the surrounding lines.
@@ -71,19 +74,16 @@ async def bootstrap_admin_if_needed(
             )
 
         password = generate_bootstrap_password()
-        try:
-            await service.create_subject(
-                email=admin_email,
-                username="admin",
-                is_active=True,
-                is_verified=True,
-            )
-            await session.commit()
-        except Exception as exc:  # pragma: no cover — defensive
-            return BootstrapResult(
-                created=False,
-                reason=f"bootstrap failed: {exc}",
-            )
+        subject = await service.create_subject(
+            email=admin_email,
+            username="admin",
+            password=PasswordHash.recommended().hash(password),
+            is_active=True,
+            is_verified=True,
+        )
+        await service.ensure_builtin_roles()
+        await service.assign_role_to_subject(subject.id, SUPERUSER_ROLE)
+        await session.commit()
 
     return BootstrapResult(
         created=True,

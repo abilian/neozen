@@ -18,11 +18,9 @@ read from there, so they work unchanged when imported here.
 from __future__ import annotations
 
 import sys
-from typing import Any
 
 from litestar import Litestar
 from litestar.datastructures import State
-from litestar.middleware.session.server_side import ServerSideSessionConfig
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from neozen.admin import app as admin_app_module
@@ -32,90 +30,6 @@ from neozen.serve.bootstrap import bootstrap_admin_if_needed, format_bootstrap_n
 from neozen.serve.config import ServeConfig
 from neozen.serve.healthcheck import healthz, readyz
 from neozen.storage.sqlalchemy.base import Base
-
-
-# Route handlers exported by the admin app. We import them by reference
-# rather than re-declaring so the serve app stays in lock-step with any
-# new admin route added in the future. The list mirrors the one in
-# `neozen.admin.app.create_admin_app`.
-def _admin_route_handlers() -> list[Any]:
-    m = admin_app_module
-    return [
-        # Authentication
-        m.login_page,
-        m.login,
-        m.logout,
-        # Dashboard
-        m.dashboard,
-        m.dashboard_stats,
-        # Users
-        m.list_users,
-        m.create_user_form,
-        m.create_user,
-        m.import_users_form,
-        m.import_users,
-        m.export_users,
-        m.user_detail,
-        m.activate_user,
-        m.deactivate_user,
-        m.delete_user,
-        m.revoke_user_sessions,
-        m.add_user_role,
-        m.remove_user_role,
-        m.impersonate_user,
-        m.end_impersonation,
-        m.list_subjects,
-        # Roles
-        m.list_roles,
-        m.create_role_form,
-        m.create_role,
-        m.role_detail,
-        m.delete_role,
-        # Sessions
-        m.list_sessions,
-        m.revoke_session,
-        # Groups
-        m.list_groups,
-        m.create_group_form,
-        m.create_group,
-        m.group_detail,
-        m.add_group_member,
-        m.remove_group_member,
-        m.add_group_role,
-        m.remove_group_role,
-        m.delete_group,
-        # Organizations
-        m.list_organizations,
-        m.create_organization_form,
-        m.create_organization,
-        m.organization_detail,
-        m.update_organization,
-        m.delete_organization,
-        # Permissions & RBAC Visual Editor
-        m.permission_matrix,
-        m.toggle_permission,
-        m.role_builder_form,
-        m.create_custom_role,
-        m.access_analyzer,
-        # Audit
-        m.list_audit_logs,
-        m.audit_log_tail,
-        m.audit_log_detail,
-        # Security
-        m.security_dashboard,
-        m.security_stats,
-        m.security_policies,
-        # Settings
-        m.settings,
-        m.identity_providers,
-        m.social_providers,
-        m.api_keys,
-        m.webhooks,
-        m.oauth_clients,
-        m.branding,
-        m.email_templates,
-        m.system_health,
-    ]
 
 
 def build_serve_app(config: ServeConfig | None = None) -> Litestar:
@@ -167,18 +81,16 @@ def build_serve_app(config: ServeConfig | None = None) -> Litestar:
                 # in container logs.
                 print(notice)
 
-    session_config = ServerSideSessionConfig(
-        key="neozen_admin_session",
-        max_age=86400,
-    )
+    sessions = admin_app_module.session_config(admin_config)
 
     return Litestar(
         route_handlers=[
-            *_admin_route_handlers(),
+            *admin_app_module.ROUTE_HANDLERS,
             healthz,
             readyz,
         ],
-        middleware=[session_config.middleware],
+        middleware=[sessions.middleware, admin_app_module.AUTH_MIDDLEWARE],
+        exception_handlers=admin_app_module.EXCEPTION_HANDLERS,
         on_startup=[on_startup],
         state=State({
             "config": admin_config,

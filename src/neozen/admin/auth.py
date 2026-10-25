@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Collection, Coroutine
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import Any
 
 from litestar import Request, Response
 from litestar.connection import ASGIConnection
-from litestar.exceptions import NotAuthorizedException
+from litestar.exceptions import NotAuthorizedException, PermissionDeniedException
 from litestar.middleware import AbstractAuthenticationMiddleware, AuthenticationResult
 from litestar.status_codes import HTTP_303_SEE_OTHER
-
-if TYPE_CHECKING:
-    pass
 
 
 class AdminRole(Enum):
@@ -90,6 +87,23 @@ class AdminUser:
         }
         allowed = permissions_map.get(self.role, set())
         return "*" in allowed or permission in allowed
+
+
+# NeoZen role that grants full admin console access (see BUILTIN_ROLES).
+SUPERUSER_ROLE = "superuser"
+
+
+def admin_role_for(role_names: Collection[str], require_role: str) -> AdminRole | None:
+    """Map a subject's NeoZen role names to an admin console role.
+
+    ``superuser`` grants SUPERADMIN and ``require_role`` grants ADMIN.
+    Returns None when the subject may not use the admin console.
+    """
+    if SUPERUSER_ROLE in role_names:
+        return AdminRole.SUPERADMIN
+    if require_role in role_names:
+        return AdminRole.ADMIN
+    return None
 
 
 # Session key for storing admin user
@@ -200,12 +214,11 @@ def redirect_to_login() -> Response:
 class AdminAuthMiddleware(AbstractAuthenticationMiddleware):
     """Middleware to authenticate admin users.
 
-    This middleware checks for admin authentication on protected routes
-    and redirects to login if not authenticated.
+    Every route requires an authenticated admin unless its handler sets
+    ``exclude_from_auth=True``. Unauthenticated requests raise
+    ``NotAuthorizedException``; ``redirect_to_login_handler`` turns that
+    into a redirect to the login page.
     """
-
-    # Routes that don't require authentication
-    PUBLIC_ROUTES: ClassVar[set[str]] = {"/login", "/logout", "/health", "/static"}
 
     async def authenticate_request(
         self, connection: ASGIConnection
@@ -218,11 +231,6 @@ class AdminAuthMiddleware(AbstractAuthenticationMiddleware):
         Returns:
             AuthenticationResult with user if authenticated
         """
-        # Check if route is public
-        path = connection.scope.get("path", "")
-        if any(path.startswith(route) for route in self.PUBLIC_ROUTES):
-            return AuthenticationResult(user=None, auth=None)
-
         # Get admin from session
         admin_data = connection.session.get(ADMIN_SESSION_KEY)
         if not admin_data:
@@ -240,6 +248,13 @@ class AdminAuthMiddleware(AbstractAuthenticationMiddleware):
             return AuthenticationResult(user=admin, auth=None)
         except (KeyError, ValueError) as e:
             raise NotAuthorizedException(detail="Invalid session") from e
+
+
+def redirect_to_login_handler(
+    request: Request, exc: NotAuthorizedException
+) -> Response:
+    """Exception handler sending unauthenticated admin requests to login."""
+    return redirect_to_login()
 
 
 def require_permission(
@@ -266,7 +281,9 @@ def require_permission(
             if not admin:
                 return redirect_to_login()
             if not admin.has_permission(permission):
-                raise NotAuthorizedException(detail=f"Permission denied: {permission}")
+                raise PermissionDeniedException(
+                    detail=f"Permission denied: {permission}"
+                )
             return await func(request, *args, **kwargs)
 
         return wrapper
@@ -294,13 +311,16 @@ def require_admin(
 
 __all__ = [
     "ADMIN_SESSION_KEY",
+    "SUPERUSER_ROLE",
     "AdminAuthMiddleware",
     "AdminRole",
     "AdminUser",
+    "admin_role_for",
     "clear_current_admin",
     "get_current_admin",
     "get_impersonation",
     "redirect_to_login",
+    "redirect_to_login_handler",
     "require_admin",
     "require_permission",
     "set_current_admin",

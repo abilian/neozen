@@ -34,6 +34,8 @@ from neozen.serve import (
 from neozen.serve.bootstrap import format_bootstrap_notice
 from neozen.storage.sqlalchemy.base import Base
 
+from .conftest import superadmin_client
+
 # =============================================================================
 # ServeConfig
 # =============================================================================
@@ -215,8 +217,7 @@ def serve_client() -> TestClient:
         secret_key="test-secret-not-default",
         bootstrap_admin=False,  # don't pollute test stdout
     )
-    app = build_serve_app(config)
-    return TestClient(app=app, raise_server_exceptions=True)
+    return superadmin_client(build_serve_app(config))
 
 
 class TestServeAppHealthChecks:

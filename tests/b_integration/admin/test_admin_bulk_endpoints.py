@@ -20,6 +20,8 @@ from litestar.testing import TestClient
 from neozen.admin.app import create_admin_app
 from neozen.admin.config import AdminConfig
 
+from .conftest import superadmin_client
+
 
 @pytest.fixture
 def admin_client() -> TestClient:
@@ -27,8 +29,7 @@ def admin_client() -> TestClient:
         db_url="sqlite+aiosqlite:///:memory:",
         secret_key="test-secret-key",
     )
-    app = create_admin_app(config)
-    return TestClient(app=app, raise_server_exceptions=True)
+    return superadmin_client(create_admin_app(config))
 
 
 class TestImportFormGet:

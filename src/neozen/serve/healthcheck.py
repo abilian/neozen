@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 
-@get("/healthz", sync_to_thread=False)
+@get("/healthz", sync_to_thread=False, exclude_from_auth=True)
 def healthz() -> dict[str, Any]:
     """Liveness probe.
 
@@ -30,7 +30,7 @@ def healthz() -> dict[str, Any]:
     return {"status": "ok"}
 
 
-@get("/readyz")
+@get("/readyz", exclude_from_auth=True)
 async def readyz(request: Request) -> Response:
     """Readiness probe.
 
