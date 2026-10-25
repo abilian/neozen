@@ -40,6 +40,7 @@ defaults):
 | `POSTGRES_PASSWORD` | `neozen-dev-password` | **Change this in production.** |
 | `NEOZEN_SECRET_KEY` | `change-me-in-production` | **Change this in production.** Used for session cookies and token hashing. Set via `.env` or your secret manager. |
 | `NEOZEN_BOOTSTRAP_ADMIN_EMAIL` | `admin@localhost` | Email for the bootstrap admin user. |
+| `NEOZEN_COOKIE_SECURE` | `true` | Secure flag on the admin session cookie. Set `false` only when serving over plain HTTP from a host other than `localhost` (browsers accept Secure cookies on `http://localhost`, except Safari). |
 
 For production deployments, create a `.env` file alongside this
 README:

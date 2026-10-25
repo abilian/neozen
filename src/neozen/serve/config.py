@@ -40,6 +40,8 @@ class ServeConfig:
         - `log_level` (default INFO)
         - `bootstrap_admin` (default True)
         - `bootstrap_admin_email` (default admin@localhost)
+        - `cookie_secure` (default True): set the Secure flag on the admin
+          session cookie. Turn it off only to serve over plain HTTP.
     """
 
     db_url: str = DEFAULT_DB_URL
@@ -51,6 +53,7 @@ class ServeConfig:
 
     bootstrap_admin: bool = True
     bootstrap_admin_email: str = "admin@localhost"
+    cookie_secure: bool = True
 
     # Populated by validate(); empty list means OK.
     warnings: list[str] = field(default_factory=list)
@@ -75,6 +78,7 @@ class ServeConfig:
             bootstrap_admin_email=_str_env(
                 e, "NEOZEN_BOOTSTRAP_ADMIN_EMAIL", "admin@localhost"
             ),
+            cookie_secure=_bool_env(e, "NEOZEN_COOKIE_SECURE", default=True),
         )
 
     def validate(self) -> list[str]:

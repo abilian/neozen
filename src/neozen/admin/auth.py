@@ -6,13 +6,25 @@ import functools
 from collections.abc import Callable, Collection, Coroutine
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from litestar import Request, Response
 from litestar.connection import ASGIConnection
 from litestar.exceptions import NotAuthorizedException, PermissionDeniedException
 from litestar.middleware import AbstractAuthenticationMiddleware, AuthenticationResult
+from litestar.middleware.session.server_side import (
+    ServerSideSessionBackend,
+    ServerSideSessionConfig,
+)
 from litestar.status_codes import HTTP_303_SEE_OTHER
+
+from neozen.admin.services import AdminService
+from neozen.storage import DoesNotExist
+
+if TYPE_CHECKING:
+    from litestar.types import Message, ScopeSession
+
+    from neozen.storage.sqlalchemy.models import Subject
 
 
 class AdminRole(Enum):
@@ -106,51 +118,86 @@ def admin_role_for(role_names: Collection[str], require_role: str) -> AdminRole 
     return None
 
 
+async def admin_for_subject(
+    service: AdminService, subject: Subject, require_role: str
+) -> AdminUser | None:
+    """The admin console identity of `subject`, or None if it has no access."""
+    if not subject.is_active:
+        return None
+    roles = await service.get_subject_roles(subject.id)
+    role = admin_role_for({r.name for r in roles}, require_role)
+    if role is None:
+        return None
+    return AdminUser(
+        id=subject.id,
+        email=subject.email,
+        name=subject.username or subject.email,
+        role=role,
+    )
+
+
 # Session key for storing admin user
 ADMIN_SESSION_KEY = "admin_user"
+# Scope state keys: the request asks for a fresh session ID; the new ID
+_ROTATE_SESSION_ID = "neozen_admin_rotate_session_id"
+_NEW_SESSION_ID = "neozen_admin_new_session_id"
+
+
+class RotatingSessionBackend(ServerSideSessionBackend):
+    """Server-side sessions that get a fresh ID at login.
+
+    Litestar keeps the ID from the incoming cookie for the life of a
+    session, so an ID planted before login would stay valid after it
+    (session fixation). `set_current_admin` flags the request, and the
+    response then carries a new ID; the old entry is dropped.
+    """
+
+    def get_session_id(self, connection: ASGIConnection) -> str:
+        new_id = connection.scope.get("state", {}).get(_NEW_SESSION_ID)
+        return new_id or super().get_session_id(connection)
+
+    async def store_in_message(
+        self,
+        scope_session: ScopeSession,
+        message: Message,
+        connection: ASGIConnection,
+    ) -> None:
+        state = connection.scope.setdefault("state", {})
+        if state.pop(_ROTATE_SESSION_ID, False):
+            store = self.config.get_store_from_app(connection.scope["app"])
+            await self.delete(super().get_session_id(connection), store=store)
+            state[_NEW_SESSION_ID] = self.generate_session_id()
+        await super().store_in_message(scope_session, message, connection)
+
+
+@dataclass
+class RotatingSessionConfig(ServerSideSessionConfig):
+    """`ServerSideSessionConfig` using `RotatingSessionBackend`."""
+
+    _backend_class = RotatingSessionBackend
+
+
 # Session key for storing impersonation state
 IMPERSONATION_KEY = "impersonating_user"
 
 
 def get_current_admin(request: Request) -> AdminUser | None:
-    """Get current admin user from session.
+    """The admin that `AdminAuthMiddleware` verified for this request.
 
-    Args:
-        request: The request object
-
-    Returns:
-        AdminUser if authenticated, None otherwise
+    None on routes excluded from authentication (login, logout, health).
     """
-    admin_data = request.session.get(ADMIN_SESSION_KEY)
-    if not admin_data:
-        return None
-
-    try:
-        return AdminUser(
-            id=admin_data["id"],
-            email=admin_data["email"],
-            name=admin_data["name"],
-            role=AdminRole(admin_data["role"]),
-            organization_id=admin_data.get("organization_id"),
-        )
-    except (KeyError, ValueError):
-        return None
+    user = request.scope.get("user")
+    return user if isinstance(user, AdminUser) else None
 
 
 def set_current_admin(request: Request, admin: AdminUser) -> None:
-    """Set current admin user in session.
+    """Log `admin` in: store its ID and give the session a fresh ID.
 
-    Args:
-        request: The request object
-        admin: The admin user to store
+    Only the ID is kept; `AdminAuthMiddleware` reloads the subject and its
+    roles on every request.
     """
-    request.session[ADMIN_SESSION_KEY] = {
-        "id": admin.id,
-        "email": admin.email,
-        "name": admin.name,
-        "role": admin.role.value,
-        "organization_id": admin.organization_id,
-    }
+    request.session[ADMIN_SESSION_KEY] = {"id": admin.id}
+    request.scope.setdefault("state", {})[_ROTATE_SESSION_ID] = True
 
 
 def clear_current_admin(request: Request) -> None:
@@ -231,23 +278,23 @@ class AdminAuthMiddleware(AbstractAuthenticationMiddleware):
         Returns:
             AuthenticationResult with user if authenticated
         """
-        # Get admin from session
+        # Not authenticated: redirect_to_login_handler sends them to login.
         admin_data = connection.session.get(ADMIN_SESSION_KEY)
         if not admin_data:
-            # Not authenticated - will be handled by exception handler
             raise NotAuthorizedException(detail="Not authenticated")
 
-        try:
-            admin = AdminUser(
-                id=admin_data["id"],
-                email=admin_data["email"],
-                name=admin_data["name"],
-                role=AdminRole(admin_data["role"]),
-                organization_id=admin_data.get("organization_id"),
-            )
-            return AuthenticationResult(user=admin, auth=None)
-        except (KeyError, ValueError) as e:
-            raise NotAuthorizedException(detail="Invalid session") from e
+        # Reload the subject so deactivation and role changes apply at once.
+        state = connection.app.state
+        async with state.session_factory() as session:
+            service = AdminService(session)
+            try:
+                subject = await service.subject_repo.get_one_by(id=admin_data["id"])
+            except DoesNotExist as e:
+                raise NotAuthorizedException(detail="Unknown admin") from e
+            admin = await admin_for_subject(service, subject, state.config.require_role)
+        if admin is None:
+            raise NotAuthorizedException(detail="No admin access")
+        return AuthenticationResult(user=admin, auth=None)
 
 
 def redirect_to_login_handler(
@@ -315,6 +362,9 @@ __all__ = [
     "AdminAuthMiddleware",
     "AdminRole",
     "AdminUser",
+    "RotatingSessionBackend",
+    "RotatingSessionConfig",
+    "admin_for_subject",
     "admin_role_for",
     "clear_current_admin",
     "get_current_admin",

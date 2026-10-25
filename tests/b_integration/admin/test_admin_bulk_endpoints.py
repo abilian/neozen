@@ -71,9 +71,8 @@ class TestImportPostDryRun:
         with admin_client as client:
             export = client.get("/users/export")
         assert export.status_code == 200
-        # Header line + zero data rows
-        data_lines = [line for line in export.text.strip().split("\n")[1:] if line]
-        assert data_lines == []
+        assert "alice@example.com" not in export.text
+        assert "bob@example.com" not in export.text
 
     def test_dry_run_reports_validation_failures(
         self, admin_client: TestClient

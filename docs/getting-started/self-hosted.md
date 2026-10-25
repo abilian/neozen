@@ -235,6 +235,7 @@ running application and the migration tooling.
 | `NEOZEN_LOG_LEVEL` | `INFO` | Standard Python log levels. |
 | `NEOZEN_BOOTSTRAP_ADMIN` | `true` | If true and the database is empty, create a bootstrap admin and print the credentials once. |
 | `NEOZEN_BOOTSTRAP_ADMIN_EMAIL` | `admin@localhost` | Email for the bootstrap admin. |
+| `NEOZEN_COOKIE_SECURE` | `true` | Secure flag on the admin session cookie. Set `false` only when serving over plain HTTP from a host other than `localhost` (browsers accept Secure cookies on `http://localhost`, except Safari). |
 
 CLI flags override environment variables:
 

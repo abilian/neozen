@@ -24,6 +24,7 @@ from litestar.datastructures import State
 from litestar.exceptions import NotAuthorizedException
 from litestar.handlers import BaseRouteHandler
 from litestar.middleware.session.server_side import ServerSideSessionConfig
+from litestar.params import FromPath
 from litestar.response import Redirect
 from litestar.stores.memory import MemoryStore
 from neozen.admin.services import AdminService
@@ -914,7 +915,7 @@ async def admin_users(request: Request) -> Response:
 
 
 @get("/admin/users/{user_id:str}", guards=[login_required(), admin_required()])
-async def admin_user_detail(request: Request, user_id: str) -> Response:
+async def admin_user_detail(request: Request, user_id: FromPath[str]) -> Response:
     """View user details."""
     current = await get_current_user(request)
     roles = await get_subject_roles(session_factory, current.id)
@@ -942,7 +943,9 @@ async def admin_user_detail(request: Request, user_id: str) -> Response:
     "/admin/users/{user_id:str}/toggle-role/{role:str}",
     guards=[login_required(), admin_required()],
 )
-async def admin_toggle_role(request: Request, user_id: str, role: str) -> Response:
+async def admin_toggle_role(
+    request: Request, user_id: FromPath[str], role: FromPath[str]
+) -> Response:
     """Toggle a role for a user."""
     current = await get_current_user(request)
 
@@ -990,7 +993,7 @@ async def admin_sessions(request: Request) -> Response:
     "/admin/sessions/{token_hash:str}/revoke",
     guards=[login_required(), admin_required()],
 )
-async def admin_revoke_session(request: Request, token_hash: str) -> Response:
+async def admin_revoke_session(request: Request, token_hash: FromPath[str]) -> Response:
     """Revoke a session."""
     try:
         async with session_factory() as db_session:

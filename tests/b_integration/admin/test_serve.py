@@ -50,6 +50,11 @@ class TestServeConfig:
         assert config.log_level == "INFO"
         assert config.bootstrap_admin is True
         assert config.bootstrap_admin_email == "admin@localhost"
+        assert config.cookie_secure is True
+
+    def test_cookie_secure_can_be_turned_off(self) -> None:
+        config = ServeConfig.from_env(env={"NEOZEN_COOKIE_SECURE": "false"})
+        assert config.cookie_secure is False
 
     def test_env_overrides(self) -> None:
         config = ServeConfig.from_env(
@@ -237,6 +242,15 @@ class TestServeAppHealthChecks:
 
 
 class TestServeAppMountsAdmin:
+    def test_session_cookie_is_secure(self, serve_client: TestClient) -> None:
+        with serve_client as client:
+            response = client.post(
+                "/login",
+                data={"email": "nobody@example.com", "password": "x"},
+                follow_redirects=False,
+            )
+        assert "secure" in response.headers.get("set-cookie", "").lower()
+
     def test_admin_dashboard_reachable(self, serve_client: TestClient) -> None:
         with serve_client as client:
             response = client.get("/")

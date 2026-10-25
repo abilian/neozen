@@ -17,16 +17,18 @@ from litestar import Litestar, Request, Response, get, post
 from litestar.datastructures import State
 from litestar.exceptions import NotAuthorizedException
 from litestar.middleware import DefineMiddleware
-from litestar.middleware.session.server_side import ServerSideSessionConfig
+from litestar.params import FromPath
 from litestar.status_codes import HTTP_303_SEE_OTHER
 from markupsafe import escape
 from pwdlib import PasswordHash
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from neozen.admin.auth import (
+    ADMIN_SESSION_KEY,
     AdminAuthMiddleware,
     AdminUser,
-    admin_role_for,
+    RotatingSessionConfig,
+    admin_for_subject,
     clear_current_admin,
     get_current_admin,
     get_impersonation,
@@ -112,27 +114,18 @@ async def _authenticate_admin(
         subject = await service.subject_repo.get_one_by(email=email)
     except DoesNotExist:
         return None
-    if not subject.is_active or not subject.hashed_password:
+    if not subject.hashed_password:
         return None
     if not _password_hash.verify(password, subject.hashed_password):
         return None
-    roles = await service.get_subject_roles(subject.id)
-    role = admin_role_for({r.name for r in roles}, require_role)
-    if role is None:
-        return None
-    return AdminUser(
-        id=subject.id,
-        email=subject.email,
-        name=subject.username or subject.email,
-        role=role,
-    )
+    return await admin_for_subject(service, subject, require_role)
 
 
 @get("/login", sync_to_thread=False, exclude_from_auth=True)
 def login_page(request: Request) -> Response:
     """Show login page."""
-    # If already logged in, redirect to dashboard
-    if get_current_admin(request):
+    # If already logged in, redirect to dashboard (the middleware checks it)
+    if ADMIN_SESSION_KEY in request.session:
         return redirect("/")
     return render_template(request, "auth/login.html")
 
@@ -287,7 +280,7 @@ async def list_users(request: Request) -> Response:
 
 
 @get("/users/{user_id:str}")
-async def user_detail(request: Request, user_id: str) -> Response:
+async def user_detail(request: Request, user_id: FromPath[str]) -> Response:
     """View user details with tabs."""
     tab = request.query_params.get("tab", "profile")
     session_factory: async_sessionmaker = request.app.state.session_factory
@@ -316,7 +309,7 @@ async def user_detail(request: Request, user_id: str) -> Response:
 
 
 @post("/users/{user_id:str}/activate")
-async def activate_user(request: Request, user_id: str) -> Response:
+async def activate_user(request: Request, user_id: FromPath[str]) -> Response:
     """Activate a user."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -331,7 +324,7 @@ async def activate_user(request: Request, user_id: str) -> Response:
 
 
 @post("/users/{user_id:str}/deactivate")
-async def deactivate_user(request: Request, user_id: str) -> Response:
+async def deactivate_user(request: Request, user_id: FromPath[str]) -> Response:
     """Deactivate a user."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -381,7 +374,7 @@ async def create_user(request: Request) -> Response:
 
 
 @post("/users/{user_id:str}/delete")
-async def delete_user(request: Request, user_id: str) -> Response:
+async def delete_user(request: Request, user_id: FromPath[str]) -> Response:
     """Delete a user."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -396,7 +389,7 @@ async def delete_user(request: Request, user_id: str) -> Response:
 
 
 @post("/users/{user_id:str}/revoke-sessions")
-async def revoke_user_sessions(request: Request, user_id: str) -> Response:
+async def revoke_user_sessions(request: Request, user_id: FromPath[str]) -> Response:
     """Revoke all sessions for a user."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -411,7 +404,7 @@ async def revoke_user_sessions(request: Request, user_id: str) -> Response:
 
 
 @post("/users/{user_id:str}/roles/add")
-async def add_user_role(request: Request, user_id: str) -> Response:
+async def add_user_role(request: Request, user_id: FromPath[str]) -> Response:
     """Add a role to a user."""
     form_data = await request.form()
     role_name = form_data.get("role_name", "").strip()
@@ -436,7 +429,9 @@ async def add_user_role(request: Request, user_id: str) -> Response:
 
 
 @post("/users/{user_id:str}/roles/{role_name:str}/remove")
-async def remove_user_role(request: Request, user_id: str, role_name: str) -> Response:
+async def remove_user_role(
+    request: Request, user_id: FromPath[str], role_name: FromPath[str]
+) -> Response:
     """Remove a role from a user."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -559,7 +554,7 @@ async def export_users(request: Request) -> Response:
 
 
 @post("/users/{user_id:str}/impersonate")
-async def impersonate_user(request: Request, user_id: str) -> Response:
+async def impersonate_user(request: Request, user_id: FromPath[str]) -> Response:
     """Start impersonating a user."""
     admin = get_current_admin(request)
     if not admin or not admin.is_superadmin:
@@ -649,7 +644,7 @@ async def create_role(request: Request) -> Response:
 
 
 @get("/roles/{role_name:str}")
-async def role_detail(request: Request, role_name: str) -> Response:
+async def role_detail(request: Request, role_name: FromPath[str]) -> Response:
     """View role details."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -694,7 +689,7 @@ async def _resolve_assignment_subjects(
 
 
 @post("/roles/{role_name:str}/delete")
-async def delete_role(request: Request, role_name: str) -> Response:
+async def delete_role(request: Request, role_name: FromPath[str]) -> Response:
     """Delete a role."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -736,7 +731,7 @@ async def list_sessions(request: Request) -> Response:
 
 
 @post("/sessions/{token_hash:str}/revoke")
-async def revoke_session(request: Request, token_hash: str) -> Response:
+async def revoke_session(request: Request, token_hash: FromPath[str]) -> Response:
     """Revoke a session."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -799,7 +794,7 @@ async def create_group(request: Request) -> Response:
 
 
 @get("/groups/{group_id:str}")
-async def group_detail(request: Request, group_id: str) -> Response:
+async def group_detail(request: Request, group_id: FromPath[str]) -> Response:
     """View group details."""
     tab = request.query_params.get("tab", "members")
     session_factory: async_sessionmaker = request.app.state.session_factory
@@ -830,7 +825,7 @@ async def group_detail(request: Request, group_id: str) -> Response:
 
 
 @post("/groups/{group_id:str}/members/add")
-async def add_group_member(request: Request, group_id: str) -> Response:
+async def add_group_member(request: Request, group_id: FromPath[str]) -> Response:
     """Add a member to a group."""
     form_data = await request.form()
     subject_id = form_data.get("subject_id", "").strip()
@@ -857,7 +852,7 @@ async def add_group_member(request: Request, group_id: str) -> Response:
 
 @post("/groups/{group_id:str}/members/{subject_id:str}/remove")
 async def remove_group_member(
-    request: Request, group_id: str, subject_id: str
+    request: Request, group_id: FromPath[str], subject_id: FromPath[str]
 ) -> Response:
     """Remove a member from a group."""
     session_factory: async_sessionmaker = request.app.state.session_factory
@@ -873,7 +868,7 @@ async def remove_group_member(
 
 
 @post("/groups/{group_id:str}/roles/add")
-async def add_group_role(request: Request, group_id: str) -> Response:
+async def add_group_role(request: Request, group_id: FromPath[str]) -> Response:
     """Add a role to a group."""
     form_data = await request.form()
     role_name = form_data.get("role_name", "").strip()
@@ -899,7 +894,7 @@ async def add_group_role(request: Request, group_id: str) -> Response:
 
 @post("/groups/{group_id:str}/roles/{role_name:str}/remove")
 async def remove_group_role(
-    request: Request, group_id: str, role_name: str
+    request: Request, group_id: FromPath[str], role_name: FromPath[str]
 ) -> Response:
     """Remove a role from a group."""
     session_factory: async_sessionmaker = request.app.state.session_factory
@@ -915,7 +910,7 @@ async def remove_group_role(
 
 
 @post("/groups/{group_id:str}/delete")
-async def delete_group(request: Request, group_id: str) -> Response:
+async def delete_group(request: Request, group_id: FromPath[str]) -> Response:
     """Delete a group."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -984,7 +979,7 @@ async def create_organization(request: Request) -> Response:
 
 
 @get("/organizations/{org_id:str}")
-async def organization_detail(request: Request, org_id: str) -> Response:
+async def organization_detail(request: Request, org_id: FromPath[str]) -> Response:
     """View organization details."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -1009,7 +1004,7 @@ async def organization_detail(request: Request, org_id: str) -> Response:
 
 
 @post("/organizations/{org_id:str}/update")
-async def update_organization(request: Request, org_id: str) -> Response:
+async def update_organization(request: Request, org_id: FromPath[str]) -> Response:
     """Update an organization."""
     form_data = await request.form()
     name = form_data.get("name", "").strip() or None
@@ -1032,7 +1027,7 @@ async def update_organization(request: Request, org_id: str) -> Response:
 
 
 @post("/organizations/{org_id:str}/delete")
-async def delete_organization(request: Request, org_id: str) -> Response:
+async def delete_organization(request: Request, org_id: FromPath[str]) -> Response:
     """Delete an organization."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -1297,7 +1292,7 @@ async def audit_log_tail(request: Request) -> Response:
 
 
 @get("/audit/{entry_id:str}")
-async def audit_log_detail(request: Request, entry_id: str) -> Response:
+async def audit_log_detail(request: Request, entry_id: FromPath[str]) -> Response:
     """View audit log entry details."""
     session_factory: async_sessionmaker = request.app.state.session_factory
     async with session_factory() as session:
@@ -1599,9 +1594,9 @@ AUTH_MIDDLEWARE = DefineMiddleware(AdminAuthMiddleware)
 EXCEPTION_HANDLERS: dict[Any, Any] = {NotAuthorizedException: redirect_to_login_handler}
 
 
-def session_config(config: AdminConfig) -> ServerSideSessionConfig:
+def session_config(config: AdminConfig) -> RotatingSessionConfig:
     """Session settings for the admin console (login state and flash messages)."""
-    return ServerSideSessionConfig(
+    return RotatingSessionConfig(
         key=config.cookie_name,
         max_age=86400,
         secure=config.cookie_secure,

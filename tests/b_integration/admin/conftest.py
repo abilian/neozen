@@ -6,29 +6,51 @@ from litestar import Litestar
 from litestar.testing import TestClient
 
 from neozen.admin.app import session_config
-from neozen.admin.auth import ADMIN_SESSION_KEY, AdminRole
+from neozen.admin.auth import ADMIN_SESSION_KEY, SUPERUSER_ROLE
+from neozen.admin.services import AdminService
 
-SUPERADMIN_SESSION = {
-    ADMIN_SESSION_KEY: {
-        "id": "test-admin",
-        "email": "admin@example.com",
-        "name": "Test Admin",
-        "role": AdminRole.SUPERADMIN.value,
-        "organization_id": None,
-    }
-}
+# HTTPS, so Secure session cookies (the `neozen serve` default) come back.
+BASE_URL = "https://testserver.local"
 
 
-def superadmin_client(app: Litestar) -> TestClient:
-    """Return a test client whose session is logged in as a superadmin.
+class SuperadminClient:
+    """A test client logged in as a superuser subject created at app startup.
 
-    Credential checks are covered separately by the login tests; this
-    keeps route tests focused on the route.
+    Use it as a context manager, like `TestClient`. Credential checks are
+    covered separately by the login tests; this keeps route tests focused
+    on the route.
     """
-    client = TestClient(
-        app=app,
-        raise_server_exceptions=True,
-        session_config=session_config(app.state.config),
-    )
-    client.set_session_data(SUPERADMIN_SESSION)
-    return client
+
+    def __init__(self, app: Litestar) -> None:
+        self.subject_id = ""
+        app.on_startup.append(self._create_superadmin)
+        self.client = TestClient(
+            app=app,
+            raise_server_exceptions=True,
+            session_config=session_config(app.state.config),
+            base_url=BASE_URL,
+        )
+
+    async def _create_superadmin(self, app: Litestar) -> None:
+        async with app.state.session_factory() as session:
+            service = AdminService(session)
+            if self.subject_id:  # entered again: the subject already exists
+                return
+            await service.ensure_builtin_roles()
+            subject = await service.create_subject(email="admin@example.com")
+            await service.assign_role_to_subject(subject.id, SUPERUSER_ROLE)
+            await session.commit()
+        self.subject_id = subject.id
+
+    def __enter__(self) -> TestClient:
+        self.client.__enter__()
+        self.client.set_session_data({ADMIN_SESSION_KEY: {"id": self.subject_id}})
+        return self.client
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.client.__exit__(*exc_info)
+
+
+def superadmin_client(app: Litestar) -> SuperadminClient:
+    """Return a client logged in as a superadmin (see `SuperadminClient`)."""
+    return SuperadminClient(app)

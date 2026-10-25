@@ -57,6 +57,7 @@ def build_serve_app(config: ServeConfig | None = None) -> Litestar:
     admin_config = AdminConfig(
         db_url=config.db_url,
         secret_key=config.secret_key,
+        cookie_secure=config.cookie_secure,
     )
     templates = admin_app_module.get_templates(admin_config)
 
