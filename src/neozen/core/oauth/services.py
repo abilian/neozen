@@ -37,6 +37,13 @@ if typing.TYPE_CHECKING:
     from neozen.core.oauth.jwt_access_token import JWTAccessTokenSigner
 
 
+async def _revoke_matching[T](
+    repository: RepositoryProtocol[T], now: datetime, **filters: typing.Any
+) -> None:
+    for token in await repository.get_many_by(**filters):
+        await repository.update_obj(token, revoked_at=now)
+
+
 @dataclass
 class TokenPair:
     """Generated token pair."""
@@ -245,6 +252,10 @@ class OAuthTokenService[
             raise RefreshTokenNotFoundError from e
 
         if stored.revoked_at is not None:
+            # RFC 9700 §4.14.2: a revoked refresh token coming back has
+            # leaked. Tokens don't record their rotation chain, so revoke
+            # everything this client holds for the subject.
+            await self._revoke_all(stored.client_id, stored.subject_id)
             raise RefreshTokenRevokedError
 
         if stored.expires_at and ensure_utc(stored.expires_at) < datetime.now(UTC):
@@ -299,9 +310,19 @@ class OAuthTokenService[
 
         Returns:
             Generated token pair.
-        """
-        now = datetime.now(UTC)
 
+        Raises:
+            AuthorizationCodeNotFoundError: The code was already used, e.g.
+                by a concurrent request.
+        """
+        # OAuth 2.1 §4.1.2: codes are single-use. Consume the code before
+        # issuing anything: of two concurrent exchanges, only one deletes it.
+        try:
+            await self.authorization_code_repository.delete(auth_code)
+        except DoesNotExist as e:
+            raise AuthorizationCodeNotFoundError from e
+
+        now = datetime.now(UTC)
         access = await self._issue_access_token(
             auth_code.subject_id, client.client_id, auth_code.scope, now
         )
@@ -323,11 +344,6 @@ class OAuthTokenService[
             revoked_at=None,
             access_token_hash=access.access_token_hash,
         )
-
-        # OAuth 2.1 §4.1.2: authorization codes MUST be single-use.
-        # Delete the code after successful exchange so a second submission
-        # fails with AuthorizationCodeNotFoundError.
-        await self.authorization_code_repository.delete(auth_code)
 
         return TokenPair(
             access_token=access.access_token,
@@ -385,7 +401,8 @@ class OAuthTokenService[
         )
 
         # Optionally rotate refresh token
-        if self.rotate_refresh_tokens:
+        # OAuth 2.1 §4.3.1: public clients' refresh tokens always rotate.
+        if self.rotate_refresh_tokens or client.is_public_client():
             await self.refresh_token_repository.update_obj(
                 stored_refresh, revoked_at=now
             )
@@ -415,6 +432,13 @@ class OAuthTokenService[
             result.new_refresh_expires_at = new_refresh_expires_at
 
         return result
+
+    async def _revoke_all(self, client_id: str, subject_id: typing.Any) -> None:
+        """Revoke every live access and refresh token of `client_id` for `subject_id`."""
+        now = datetime.now(UTC)
+        live = {"client_id": client_id, "subject_id": subject_id, "revoked_at": None}
+        await _revoke_matching(self.access_token_repository, now, **live)
+        await _revoke_matching(self.refresh_token_repository, now, **live)
 
     async def revoke_access_token(self, token: str, client_id: str) -> bool:
         """Revoke an access token issued to `client_id`.

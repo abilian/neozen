@@ -123,10 +123,11 @@ class PeeweeRepository[Model: peewee.Model]:
     async def delete(self, obj: Model) -> None:
         """Delete a model instance."""
 
-        def _delete() -> None:
-            obj.delete_instance()
+        def _delete() -> int:
+            return obj.delete_instance()
 
-        await self._run_sync(_delete)
+        if await self._run_sync(_delete) == 0:
+            raise DoesNotExist
 
 
 # Type-check that PeeweeRepository implements the protocol

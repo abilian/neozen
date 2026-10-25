@@ -90,7 +90,13 @@ class WritableRepositoryProtocol[Model](typing.Protocol):
         ...
 
     async def delete(self, obj: Model) -> None:
-        """Delete an object."""
+        """Delete an object.
+
+        Raises:
+            DoesNotExist: If the object was already gone. Implementations
+                decide this in the database, so of two concurrent deletes
+                exactly one succeeds (single-use codes rely on it).
+        """
         ...
 
 

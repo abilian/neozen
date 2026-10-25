@@ -183,3 +183,16 @@ class TestRequirePKCE:
         payload = _consent(code_challenge="", code_challenge_method="")
         response = await endpoint.handle_consent(payload, User())
         assert response.code
+
+
+@pytest.mark.anyio
+async def test_defaulted_redirect_uri_is_not_recorded(
+    codes: MockStorage[AuthCode],
+) -> None:
+    """The token request need not repeat a redirect_uri it never sent."""
+    payload = _consent()
+    del payload["redirect_uri"]
+    response = await _endpoint(Client("app"), codes).handle_consent(payload, User())
+    assert response.redirect_uri == REGISTERED_URI
+    [code] = await codes.get_many_by()
+    assert code.redirect_uri is None

@@ -248,7 +248,13 @@ class TokenEndpoint[
             raise TokenInvalidGrantError(msg) from e
 
         # Exchange for tokens
-        token_pair = await self.service.exchange_authorization_code(auth_code, client)
+        try:
+            token_pair = await self.service.exchange_authorization_code(
+                auth_code, client
+            )
+        except AuthorizationCodeNotFoundError as e:
+            msg = "Authorization code has already been used."
+            raise TokenInvalidGrantError(msg) from e
 
         # Generate ID token if openid scope was granted
         id_token = await self._maybe_generate_id_token(

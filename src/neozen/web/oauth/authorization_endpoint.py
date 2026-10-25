@@ -406,10 +406,7 @@ class AuthorizationEndpoint[
                 client=client,
                 subject_id=subject.id,
                 redirect_uri=redirect_uri,
-                scope=request.scope,
-                state=request.state,
-                code_challenge=request.code_challenge,
-                code_challenge_method=_challenge_method(request),
+                request=request,
             )
         except DoesNotExist:
             # Need consent
@@ -475,23 +472,22 @@ class AuthorizationEndpoint[
             client=client,
             subject_id=subject.id,
             redirect_uri=redirect_uri,
-            scope=request.scope,
-            state=request.state,
-            code_challenge=request.code_challenge,
-            code_challenge_method=_challenge_method(request),
+            request=request,
         )
 
     async def _generate_authorization_code(
         self,
         client: OC,
         subject_id: typing.Any,
-        redirect_uri: str | None,
-        scope: str | None,
-        state: str | None,
-        code_challenge: str | None,
-        code_challenge_method: CodeChallengeMethod | None,
+        redirect_uri: str,
+        request: AuthorizationRequest,
     ) -> AuthorizationResponse:
-        """Generate an authorization code and return redirect response."""
+        """Generate an authorization code and return redirect response.
+
+        The code records the redirect URI only if the client sent one: the
+        token request must then repeat it (RFC 6749 §4.1.3), and need not
+        otherwise.
+        """
         code, code_hash = generate_token_hash_pair(
             self.code_hash_key, prefix=self.code_prefix
         )
@@ -502,16 +498,16 @@ class AuthorizationEndpoint[
             subject_id=subject_id,
             expires_at=datetime.now(UTC) + self.code_lifetime,
             response_type="code",
-            redirect_uri=redirect_uri,
-            scope=scope or "",
-            code_challenge=code_challenge,
-            code_challenge_method=code_challenge_method,
+            redirect_uri=str(request.redirect_uri) if request.redirect_uri else None,
+            scope=request.scope or "",
+            code_challenge=request.code_challenge,
+            code_challenge_method=_challenge_method(request),
         )
 
         return AuthorizationResponse(
             redirect_uri=redirect_uri,
             code=code,
-            state=state,
+            state=request.state,
         )
 
     def _error_response(

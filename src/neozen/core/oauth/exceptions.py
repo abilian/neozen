@@ -180,7 +180,12 @@ class RefreshTokenExpiredError(OAuthError):
 
 
 class RefreshTokenRevokedError(OAuthError):
-    """Refresh token has been revoked."""
+    """Refresh token has been revoked.
+
+    Raised after revoking every token the client holds for the subject (a
+    revoked token coming back means it leaked): commit the transaction even
+    though the request fails, or the revocation is lost.
+    """
 
     def __init__(self) -> None:
         super().__init__("Refresh token has been revoked.")

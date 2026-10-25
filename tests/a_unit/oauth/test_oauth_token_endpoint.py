@@ -10,6 +10,7 @@ from pwdlib import PasswordHash
 
 from neozen.core.crypto import get_token_hash
 from neozen.core.oauth import (
+    AuthorizationCodeNotFoundError,
     TokenInvalidClientError,
     TokenInvalidGrantError,
     TokenInvalidRequestError,
@@ -1039,3 +1040,86 @@ async def test_challenge_without_method_fails_verification(
             "code": "test_code",
             "client_id": "client_1",
         })
+
+
+@pytest.mark.anyio
+async def test_code_cannot_be_exchanged_twice(
+    client_storage: MockStorage[MockOAuthClient],
+    auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+    token_endpoint: TokenEndpoint,
+) -> None:
+    """Even when both requests got past validation (a race)."""
+    client = await client_storage.create(client_id="client_1")
+    await _store_code(auth_code_storage, challenge=None)
+    [code] = await auth_code_storage.get_many_by()
+    service = token_endpoint.service
+
+    await service.exchange_authorization_code(code, client)
+    with pytest.raises(AuthorizationCodeNotFoundError):
+        await service.exchange_authorization_code(code, client)
+
+
+@pytest.mark.anyio
+class TestRefreshTokenReuse:
+    async def _refresh(self, endpoint: TokenEndpoint, token: str) -> TokenResponse:
+        return await endpoint({
+            "grant_type": "refresh_token",
+            "refresh_token": token,
+            "client_id": "client_1",
+        })
+
+    async def test_replayed_token_revokes_the_clients_tokens(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        refresh_token_storage: MockStorage[MockOAuthRefreshToken],
+        access_token_storage: MockStorage[MockOAuthAccessToken],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        await client_storage.create(client_id="client_1")
+        old = "nz_rt_first"
+        await refresh_token_storage.create(
+            token_hash=get_token_hash(old, key=TOKEN_HASH_KEY),
+            client_id="client_1",
+            subject_id="user_1",
+            scope="read",
+            expires_at=datetime.now(UTC) + timedelta(days=30),
+            created_at=datetime.now(UTC),
+            revoked_at=None,
+            access_token_hash=None,
+        )
+        rotated = await self._refresh(token_endpoint, old)  # rotates `old` out
+
+        with pytest.raises(TokenInvalidGrantError):
+            await self._refresh(token_endpoint, old)  # the leaked copy
+
+        tokens = [
+            *await refresh_token_storage.get_many_by(),
+            *await access_token_storage.get_many_by(),
+        ]
+        assert all(token.revoked_at is not None for token in tokens)
+        assert rotated.refresh_token
+        with pytest.raises(TokenInvalidGrantError):
+            await self._refresh(token_endpoint, rotated.refresh_token)
+
+    async def test_public_client_tokens_rotate_even_if_disabled(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        refresh_token_storage: MockStorage[MockOAuthRefreshToken],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        token_endpoint.service.rotate_refresh_tokens = False
+        await client_storage.create(client_id="client_1")  # public
+        await refresh_token_storage.create(
+            token_hash=get_token_hash("nz_rt_x", key=TOKEN_HASH_KEY),
+            client_id="client_1",
+            subject_id="user_1",
+            scope="read",
+            expires_at=datetime.now(UTC) + timedelta(days=30),
+            created_at=datetime.now(UTC),
+            revoked_at=None,
+            access_token_hash=None,
+        )
+
+        response = await self._refresh(token_endpoint, "nz_rt_x")
+
+        assert response.refresh_token

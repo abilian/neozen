@@ -63,8 +63,9 @@ class TortoiseRepository[ModelT: Model]:
         return obj
 
     async def delete(self, obj: ModelT) -> None:
-        """Delete a model instance."""
-        await obj.delete()
+        """Delete a model instance; DoesNotExist if it was already gone."""
+        if not await self.model_type.filter(pk=obj.pk).delete():
+            raise DoesNotExist
 
 
 # Type-check that TortoiseRepository implements the protocol

@@ -36,6 +36,7 @@ from tests.conftest import MockStorage
 @dataclasses.dataclass
 class MockOAuthClient(OAuthClientModel):
     client_id: str
+    client_type: str = "confidential"
 
 
 @dataclasses.dataclass

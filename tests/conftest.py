@@ -121,6 +121,8 @@ class MockStorage[Model](RepositoryProtocol[Model]):
         return obj
 
     async def delete(self, obj: Model) -> None:
+        if obj not in self._data:
+            raise DoesNotExist
         self._data.remove(obj)
 
 

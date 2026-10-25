@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import typing
 
+import sqlalchemy
 from advanced_alchemy.base import ModelProtocol
 from advanced_alchemy.exceptions import NotFoundError
 from advanced_alchemy.filters import LimitOffset
 from advanced_alchemy.repository import SQLAlchemyAsyncRepository
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import class_mapper
 
 from neozen.storage.base import DoesNotExist
 from neozen.storage.sqlalchemy.models import (
@@ -79,9 +81,26 @@ class NeoZenRepository[Model: ModelProtocol](SQLAlchemyAsyncRepository[Model]):
         return await self.update(obj)
 
     async def delete(self, obj: Model) -> None:  # type: ignore[override]  # ty: ignore[invalid-method-override]
-        """Delete a model instance, whatever its primary key."""
-        await self.session.delete(obj)
-        await self.session.flush()
+        """Delete a model instance, whatever its primary key.
+
+        Raises DoesNotExist if the row was already gone, e.g. deleted by a
+        concurrent transaction.
+        """
+        mapper = class_mapper(self.model_type)
+        key = [
+            column == getattr(obj, mapper.get_property_by_column(column).key)
+            for column in mapper.primary_key
+        ]
+        statement = (
+            sqlalchemy
+            .delete(self.model_type)
+            .where(*key)
+            .returning(*mapper.primary_key)
+        )
+        result = await self.session.execute(statement)
+        if result.first() is None:
+            raise DoesNotExist
+        self.session.expunge(obj)
 
 
 class SubjectRepository(NeoZenRepository[Subject]):

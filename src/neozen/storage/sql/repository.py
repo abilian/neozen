@@ -140,10 +140,18 @@ class SQLRepository[Model]:
         return obj
 
     async def delete(self, obj: Model) -> None:
-        """Delete a model instance."""
+        """Delete a model instance; DoesNotExist if it was already gone.
+
+        Uses RETURNING (SQLite 3.35+, PostgreSQL), since `databases` does not
+        report a row count for DELETE.
+        """
         pk_value = getattr(obj, self.primary_key)
-        query = f"DELETE FROM {self.table_name} WHERE {self.primary_key} = :pk_value"  # noqa: S608
-        await self.database.execute(query, {"pk_value": pk_value})
+        query = (
+            f"DELETE FROM {self.table_name} WHERE {self.primary_key} = :pk_value"  # noqa: S608
+            f" RETURNING {self.primary_key}"
+        )
+        if await self.database.fetch_one(query, {"pk_value": pk_value}) is None:
+            raise DoesNotExist
 
 
 # Type-check that SQLRepository implements the protocol
