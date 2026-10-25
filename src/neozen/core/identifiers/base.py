@@ -7,7 +7,6 @@ import typing
 import dishka
 
 from neozen.core.exceptions import NeoZenException
-from neozen.core.subject import Subject
 
 
 class IdentifierError(NeoZenException):
@@ -30,7 +29,7 @@ class IdentifierVerificationError(IdentifierError):
         super().__init__(message)
 
 
-class IdentifierProtocol[S: Subject](typing.Protocol):
+class IdentifierProtocol[S](typing.Protocol):
     """Protocol for identifier providers."""
 
     async def get_by_identifier(self, identifier: typing.Any) -> S:
@@ -46,8 +45,12 @@ class IdentifierProtocol[S: Subject](typing.Protocol):
         ...
 
 
-class IdentifierProvider[S: Subject](dishka.Provider):
-    """Base class for identifier providers."""
+class IdentifierProvider(dishka.Provider):
+    """Base class for identifier providers.
+
+    Subclasses provide `IdentifierProtocol[M]` for any model `M`, so a
+    container holds at most one of them.
+    """
 
 
 __all__ = [

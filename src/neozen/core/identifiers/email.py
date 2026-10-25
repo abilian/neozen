@@ -48,14 +48,17 @@ class EmailIdentifier[S: EmailSubjectModel](IdentifierProtocol[S]):
             return validated_email.normalized
 
 
-class EmailIdentifierProvider[S: EmailSubjectModel](IdentifierProvider[S]):
+class EmailIdentifierProvider(IdentifierProvider):
     """Dishka provider for email identifiers."""
 
     @dishka.provide(scope=dishka.Scope.REQUEST)
-    def identifier[_S: EmailSubjectModel](
-        self, subject: type[_S], email_storage: RepositoryProtocol[_S]
-    ) -> IdentifierProtocol[_S]:
-        return EmailIdentifier[_S](email_storage)
+    def identifier[M](
+        self, email_storage: RepositoryProtocol[M]
+    ) -> IdentifierProtocol[M]:
+        # Unbounded type variable: dishka checks bounds nominally, and storage
+        # models usually match EmailSubjectModel only by shape.
+        storage: RepositoryProtocol[typing.Any] = email_storage
+        return EmailIdentifier(storage)
 
 
 def create_email_identifier(

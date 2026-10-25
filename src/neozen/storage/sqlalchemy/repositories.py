@@ -79,8 +79,9 @@ class NeoZenRepository[Model: ModelProtocol](SQLAlchemyAsyncRepository[Model]):
         return await self.update(obj)
 
     async def delete(self, obj: Model) -> None:  # type: ignore[override]  # ty: ignore[invalid-method-override]
-        """Delete a model instance."""
-        await super().delete(self.get_id_attribute_value(obj))
+        """Delete a model instance, whatever its primary key."""
+        await self.session.delete(obj)
+        await self.session.flush()
 
 
 class SubjectRepository(NeoZenRepository[Subject]):

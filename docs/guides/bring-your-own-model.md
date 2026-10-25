@@ -114,3 +114,30 @@ class MinimalAdapter:
 | MagicLinkFactor | -- | -- | Yes | -- | Yes* | -- | -- |
 
 *Via the token repository, not the subject repository.
+
+## Dependency Injection with Dishka
+
+If your app uses [dishka](https://dishka.readthedocs.io/), NeoZen ships providers instead of factory functions. `SQLAlchemyProvider` supplies the engine, one session per request and a `RepositoryProtocol[Model]` for any mapped model. The session never commits on its own: commit what you mean to keep, and anything uncommitted is rolled back when the request scope closes. The identifier providers build on it:
+
+```python
+import dishka
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from neozen.core.identifiers import EmailIdentifierProvider, IdentifierProtocol
+from neozen.storage.sqlalchemy import SQLAlchemyProvider, Subject
+
+container = dishka.make_async_container(
+    SQLAlchemyProvider("postgresql+asyncpg://localhost/app"),
+    EmailIdentifierProvider(),
+)
+
+async with container() as request:
+    identifier = await request.get(IdentifierProtocol[Subject])
+    subject = await identifier.get_by_identifier("ada@example.com")
+    ...
+    await (await request.get(AsyncSession)).commit()
+```
+
+The email, username and phone providers all provide `IdentifierProtocol[M]` for any model, so register only one of them per container (or per dishka component).
+
+For the OAuth authorization endpoint, build it from your configuration with `NeoZenFactory.create_authorization_endpoint(...)` (see the [configuration reference](../reference/configuration.md#oauth-server)) inside a provider of your own, passing it the repositories from `SQLAlchemyProvider`.

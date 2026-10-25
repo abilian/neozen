@@ -108,7 +108,7 @@ class UsernameIdentifier[S: UsernameSubjectModel](IdentifierProtocol[S]):
         return normalized
 
 
-class UsernameIdentifierProvider[S: UsernameSubjectModel](IdentifierProvider[S]):
+class UsernameIdentifierProvider(IdentifierProvider):
     """Dishka provider for username identifiers."""
 
     def __init__(self, reserved_usernames: frozenset[str] | None = None) -> None:
@@ -116,12 +116,13 @@ class UsernameIdentifierProvider[S: UsernameSubjectModel](IdentifierProvider[S])
         self.reserved_usernames = reserved_usernames
 
     @dishka.provide(scope=dishka.Scope.REQUEST)
-    def identifier[_S: UsernameSubjectModel](
-        self, subject: type[_S], username_storage: RepositoryProtocol[_S]
-    ) -> IdentifierProtocol[_S]:
-        return UsernameIdentifier[_S](
-            username_storage, reserved_usernames=self.reserved_usernames
-        )
+    def identifier[M](
+        self, username_storage: RepositoryProtocol[M]
+    ) -> IdentifierProtocol[M]:
+        # Unbounded type variable: dishka checks bounds nominally, and storage
+        # models usually match UsernameSubjectModel only by shape.
+        storage: RepositoryProtocol[typing.Any] = username_storage
+        return UsernameIdentifier(storage, reserved_usernames=self.reserved_usernames)
 
 
 __all__ = [

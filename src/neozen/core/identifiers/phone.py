@@ -84,7 +84,7 @@ class PhoneIdentifier[S: PhoneSubjectModel](IdentifierProtocol[S]):
         return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
 
 
-class PhoneIdentifierProvider[S: PhoneSubjectModel](IdentifierProvider[S]):
+class PhoneIdentifierProvider(IdentifierProvider):
     """Dishka provider for phone identifiers."""
 
     def __init__(
@@ -97,11 +97,14 @@ class PhoneIdentifierProvider[S: PhoneSubjectModel](IdentifierProvider[S]):
         self.allowed_regions = allowed_regions
 
     @dishka.provide(scope=dishka.Scope.REQUEST)
-    def identifier[_S: PhoneSubjectModel](
-        self, subject: type[_S], phone_storage: RepositoryProtocol[_S]
-    ) -> IdentifierProtocol[_S]:
-        return PhoneIdentifier[_S](
-            phone_storage,
+    def identifier[M](
+        self, phone_storage: RepositoryProtocol[M]
+    ) -> IdentifierProtocol[M]:
+        # Unbounded type variable: dishka checks bounds nominally, and storage
+        # models usually match PhoneSubjectModel only by shape.
+        storage: RepositoryProtocol[typing.Any] = phone_storage
+        return PhoneIdentifier(
+            storage,
             default_region=self.default_region,
             allowed_regions=self.allowed_regions,
         )
