@@ -7,7 +7,6 @@ the core services for business logic.
 
 from __future__ import annotations
 
-import contextlib
 import typing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -402,26 +401,30 @@ class AuthorizationEndpoint[
         """
         try:
             request = ConsentRequest.model_validate(payload)
+            # The form echoes the original request back; validate it again
+            # exactly as the authorization request was, so a tampered form
+            # cannot change redirect_uri, scope or the PKCE method.
+            auth_request = AuthorizationRequest.model_validate({
+                "response_type": "code",
+                **request.model_dump(exclude={"approved"}),
+            })
         except ValidationError as e:
             return AuthorizationResponse(
                 error="invalid_request",
                 error_description=self._format_validation_error(e),
             )
 
-        # Get client
-        try:
-            client = await self.client_service.get_active_client(request.client_id)
-        except (ClientNotFoundError, ClientInactiveError):
-            return AuthorizationResponse(
-                error="invalid_request",
-                error_description="Invalid client.",
-            )
+        client, redirect_uri, error = await self._validate_client_and_redirect(
+            auth_request
+        )
+        if error:
+            return error
+        assert client is not None
+        assert redirect_uri is not None
 
-        redirect_uri = request.redirect_uri
-        if not redirect_uri:
-            uris = client.get_redirect_uris()
-            if uris:
-                redirect_uri = uris[0]
+        error = self._validate_request_params(client, auth_request, redirect_uri)
+        if error:
+            return error
 
         # Handle denial
         if not request.approved:
@@ -432,8 +435,11 @@ class AuthorizationEndpoint[
                 "The user denied the authorization request.",
             )
 
-        # Create grant (may already exist due to race condition)
-        with contextlib.suppress(Exception):
+        try:
+            await self.grant_repository.get_one_by(
+                client_id=client.client_id, subject_id=subject.id
+            )
+        except DoesNotExist:
             await self.grant_repository.create(
                 client_id=client.client_id,
                 subject_id=subject.id,

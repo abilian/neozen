@@ -56,6 +56,7 @@ lint.extend-ignore = [
 "tests/**/*.py" = [
     "ANN", #  [ ] missing-return-type
     "PLC0415", # [ ] import-outside-top-level
+    "PLC2701", # [ ] import-private-name: white-box tests of internal helpers
     "B903", #    [ ] class-as-data-structure
     "E402", #    [ ] module-import-not-at-top-of-file
     "RUF100", #  [*] unused-noqa

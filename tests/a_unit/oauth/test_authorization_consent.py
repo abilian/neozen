@@ -1,0 +1,138 @@
+"""Consent submission must not trust the parameters echoed back by the form."""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+from datetime import datetime
+
+import pytest
+from pwdlib import PasswordHash
+
+from neozen.core.oauth.client_service import OAuthClientService
+from neozen.core.oauth.models import (
+    OAuthAuthorizationCodeModel,
+    OAuthClientModel,
+    OAuthGrantModel,
+)
+from neozen.web.oauth.authorization_endpoint import AuthorizationEndpoint
+from tests.conftest import MockStorage
+
+REGISTERED_URI = "https://app.example.com/callback"
+CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+
+
+@dataclasses.dataclass
+class Client(OAuthClientModel):
+    client_id: str
+    client_type: str = "confidential"
+    redirect_uris: str = json.dumps([REGISTERED_URI])
+    allowed_scopes: str = "openid profile"
+    allowed_grant_types: str = "authorization_code"
+    is_active: bool = True
+
+
+@dataclasses.dataclass
+class Grant(OAuthGrantModel):
+    client_id: str
+    subject_id: str
+    granted_at: datetime
+    scope: str
+
+
+@dataclasses.dataclass
+class AuthCode(OAuthAuthorizationCodeModel):
+    code: str
+    client_id: str
+    subject_id: str
+    expires_at: datetime
+    response_type: str
+    redirect_uri: str | None
+    scope: str
+    code_challenge: str
+    code_challenge_method: str
+
+
+@dataclasses.dataclass
+class User:
+    id: str = "alice"
+
+
+@pytest.fixture
+def codes() -> MockStorage[AuthCode]:
+    return MockStorage(AuthCode)
+
+
+def _endpoint(client: Client, codes: MockStorage[AuthCode]) -> AuthorizationEndpoint:
+    return AuthorizationEndpoint(
+        client_service=OAuthClientService(
+            MockStorage(Client, [client]), PasswordHash.recommended()
+        ),
+        grant_repository=MockStorage(Grant),
+        authorization_code_repository=codes,
+        code_hash_key="test-key",
+    )
+
+
+def _consent(**overrides: str) -> dict[str, str | bool]:
+    return {
+        "client_id": "app",
+        "redirect_uri": REGISTERED_URI,
+        "scope": "openid",
+        "state": "xyz",
+        "code_challenge": CHALLENGE,
+        "code_challenge_method": "S256",
+        "approved": True,
+        **overrides,
+    }
+
+
+@pytest.mark.anyio
+class TestHandleConsent:
+    async def test_valid_consent_issues_code(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        response = await _endpoint(Client("app"), codes).handle_consent(
+            _consent(), User()
+        )
+        assert response.error is None
+        assert response.code
+        assert response.redirect_uri == REGISTERED_URI
+
+    async def test_unregistered_redirect_uri_is_rejected(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        response = await _endpoint(Client("app"), codes).handle_consent(
+            _consent(redirect_uri="https://evil.example.com/steal"), User()
+        )
+        assert response.error == "invalid_request"
+        assert response.redirect_uri is None
+        assert await codes.count() == 0
+
+    async def test_denial_with_unregistered_redirect_uri_does_not_redirect(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        response = await _endpoint(Client("app"), codes).handle_consent(
+            _consent(redirect_uri="https://evil.example.com/", approved=False),
+            User(),
+        )
+        assert response.redirect_uri is None
+
+    async def test_scope_beyond_client_allowance_is_rejected(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        response = await _endpoint(Client("app"), codes).handle_consent(
+            _consent(scope="openid admin"), User()
+        )
+        assert response.error == "invalid_scope"
+        assert await codes.count() == 0
+
+    async def test_public_client_cannot_downgrade_to_plain(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        client = Client("app", client_type="public")
+        response = await _endpoint(client, codes).handle_consent(
+            _consent(code_challenge_method="plain"), User()
+        )
+        assert response.error == "invalid_request"
+        assert await codes.count() == 0
