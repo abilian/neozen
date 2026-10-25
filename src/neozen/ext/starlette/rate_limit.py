@@ -19,32 +19,15 @@ if typing.TYPE_CHECKING:
 
 
 def get_client_ip(request: Request) -> str:
-    """Get client IP address from Starlette request.
+    """Return the client IP address of a Starlette request.
 
-    Handles X-Forwarded-For header for reverse proxies.
-
-    Args:
-        request: Starlette Request object.
-
-    Returns:
-        Client IP address.
+    Forwarded headers (``X-Forwarded-For``, ``X-Real-IP``) are ignored:
+    any client can set them, which would let it pick a fresh address for
+    each request and dodge rate limits and lockout. Behind a reverse proxy,
+    let the server rewrite the peer address for trusted proxies only
+    (uvicorn ``--proxy-headers --forwarded-allow-ips``, Werkzeug ``ProxyFix``).
     """
-    # Check X-Forwarded-For header (common in reverse proxy setups)
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        # Take the first IP (client IP) from the comma-separated list
-        return forwarded_for.split(",")[0].strip()
-
-    # Check X-Real-IP header (nginx)
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip:
-        return real_ip.strip()
-
-    # Fall back to client host
-    if request.client:
-        return request.client.host
-
-    return "unknown"
+    return request.client.host if request.client else "unknown"
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

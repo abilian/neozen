@@ -13,6 +13,8 @@ from flask import Response, g, jsonify, request
 
 from neozen.core.security import RateLimiter, RateLimitResult
 
+from .extension import run_sync
+
 if typing.TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -20,25 +22,14 @@ if typing.TYPE_CHECKING:
 
 
 def get_client_ip() -> str:
-    """Get client IP address from Flask request.
+    """Return the client IP address of the current Flask request.
 
-    Handles X-Forwarded-For header for reverse proxies.
-
-    Returns:
-        Client IP address.
+    Forwarded headers (``X-Forwarded-For``, ``X-Real-IP``) are ignored:
+    any client can set them, which would let it pick a fresh address for
+    each request and dodge rate limits and lockout. Behind a reverse proxy,
+    let the server rewrite the peer address for trusted proxies only
+    (uvicorn ``--proxy-headers --forwarded-allow-ips``, Werkzeug ``ProxyFix``).
     """
-    # Check X-Forwarded-For header (common in reverse proxy setups)
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # Take the first IP (client IP) from the comma-separated list
-        return forwarded_for.split(",")[0].strip()
-
-    # Check X-Real-IP header (nginx)
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip.strip()
-
-    # Fall back to remote_addr
     return request.remote_addr or "unknown"
 
 
@@ -82,8 +73,6 @@ def rate_limit(
     def decorator(f: F) -> F:
         @wraps(f)
         def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
-            import asyncio  # noqa: PLC0415
-
             # Get client identifiers
             ip_address = get_client_ip()
             subject_id = get_subject_id() if get_subject_id else None
@@ -95,14 +84,7 @@ def rate_limit(
                 action=action,
             )
 
-            # Check rate limit (run async in sync context)
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            result = loop.run_until_complete(limiter.check(key, increment=True))
+            result = run_sync(limiter.check(key, increment=True))
 
             # Store result in g for access in view
             g.rate_limit_result = result
@@ -197,8 +179,6 @@ class FlaskRateLimitMiddleware:
 
     def _check_rate_limit(self) -> Response | None:
         """Check rate limit before request."""
-        import asyncio  # noqa: PLC0415
-
         # Check if path should be rate limited
         if self.paths and request.path not in self.paths:
             return None
@@ -209,14 +189,7 @@ class FlaskRateLimitMiddleware:
             action=self.action,
         )
 
-        # Run async check
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        result = loop.run_until_complete(self.limiter.check(key, increment=True))
+        result = run_sync(self.limiter.check(key, increment=True))
 
         g.rate_limit_result = result
 

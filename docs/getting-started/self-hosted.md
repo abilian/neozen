@@ -113,6 +113,8 @@ For production:
 Terminate TLS at an external reverse proxy (nginx, traefik, ingress
 controller). NeoZen does not handle TLS itself.
 
+Set `FORWARDED_ALLOW_IPS` to the proxy's address (uvicorn reads it from the environment). NeoZen keys rate limits and account lockout on the client address, and only trusts `X-Forwarded-For` from those IPs; without it, every client shares the proxy's address.
+
 ### Real secret key
 
 Generate a real secret key — not `change-me-in-production`:

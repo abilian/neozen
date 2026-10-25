@@ -72,6 +72,7 @@ For production use:
 
 - **TLS** — terminate TLS at an external reverse proxy (nginx, traefik,
   ingress controller). NeoZen does not handle TLS itself.
+- **Proxy address** — set `FORWARDED_ALLOW_IPS` to the reverse proxy's address so uvicorn trusts its `X-Forwarded-For`. Rate limits and lockout are keyed on the client address; without this, every client shares the proxy's.
 - **External Postgres** — point `NEOZEN_DATABASE_URL` at a managed
   Postgres instance and remove the `postgres` service from compose.
 - **Secrets** — use `NEOZEN_SECRET_KEY_FILE` and similar `_FILE` variants

@@ -21,35 +21,16 @@ if typing.TYPE_CHECKING:
 
 
 def get_client_ip(scope: Scope) -> str:
-    """Get client IP address from ASGI scope.
+    """Return the client IP address from an ASGI scope.
 
-    Handles X-Forwarded-For header for reverse proxies.
-
-    Args:
-        scope: ASGI scope.
-
-    Returns:
-        Client IP address.
+    Forwarded headers (``X-Forwarded-For``, ``X-Real-IP``) are ignored:
+    any client can set them, which would let it pick a fresh address for
+    each request and dodge rate limits and lockout. Behind a reverse proxy,
+    let the server rewrite the peer address for trusted proxies only
+    (uvicorn ``--proxy-headers --forwarded-allow-ips``, Werkzeug ``ProxyFix``).
     """
-    headers = dict(scope.get("headers", []))
-
-    # Check X-Forwarded-For header (common in reverse proxy setups)
-    forwarded_for = headers.get(b"x-forwarded-for")
-    if forwarded_for:
-        # Take the first IP (client IP) from the comma-separated list
-        return forwarded_for.decode("utf-8").split(",")[0].strip()
-
-    # Check X-Real-IP header (nginx)
-    real_ip = headers.get(b"x-real-ip")
-    if real_ip:
-        return real_ip.decode("utf-8").strip()
-
-    # Fall back to client host
     client = scope.get("client")
-    if client:
-        return client[0]
-
-    return "unknown"
+    return client[0] if client else "unknown"
 
 
 class RateLimitMiddleware:
