@@ -35,6 +35,7 @@ class MockOAuthAuthorizationCode(OAuthAuthorizationCodeModel):
     scope: str
     code_challenge: str | None
     code_challenge_method: CodeChallengeMethod | None
+    nonce: str | None = None
 
 
 @dataclasses.dataclass

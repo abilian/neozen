@@ -128,6 +128,7 @@ class OAuthAuthorizationCode(Base):
     code_challenge_method: Mapped[CodeChallengeMethod | None] = mapped_column(
         String(128), nullable=True
     )
+    nonce: Mapped[str | None] = mapped_column(Text(), nullable=True)
 
 
 class OAuthAccessToken(Base):

@@ -51,6 +51,7 @@ class AuthCode(OAuthAuthorizationCodeModel):
     scope: str
     code_challenge: str | None
     code_challenge_method: str | None
+    nonce: str | None = None
 
 
 @dataclasses.dataclass
@@ -196,3 +197,11 @@ async def test_defaulted_redirect_uri_is_not_recorded(
     assert response.redirect_uri == REGISTERED_URI
     [code] = await codes.get_many_by()
     assert code.redirect_uri is None
+
+
+@pytest.mark.anyio
+async def test_nonce_is_recorded_on_the_code(codes: MockStorage[AuthCode]) -> None:
+    payload = _consent(nonce="n-0S6_WzA2Mj")
+    await _endpoint(Client("app"), codes).handle_consent(payload, User())
+    [code] = await codes.get_many_by()
+    assert code.nonce == "n-0S6_WzA2Mj"

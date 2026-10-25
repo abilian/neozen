@@ -261,6 +261,7 @@ class TokenEndpoint[
             subject_id=auth_code.subject_id,
             client_id=client.client_id,
             scope=token_pair.scope,
+            nonce=auth_code.nonce,
         )
 
         return TokenResponse(
@@ -409,6 +410,7 @@ class TokenEndpoint[
         subject_id: typing.Any,
         client_id: str,
         scope: str | None,
+        nonce: str | None = None,
     ) -> str | None:
         """Generate an ID token if openid scope is present and OIDC is configured.
 
@@ -440,6 +442,7 @@ class TokenEndpoint[
             client_id=client_id,
             scopes=scopes,
             claims=claims_dict,
+            nonce=nonce,
         )
 
     def _parse_authorization_code_request(

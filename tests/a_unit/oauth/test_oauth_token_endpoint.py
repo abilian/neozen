@@ -5,6 +5,7 @@ from __future__ import annotations
 import typing
 from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
 from pwdlib import PasswordHash
 
@@ -596,6 +597,38 @@ class TestIDTokenIntegration:
         assert response.id_token is not None
         # JWT structure
         assert response.id_token.count(".") == 2
+
+    async def test_id_token_carries_the_authorization_nonce(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+        token_service: OAuthTokenService,
+    ) -> None:
+        """OIDC Core §3.1.3.7: the relying party checks the nonce it sent."""
+        endpoint = await self._build_endpoint_with_oidc(token_service)
+        await client_storage.create(client_id="client_1")
+        await auth_code_storage.create(
+            code="oidc_code",
+            client_id="client_1",
+            subject_id="user_1",
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            response_type="code",
+            redirect_uri=None,
+            scope="openid",
+            code_challenge=None,
+            code_challenge_method=None,
+            nonce="n-0S6_WzA2Mj",
+        )
+
+        response = await endpoint({
+            "grant_type": "authorization_code",
+            "code": "oidc_code",
+            "client_id": "client_1",
+        })
+
+        assert response.id_token
+        claims = jwt.decode(response.id_token, options={"verify_signature": False})
+        assert claims["nonce"] == "n-0S6_WzA2Mj"
 
     async def test_no_id_token_without_openid_scope(
         self,

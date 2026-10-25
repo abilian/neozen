@@ -49,6 +49,7 @@ class AuthorizationRequest(BaseModel):
         typing.Annotated[str, Field(pattern=r"^[A-Za-z0-9\-\._~]{43,128}$")] | None
     ) = None
     code_challenge_method: CodeChallengeMethod = "S256"
+    nonce: str | None = None  # OIDC Core §3.1.2.1
 
     @model_validator(mode="before")
     @classmethod
@@ -128,6 +129,7 @@ class ConsentData:
     state: str | None
     code_challenge: str | None
     code_challenge_method: CodeChallengeMethod | None
+    nonce: str | None = None
 
 
 # =============================================================================
@@ -255,6 +257,7 @@ class AuthorizationEndpoint[
             state=request.state,
             code_challenge=request.code_challenge,
             code_challenge_method=_challenge_method(request),
+            nonce=request.nonce,
         )
 
         # Check if subject is authenticated
@@ -502,6 +505,7 @@ class AuthorizationEndpoint[
             scope=request.scope or "",
             code_challenge=request.code_challenge,
             code_challenge_method=_challenge_method(request),
+            nonce=request.nonce,
         )
 
         return AuthorizationResponse(

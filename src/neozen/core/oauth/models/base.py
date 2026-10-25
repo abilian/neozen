@@ -96,6 +96,7 @@ class OAuthAuthorizationCodeModel(NeoZenModel):
     scope: str
     code_challenge: str | None
     code_challenge_method: CodeChallengeMethod | None
+    nonce: str | None  # OIDC: echoed in the ID token
 
 
 class OAuthAccessTokenModel(NeoZenModel):
