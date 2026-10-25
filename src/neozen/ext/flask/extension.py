@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import threading
 import typing
+import weakref
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -31,6 +32,8 @@ def run_sync[T](coro: typing.Coroutine[typing.Any, typing.Any, T]) -> T:
     loop = getattr(_thread_state, "loop", None)
     if loop is None:
         loop = _thread_state.loop = asyncio.new_event_loop()
+        # Servers that start a thread per request would leak a loop each.
+        weakref.finalize(threading.current_thread(), loop.close)
     return loop.run_until_complete(coro)
 
 

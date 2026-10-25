@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import threading
 
 from flask import Flask, jsonify
@@ -213,8 +214,10 @@ def test_run_sync_is_safe_across_threads() -> None:
 
     both_running = threading.Barrier(2, timeout=5)
     errors: list[BaseException] = []
+    loops: list[asyncio.AbstractEventLoop] = []
 
     async def work() -> int:
+        loops.append(asyncio.get_running_loop())
         await asyncio.to_thread(both_running.wait)
         return 1
 
@@ -231,3 +234,8 @@ def test_run_sync_is_safe_across_threads() -> None:
         t.join()
 
     assert errors == []
+    assert loops[0] is not loops[1]
+    # A finished thread's loop is closed, not leaked.
+    del threads, t
+    gc.collect()
+    assert all(loop.is_closed() for loop in loops)
