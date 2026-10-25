@@ -264,14 +264,14 @@ class AdminService:
         self,
         *,
         offset: int = 0,
-        limit: int = 50,
+        limit: int | None = 50,
         search: str | None = None,
     ) -> list[Subject]:
         """List subjects with pagination and optional search.
 
         Args:
             offset: Number of records to skip
-            limit: Maximum number of records to return
+            limit: Maximum number of records to return (None for all)
             search: Optional search term (matches email)
 
         Returns:

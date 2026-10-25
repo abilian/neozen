@@ -152,6 +152,16 @@ class TestExport:
         assert "alice" in csv_text
         assert "bob" in csv_text
 
+    async def test_export_includes_every_subject(
+        self, admin_service: AdminService
+    ) -> None:
+        # More than the admin list page size (50).
+        for i in range(60):
+            await admin_service.create_subject(email=f"user{i}@example.com")
+
+        csv_text = await export_subjects_to_csv(admin_service)
+        assert len(csv_text.strip().splitlines()) == 1 + 60
+
     async def test_export_round_trip(self, admin_service: AdminService) -> None:
         """Export → import on a fresh service should produce the same users."""
         for i in range(3):

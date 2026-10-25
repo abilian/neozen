@@ -51,13 +51,11 @@ class NeoZenRepository[Model: ModelProtocol](SQLAlchemyAsyncRepository[Model]):
         limit: int | None = None,
         **filters: typing.Any,
     ) -> list[Model]:
-        """Get multiple models by filters with pagination support."""
-        # Use LimitOffset filter for pagination
-        # Convert limit=None to a large number (Advanced-Alchemy requires int)
-        effective_limit = limit if limit is not None else 10000
-        pagination = LimitOffset(limit=effective_limit, offset=offset)
-        results = await self.list(pagination, **filters)
-        return list(results)
+        """Get multiple models by filters; ``limit=None`` returns every match."""
+        if limit is None:
+            return list(await self.list(**filters))[offset:]
+        pagination = LimitOffset(limit=limit, offset=offset)
+        return list(await self.list(pagination, **filters))
 
     async def count(self, **filters: typing.Any) -> int:  # type: ignore[override]  # ty: ignore[invalid-method-override]
         """Count models matching the given filters."""

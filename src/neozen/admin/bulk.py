@@ -189,7 +189,7 @@ async def export_subjects_to_csv(
     writer = csv.DictWriter(buffer, fieldnames=list(EXPORT_COLUMNS))
     writer.writeheader()
 
-    subjects = await service.list_subjects()
+    subjects = await service.list_subjects(limit=None)
     for subject in subjects:
         writer.writerow({
             "id": subject.id,
