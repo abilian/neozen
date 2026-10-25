@@ -44,12 +44,9 @@ full release checklist.
 
 #### Protocol servers
 
-- **OAuth 2.1 server**: authorization code (PKCE required),
-  refresh token, client credentials, introspection (RFC 7662),
-  revocation (RFC 7009)
-- **OpenID Connect 1.0 Provider**: discovery, JWKS, ID tokens,
-  UserInfo, consent management, RP-initiated logout, dynamic
-  client registration (RFC 7591), CORS helpers
+- **OAuth 2.1 server**: authorization code (PKCE required for public clients, optional for confidential ones), refresh token with rotation and replay detection, client credentials, introspection (RFC 7662), revocation (RFC 7009), opaque or RFC 9068 JWT access tokens (RS256/ES256), configured from `[oauth_server]` via `NeoZenFactory`
+- **OpenID Connect 1.0 Provider**: discovery, JWKS (mounted by each adapter's `create_oidc_*`), ID tokens with `nonce`, UserInfo, consent management, RP-initiated logout, dynamic client registration (RFC 7591), CORS helpers
+- **dishka providers** for SQLAlchemy storage and the identifiers
 - **SCIM 2.0 server**: User and Group resources, recursive-descent
   filter parser (eq/ne/co/sw/ew/gt/ge/lt/le/pr + and/or/not),
   pagination, discovery endpoints

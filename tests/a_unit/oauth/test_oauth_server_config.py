@@ -51,16 +51,17 @@ def _config(oauth_server: OAuthServerConfig) -> NeoZenConfig:
     )
 
 
-def _token_service(
-    oauth_server: OAuthServerConfig, key_manager: KeyManager | None = None
-) -> TokenService:
-    return NeoZenFactory(_config(oauth_server)).create_oauth_token_service(
+def _token_service(factory: NeoZenFactory) -> TokenService:
+    return factory.create_oauth_token_service(
         MockStorage(MockOAuthClient),
         MockStorage(MockOAuthAuthorizationCode),
         MockStorage(MockOAuthAccessToken),
         MockStorage(MockOAuthRefreshToken),
-        key_manager=key_manager,
     )
+
+
+def _factory(oauth_server: OAuthServerConfig) -> NeoZenFactory:
+    return NeoZenFactory(_config(oauth_server))
 
 
 async def _public_pem(key_manager: KeyManager) -> bytes:
@@ -74,11 +75,13 @@ async def _public_pem(key_manager: KeyManager) -> bytes:
 class TestFactory:
     def test_token_service_uses_configured_lifetimes(self) -> None:
         service = _token_service(
-            OAuthServerConfig(
-                enabled=True,
-                access_token_lifetime=timedelta(minutes=5),
-                refresh_token_lifetime=timedelta(days=2),
-                allow_refresh_token_rotation=False,
+            _factory(
+                OAuthServerConfig(
+                    enabled=True,
+                    access_token_lifetime=timedelta(minutes=5),
+                    refresh_token_lifetime=timedelta(days=2),
+                    allow_refresh_token_rotation=False,
+                )
             )
         )
         assert service.access_token_lifetime == timedelta(minutes=5)
@@ -107,30 +110,44 @@ class TestFactory:
 
     def test_disabled_oauth_server_is_refused(self) -> None:
         with pytest.raises(ConfigError):
-            _token_service(OAuthServerConfig(enabled=False))
+            _token_service(_factory(OAuthServerConfig(enabled=False)))
 
-    def test_jwt_issuer_needs_key_manager(self) -> None:
-        with pytest.raises(ConfigError):
-            _token_service(
-                OAuthServerConfig(
-                    enabled=True, jwt_issuer="https://auth.test", jwt_audience="api"
-                )
-            )
-
-    def test_key_manager_uses_configured_algorithm(self) -> None:
-        factory = NeoZenFactory(
-            _config(OAuthServerConfig(enabled=True, jwt_algorithm="ES256"))
+    def test_jwt_access_tokens_need_an_issuer(self) -> None:
+        factory = _factory(
+            OAuthServerConfig(enabled=True, jwt_access_tokens=True, jwt_audience="api")
         )
-        assert factory.create_key_manager().algorithm == "ES256"
+        with pytest.raises(ConfigError):
+            _token_service(factory)
+
+    @pytest.mark.anyio
+    async def test_one_key_manager_signs_everything(self) -> None:
+        factory = _factory(
+            OAuthServerConfig(
+                enabled=True, issuer="https://auth.test", jwt_algorithm="ES256"
+            )
+        )
+        key_manager = factory.key_manager
+        assert factory.key_manager is key_manager
+        assert factory.create_id_token_generator().key_manager is key_manager
+        assert (await key_manager.get_active_signing_key()).alg == "ES256"
+
+    def test_discovery_uses_the_issuer_and_algorithm(self) -> None:
+        factory = _factory(
+            OAuthServerConfig(
+                enabled=True, issuer="https://auth.test", jwt_algorithm="ES256"
+            )
+        )
+        metadata = factory.create_discovery_metadata("https://auth.test")
+        assert metadata.issuer == "https://auth.test"
+        assert metadata.id_token_signing_alg_values_supported == ["ES256"]
 
 
 class TestValidation:
-    def test_jwt_issuer_needs_audience(self) -> None:
-        config = _config(
-            OAuthServerConfig(enabled=True, jwt_issuer="https://auth.test")
-        )
-        with pytest.raises(ConfigValidationError, match="jwt_audience"):
+    def test_jwt_access_tokens_need_issuer_and_audience(self) -> None:
+        config = _config(OAuthServerConfig(enabled=True, jwt_access_tokens=True))
+        with pytest.raises(ConfigValidationError, match="issuer") as exc_info:
             validate_config(config)
+        assert "jwt_audience" in str(exc_info.value)
 
     def test_unsupported_algorithm_from_toml_is_rejected(self, tmp_path: Path) -> None:
         path = tmp_path / "neozen.toml"
@@ -148,14 +165,17 @@ class TestJWTAccessTokens:
     async def test_access_token_is_a_signed_jwt(
         self, algorithm: SigningAlgorithm
     ) -> None:
-        oauth_server = OAuthServerConfig(
-            enabled=True,
-            jwt_issuer="https://auth.test",
-            jwt_audience="https://api.test",
-            jwt_algorithm=algorithm,
+        factory = _factory(
+            OAuthServerConfig(
+                enabled=True,
+                issuer="https://auth.test",
+                jwt_access_tokens=True,
+                jwt_audience="https://api.test",
+                jwt_algorithm=algorithm,
+            )
         )
-        key_manager = NeoZenFactory(_config(oauth_server)).create_key_manager()
-        service = _token_service(oauth_server, key_manager)
+        key_manager = factory.key_manager
+        service = _token_service(factory)
         client = MockOAuthClient(client_id="app")
 
         result = await service.issue_client_credentials_token(client, "read")

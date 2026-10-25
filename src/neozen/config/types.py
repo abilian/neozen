@@ -109,8 +109,10 @@ class OAuthConfig:
 class OAuthServerConfig:
     """OAuth authorization server configuration.
 
-    Access tokens are opaque unless `jwt_issuer` is set; then they are
-    RFC 9068 JWTs signed with `jwt_algorithm` for `jwt_audience`.
+    `issuer` identifies the server: it is the `iss` of ID tokens and JWT
+    access tokens, and the issuer in the discovery document. Access tokens
+    are opaque unless `jwt_access_tokens` is set; then they are RFC 9068
+    JWTs signed with `jwt_algorithm` for `jwt_audience`.
     `require_pkce = false` lets confidential clients skip PKCE; public
     clients always need it.
     """
@@ -125,8 +127,9 @@ class OAuthServerConfig:
     )
     require_pkce: bool = True
     allow_refresh_token_rotation: bool = True
+    issuer: str | None = None
+    jwt_access_tokens: bool = False
     jwt_algorithm: SigningAlgorithm = "RS256"
-    jwt_issuer: str | None = None
     jwt_audience: str | None = None
 
 

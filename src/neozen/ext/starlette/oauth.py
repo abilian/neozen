@@ -47,6 +47,7 @@ from neozen.web.oauth import (
     token_error_headers,
     token_error_status,
 )
+from neozen.web.oidc import DiscoveryEndpoint, JWKSEndpoint
 
 
 def _get_client_credentials(
@@ -271,7 +272,27 @@ def create_oauth_routes[
     return routes
 
 
+def create_oidc_routes(discovery: DiscoveryEndpoint, jwks: JWKSEndpoint) -> list[Route]:
+    """Serve the OIDC discovery document and the JWKS under ``/.well-known``.
+
+    Resource servers verify ID tokens and JWT access tokens against the
+    JWKS, so mount this wherever the token endpoint is mounted.
+    """
+
+    async def discovery_handler(request: Request) -> Response:
+        return JSONResponse(await discovery())
+
+    async def jwks_handler(request: Request) -> Response:
+        return JSONResponse(await jwks())
+
+    return [
+        Route("/.well-known/openid-configuration", discovery_handler, methods=["GET"]),
+        Route("/.well-known/jwks.json", jwks_handler, methods=["GET"]),
+    ]
+
+
 __all__ = [
     "create_oauth_routes",
+    "create_oidc_routes",
     "parse_basic_auth",
 ]

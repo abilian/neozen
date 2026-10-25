@@ -55,6 +55,8 @@ userinfo = UserInfoEndpoint(
 )
 ```
 
+Each adapter can mount discovery and JWKS for you: `create_oidc_router` (Litestar), `create_oidc_routes` (Starlette) and `create_oidc_blueprint` (Flask), from `neozen.ext.<framework>.oauth`. With a config file, `NeoZenFactory` builds the ID token generator and the discovery metadata from `[oauth_server]` (see the [configuration reference](../reference/configuration.md#oauth-server)), so the issuer and signing keys are the same everywhere.
+
 ## Endpoints
 
 | Endpoint | Path | Returns |

@@ -51,6 +51,7 @@ from neozen.web.oauth import (
     token_error_headers,
     token_error_status,
 )
+from neozen.web.oidc import DiscoveryEndpoint, JWKSEndpoint
 
 # Flask route return type - includes all valid Flask return types
 ResponseValue = (
@@ -266,7 +267,29 @@ def create_oauth_blueprint[
     return bp
 
 
+def create_oidc_blueprint(
+    discovery: DiscoveryEndpoint, jwks: JWKSEndpoint
+) -> Blueprint:
+    """Serve the OIDC discovery document and the JWKS under ``/.well-known``.
+
+    Resource servers verify ID tokens and JWT access tokens against the
+    JWKS, so mount this wherever the token endpoint is mounted.
+    """
+    bp = Blueprint("oidc", __name__, url_prefix="/.well-known")
+
+    @bp.get("/openid-configuration")
+    async def openid_configuration() -> ResponseValue:
+        return jsonify(await discovery())
+
+    @bp.get("/jwks.json")
+    async def jwks_json() -> ResponseValue:
+        return jsonify(await jwks())
+
+    return bp
+
+
 __all__ = [
     "create_oauth_blueprint",
+    "create_oidc_blueprint",
     "parse_basic_auth",
 ]

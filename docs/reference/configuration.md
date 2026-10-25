@@ -85,42 +85,52 @@ Password policy is enforced at the application level. NeoZen provides
 
 ## OAuth Server
 
-The `[oauth_server]` section of `neozen.toml`. `NeoZenFactory` turns it into configured services: `create_oauth_token_service(...)`, `create_authorization_endpoint(...)` and `create_key_manager()`. They raise `ConfigError` unless `enabled = true`. Token and code hashes are keyed with `security.secret_key`.
+The `[oauth_server]` section of `neozen.toml`. `NeoZenFactory` turns it into configured services: `create_oauth_token_service(...)`, `create_authorization_endpoint(...)`, `create_id_token_generator()` and `create_discovery_metadata(base_url)`. They raise `ConfigError` unless `enabled = true`. Token and code hashes are keyed with `security.secret_key`.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `enabled` | false | Allow the factory to build OAuth services |
+| `issuer` | unset | The server's identifier: `iss` of ID tokens and JWT access tokens, and the discovery issuer |
 | `access_token_lifetime` | `1h` | Access token validity |
 | `refresh_token_lifetime` | `30d` | Refresh token validity |
 | `authorization_code_lifetime` | `10m` | Authorization code validity |
 | `require_pkce` | true | When false, confidential clients may skip PKCE. Public clients always need S256 |
-| `allow_refresh_token_rotation` | true | Issue a new refresh token on each refresh and revoke the old one |
-| `jwt_issuer` | unset | When set, access tokens are RFC 9068 JWTs (`typ: at+jwt`) with this `iss`; otherwise they are opaque |
-| `jwt_audience` | unset | `aud` claim of JWT access tokens; required when `jwt_issuer` is set |
-| `jwt_algorithm` | `RS256` | Signing algorithm: `RS256` or `ES256` |
+| `allow_refresh_token_rotation` | true | Issue a new refresh token on each refresh and revoke the old one. Public clients always rotate |
+| `jwt_access_tokens` | false | Issue RFC 9068 JWT access tokens (`typ: at+jwt`) instead of opaque ones; needs `issuer` and `jwt_audience` |
+| `jwt_audience` | unset | `aud` claim of JWT access tokens |
+| `jwt_algorithm` | `RS256` | Signing algorithm for ID tokens and JWT access tokens: `RS256` or `ES256` |
 
-JWT access tokens are signed with the active key of the `KeyManager` passed to `create_oauth_token_service`, so resource servers can verify them against the JWKS. They are still stored hashed, so introspection and revocation work as for opaque tokens. `create_key_manager()` returns an in-memory key manager for development; keys are lost on restart, so pass a persistent `KeyManager` in production.
+One key manager signs ID tokens and JWT access tokens and backs the JWKS: the factory's `key_manager`. Pass a persistent `KeyManager` (signing with `jwt_algorithm`) to `NeoZenFactory(config, key_manager=...)` in production; the default in-memory one loses its keys on restart. JWT access tokens are still stored hashed, so introspection and revocation work as for opaque tokens.
 
 ```toml
 [oauth_server]
 enabled = true
+issuer = "https://auth.example.com"
 access_token_lifetime = "15m"
-jwt_issuer = "https://auth.example.com"
+jwt_access_tokens = true
 jwt_audience = "https://api.example.com"
 jwt_algorithm = "ES256"
 ```
 
 ```python
-factory = NeoZenFactory(load_config())
-key_manager = factory.create_key_manager()
+from neozen.ext.litestar.oauth import create_oauth_router, create_oidc_router
+from neozen.web.oidc import DiscoveryEndpoint, JWKSEndpoint
+
+factory = NeoZenFactory(load_config(), key_manager=my_persistent_key_manager)
 token_service = factory.create_oauth_token_service(
-    client_repo, code_repo, access_token_repo, refresh_token_repo,
-    key_manager=key_manager,
+    client_repo, code_repo, access_token_repo, refresh_token_repo
 )
 authorization_endpoint = factory.create_authorization_endpoint(
     client_service, grant_repo, code_repo
 )
+# Discovery and JWKS under /.well-known, so resource servers can verify tokens
+oidc_router = create_oidc_router(
+    DiscoveryEndpoint(factory.create_discovery_metadata("https://auth.example.com")),
+    JWKSEndpoint(factory.key_manager),
+)
 ```
+
+Starlette and Flask have the same pair: `create_oauth_routes` / `create_oidc_routes` and `create_oauth_blueprint` / `create_oidc_blueprint`.
 
 ## Token Prefixes
 

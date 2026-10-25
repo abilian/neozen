@@ -392,7 +392,8 @@ def _build_config(data: dict[str, Any]) -> NeoZenConfig:  # noqa: C901
                 "allow_refresh_token_rotation", default_os.allow_refresh_token_rotation
             ),
             jwt_algorithm=os_data.get("jwt_algorithm", default_os.jwt_algorithm),
-            jwt_issuer=os_data.get("jwt_issuer"),
+            issuer=os_data.get("issuer"),
+            jwt_access_tokens=os_data.get("jwt_access_tokens", False),
             jwt_audience=os_data.get("jwt_audience"),
         )
 

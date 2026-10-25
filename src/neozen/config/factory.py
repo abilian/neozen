@@ -25,7 +25,9 @@ if TYPE_CHECKING:
         OAuthRefreshTokenModel,
     )
     from neozen.core.oauth.services import OAuthTokenService
-    from neozen.core.oidc.keys import InMemoryKeyManager, KeyManager
+    from neozen.core.oidc.discovery import OIDCProviderMetadata
+    from neozen.core.oidc.id_token import IDTokenGenerator
+    from neozen.core.oidc.keys import KeyManager
     from neozen.core.repository import RepositoryProtocol
     from neozen.web.oauth.authorization_endpoint import AuthorizationEndpoint
 
@@ -47,16 +49,23 @@ class NeoZenFactory:
 
     """
 
-    def __init__(self, config: NeoZenConfig) -> None:
+    def __init__(
+        self, config: NeoZenConfig, *, key_manager: KeyManager | None = None
+    ) -> None:
         """Initialize the factory.
 
         Args:
             config: The NeoZen configuration.
+            key_manager: Signing keys for ID tokens and JWT access tokens. It
+                must sign with `oauth_server.jwt_algorithm`. Defaults to an
+                in-memory manager, whose keys are lost on restart: pass a
+                persistent one in production.
 
         """
         self.config = config
         self._engine: AsyncEngine | None = None
         self._session_factory: async_sessionmaker | None = None
+        self._key_manager = key_manager
 
     def create_engine(self) -> AsyncEngine:
         """Create SQLAlchemy async engine.
@@ -154,15 +163,21 @@ class NeoZenFactory:
             raise ConfigError(msg)
         return cfg
 
-    def create_key_manager(self) -> InMemoryKeyManager:
-        """Create an in-memory signing key manager for `oauth_server.jwt_algorithm`.
+    @property
+    def key_manager(self) -> KeyManager:
+        """The one key manager behind ID tokens, JWT access tokens and the JWKS."""
+        if self._key_manager is None:
+            from neozen.core.oidc.keys import InMemoryKeyManager  # noqa: PLC0415
 
-        Keys are lost on restart: use it for development, and pass a
-        persistent `KeyManager` to `create_oauth_token_service` in production.
-        """
-        from neozen.core.oidc.keys import InMemoryKeyManager  # noqa: PLC0415
+            self._key_manager = InMemoryKeyManager(self._oauth_server().jwt_algorithm)
+        return self._key_manager
 
-        return InMemoryKeyManager(self._oauth_server().jwt_algorithm)
+    def _issuer(self) -> str:
+        issuer = self._oauth_server().issuer
+        if not issuer:
+            msg = "oauth_server.issuer is not set"
+            raise ConfigError(msg)
+        return issuer
 
     def create_oauth_token_service[
         OC: OAuthClientModel,
@@ -175,13 +190,11 @@ class NeoZenFactory:
         authorization_code_repository: RepositoryProtocol[OAC],
         access_token_repository: RepositoryProtocol[OAT],
         refresh_token_repository: RepositoryProtocol[ORT],
-        *,
-        key_manager: KeyManager | None = None,
     ) -> OAuthTokenService[OC, OAC, OAT, ORT]:
         """Create the token service with the configured lifetimes and rotation.
 
-        When `oauth_server.jwt_issuer` is set, access tokens are JWTs signed
-        by `key_manager`, which is then required.
+        With `oauth_server.jwt_access_tokens`, access tokens are JWTs signed
+        by `key_manager`.
         """
         from neozen.core.oauth.jwt_access_token import (  # noqa: PLC0415
             JWTAccessTokenSigner,
@@ -190,13 +203,13 @@ class NeoZenFactory:
 
         cfg = self._oauth_server()
         signer = None
-        if cfg.jwt_issuer:
-            if key_manager is None or not cfg.jwt_audience:
-                msg = "JWT access tokens need a key_manager and jwt_audience"
+        if cfg.jwt_access_tokens:
+            if not cfg.jwt_audience:
+                msg = "JWT access tokens need oauth_server.jwt_audience"
                 raise ConfigError(msg)
             signer = JWTAccessTokenSigner(
-                key_manager=key_manager,
-                issuer=cfg.jwt_issuer,
+                key_manager=self.key_manager,
+                issuer=self._issuer(),
                 audience=cfg.jwt_audience,
             )
         return OAuthTokenService(
@@ -234,6 +247,24 @@ class NeoZenFactory:
             code_hash_key=self.config.security.secret_key,
             code_lifetime=cfg.authorization_code_lifetime,
             require_pkce=cfg.require_pkce,
+        )
+
+    def create_id_token_generator(self) -> IDTokenGenerator:
+        """Create the OIDC ID token generator (issuer and keys from the config)."""
+        from neozen.core.oidc.id_token import IDTokenGenerator  # noqa: PLC0415
+
+        return IDTokenGenerator(key_manager=self.key_manager, issuer=self._issuer())
+
+    def create_discovery_metadata(self, base_url: str) -> OIDCProviderMetadata:
+        """Create the discovery document for a server reachable at `base_url`."""
+        from neozen.core.oidc.discovery import (  # noqa: PLC0415
+            build_metadata_from_base_url,
+        )
+
+        return build_metadata_from_base_url(
+            issuer=self._issuer(),
+            base_url=base_url,
+            signing_algorithm=self._oauth_server().jwt_algorithm,
         )
 
     def get_session_lifetime_seconds(self) -> int:
