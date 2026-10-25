@@ -29,7 +29,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from neozen.core.authz.models import ScopeType
-from neozen.core.session.service import SessionService
+from neozen.core.session.service import SessionError, SessionService
 from neozen.storage.base import DoesNotExist
 from neozen.storage.sqlalchemy.models import RoleAssignment, Session, Subject
 from neozen.storage.sqlalchemy.repositories import (
@@ -115,7 +115,7 @@ class SessionServiceFactory:
                 if update_activity:
                     await db_session.commit()
                 return session
-            except Exception:
+            except SessionError:
                 return None
 
     async def revoke_session_by_token(self, token: str) -> None:

@@ -50,6 +50,14 @@ class MockFactor:
         return True
 
 
+class BrokenFactor(MockFactor):
+    """Factor whose storage is unavailable."""
+
+    async def is_enrolled(self, subject_id: str) -> bool:
+        msg = "storage down"
+        raise ConnectionError(msg)
+
+
 class MockAuthenticatingFactor(MockFactor):
     """Mock factor that supports authentication."""
 
@@ -246,6 +254,19 @@ class TestFactorRegistry:
 @pytest.mark.anyio
 class TestFactorRegistryAsync:
     """Async tests for FactorRegistry."""
+
+    async def test_enrollment_errors_propagate(self) -> None:
+        # A storage failure must not look like "not enrolled", or a second
+        # factor could be skipped.
+        registry = FactorRegistry()
+        registry.register(BrokenFactor("totp"))
+
+        with pytest.raises(ConnectionError):
+            await registry.list_enrolled("user1")
+        with pytest.raises(ConnectionError):
+            await registry.get_enrolled_factors("user1")
+        with pytest.raises(ConnectionError):
+            await registry.list_available("user1")
 
     async def test_list_enrolled(self) -> None:
         registry = FactorRegistry()

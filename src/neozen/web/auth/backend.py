@@ -10,6 +10,8 @@ import typing
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
+from neozen.core.session import SessionError
+
 if typing.TYPE_CHECKING:
     from neozen.core.session import SessionService
     from neozen.core.session.models import SessionModel
@@ -61,7 +63,7 @@ class AuthBackendBase:
         """
         try:
             return await self.session_service.validate_session(token)
-        except Exception:
+        except SessionError:
             return None
 
     async def get_subject(self, subject_id: str) -> Subject | None:
@@ -104,7 +106,7 @@ class AuthBackendBase:
         Args:
             token: The session token to revoke.
         """
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(SessionError):
             await self.session_service.revoke_session_by_token(token)
 
     def _get_cookie_kwargs(self) -> dict[str, typing.Any]:

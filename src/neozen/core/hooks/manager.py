@@ -22,8 +22,7 @@ def _apply_pre_hook_result(
     """Fold a pre-hook handler's result into the context.
 
     Returns True if the chain should stop (handler cancelled the operation);
-    False otherwise. Splitting this out keeps the per-handler ``try`` in
-    ``execute_pre_hook`` narrow.
+    False otherwise.
     """
     if result is None:
         return False
@@ -131,7 +130,9 @@ class HookManager:
 
         Pre-hooks can modify the context or cancel the operation.
         Handlers are executed in priority order until one cancels
-        or all have been executed.
+        or all have been executed. A handler that raises stops the chain
+        and the exception propagates: a crashing policy hook must not
+        let the operation through.
 
         Args:
             hook_point: The hook point to execute.
@@ -142,17 +143,8 @@ class HookManager:
         """
         handlers = self._hooks.get(hook_point, [])
 
-        for priority, handler in handlers:
-            try:
-                result = await handler(context)
-            except Exception:
-                logger.exception(
-                    "Error in pre-hook handler for %s (priority %d)",
-                    hook_point,
-                    priority,
-                )
-                # Continue with other handlers
-                continue
+        for _priority, handler in handlers:
+            result = await handler(context)
             if _apply_pre_hook_result(context, hook_point, result):
                 break
 

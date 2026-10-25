@@ -199,7 +199,7 @@ class TestHookManager:
 
         assert executed == ["handler1", "handler2"]
 
-    async def test_handler_exception_continues(self) -> None:
+    async def test_pre_hook_exception_stops_the_operation(self) -> None:
         manager = HookManager()
         executed = []
 
@@ -215,7 +215,28 @@ class TestHookManager:
         manager.register(HookPoints.PRE_LOGIN, good_handler, priority=20)
 
         context = HookContext(hook_point=HookPoints.PRE_LOGIN)
-        await manager.execute_pre_hook(HookPoints.PRE_LOGIN, context)
+        with pytest.raises(RuntimeError):
+            await manager.execute_pre_hook(HookPoints.PRE_LOGIN, context)
+
+        assert executed == []
+
+    async def test_post_hook_exception_continues(self) -> None:
+        manager = HookManager()
+        executed = []
+
+        async def bad_handler(ctx: HookContext) -> HookResult | None:
+            msg = "Intentional error"
+            raise RuntimeError(msg)
+
+        async def good_handler(ctx: HookContext) -> HookResult | None:
+            executed.append("good")
+            return None
+
+        manager.register(HookPoints.POST_LOGIN, bad_handler, priority=10)
+        manager.register(HookPoints.POST_LOGIN, good_handler, priority=20)
+
+        context = HookContext(hook_point=HookPoints.POST_LOGIN)
+        await manager.execute_post_hook(HookPoints.POST_LOGIN, context)
 
         assert executed == ["good"]
 

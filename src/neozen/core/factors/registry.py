@@ -162,16 +162,11 @@ class FactorRegistry:
         Returns:
             List of factor IDs the subject has enrolled.
         """
-        enrolled: list[str] = []
-
-        for factor_id, factor in self._factors.items():
-            try:
-                if await factor.is_enrolled(subject_id):
-                    enrolled.append(factor_id)
-            except Exception:
-                logger.exception("Error checking enrollment for %s", factor_id)
-
-        return enrolled
+        return [
+            factor_id
+            for factor_id, factor in self._factors.items()
+            if await factor.is_enrolled(subject_id)
+        ]
 
     async def list_available(self, subject_id: str) -> list[FactorProtocol]:
         """List factors available but not enrolled for a subject.
@@ -182,20 +177,12 @@ class FactorRegistry:
         Returns:
             List of factors the subject can enroll in.
         """
-        available: list[FactorProtocol] = []
-
-        for factor in self._factors.values():
-            try:
-                is_not_enrolled = not await factor.is_enrolled(subject_id)
-                if is_not_enrolled and await factor.supports_subject(subject_id):
-                    available.append(factor)
-            except Exception:
-                logger.exception(
-                    "Error checking availability for %s",
-                    factor.factor_id,
-                )
-
-        return available
+        return [
+            factor
+            for factor in self._factors.values()
+            if not await factor.is_enrolled(subject_id)
+            and await factor.supports_subject(subject_id)
+        ]
 
     async def get_enrolled_factors(
         self,
@@ -209,19 +196,11 @@ class FactorRegistry:
         Returns:
             List of factor objects the subject has enrolled.
         """
-        enrolled: list[FactorProtocol] = []
-
-        for factor in self._factors.values():
-            try:
-                if await factor.is_enrolled(subject_id):
-                    enrolled.append(factor)
-            except Exception:
-                logger.exception(
-                    "Error checking enrollment for %s",
-                    factor.factor_id,
-                )
-
-        return enrolled
+        return [
+            factor
+            for factor in self._factors.values()
+            if await factor.is_enrolled(subject_id)
+        ]
 
     def get_authenticating_factor(
         self,
