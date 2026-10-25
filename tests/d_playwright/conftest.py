@@ -54,6 +54,37 @@ def wait_for_server(port: int, timeout: float = 10.0) -> bool:
     return False
 
 
+def run_server(
+    name: str, args: list[str], port: int, env: dict[str, str], log_dir: Path
+) -> Generator[str, None, None]:
+    """Run `python -m <args>` until the session ends; yield its base URL.
+
+    Output goes to a log file: an unread pipe would block a chatty server.
+    """
+    log_path = log_dir / f"{name.lower()}.log"
+    with (
+        log_path.open("wb") as log,
+        subprocess.Popen(
+            [sys.executable, "-m", *args],
+            env=env,
+            cwd=PROJECT_ROOT,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        ) as process,
+    ):
+        try:
+            if not wait_for_server(port, timeout=15.0):
+                msg = f"{name} server failed to start:\n{log_path.read_text()}"
+                raise RuntimeError(msg)
+            yield f"http://127.0.0.1:{port}"
+        finally:
+            process.send_signal(signal.SIGTERM)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+
 def init_test_database_sync(db_path: Path) -> None:
     """Initialize a test database with tables and default roles (synchronous)."""
     db_url = f"sqlite:///{db_path}"
@@ -127,42 +158,13 @@ def flask_server(
         demo_db_path.unlink()
     shutil.copy(db_path, demo_db_path)
 
-    # Start Flask server
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "flask",
-            "run",
-            "--host=127.0.0.1",
-            f"--port={flask_port}",
-        ],
-        env=env,
-        cwd=PROJECT_ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+    yield from run_server(
+        "Flask",
+        ["flask", "run", "--host=127.0.0.1", f"--port={flask_port}"],
+        flask_port,
+        env,
+        test_dir,
     )
-
-    # Wait for server to be ready
-    if not wait_for_server(flask_port, timeout=15.0):
-        process.terminate()
-        stdout, stderr = process.communicate(timeout=5)
-        msg = (
-            f"Flask server failed to start.\n"
-            f"stdout: {stdout.decode()}\n"
-            f"stderr: {stderr.decode()}"
-        )
-        raise RuntimeError(msg)
-
-    yield f"http://127.0.0.1:{flask_port}"
-
-    # Cleanup
-    process.send_signal(signal.SIGTERM)
-    try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
 
 
 # =============================================================================
@@ -202,42 +204,18 @@ def starlette_server(
 
     env = os.environ.copy()
 
-    # Start Starlette server via uvicorn
-    process = subprocess.Popen(
+    yield from run_server(
+        "Starlette",
         [
-            sys.executable,
-            "-m",
             "uvicorn",
             "demos.starlette.app:app",
             "--host=127.0.0.1",
             f"--port={starlette_port}",
         ],
-        env=env,
-        cwd=PROJECT_ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        starlette_port,
+        env,
+        test_dir,
     )
-
-    # Wait for server to be ready
-    if not wait_for_server(starlette_port, timeout=15.0):
-        process.terminate()
-        stdout, stderr = process.communicate(timeout=5)
-        msg = (
-            f"Starlette server failed to start.\n"
-            f"stdout: {stdout.decode()}\n"
-            f"stderr: {stderr.decode()}"
-        )
-        raise RuntimeError(msg)
-
-    yield f"http://127.0.0.1:{starlette_port}"
-
-    # Cleanup
-    process.send_signal(signal.SIGTERM)
-    try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
 
 
 # =============================================================================
@@ -277,42 +255,18 @@ def litestar_server(
 
     env = os.environ.copy()
 
-    # Start Litestar server via uvicorn
-    process = subprocess.Popen(
+    yield from run_server(
+        "Litestar",
         [
-            sys.executable,
-            "-m",
             "uvicorn",
             "demos.litestar.app:app",
             "--host=127.0.0.1",
             f"--port={litestar_port}",
         ],
-        env=env,
-        cwd=PROJECT_ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        litestar_port,
+        env,
+        test_dir,
     )
-
-    # Wait for server to be ready
-    if not wait_for_server(litestar_port, timeout=15.0):
-        process.terminate()
-        stdout, stderr = process.communicate(timeout=5)
-        msg = (
-            f"Litestar server failed to start.\n"
-            f"stdout: {stdout.decode()}\n"
-            f"stderr: {stderr.decode()}"
-        )
-        raise RuntimeError(msg)
-
-    yield f"http://127.0.0.1:{litestar_port}"
-
-    # Cleanup
-    process.send_signal(signal.SIGTERM)
-    try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
 
 
 # =============================================================================
