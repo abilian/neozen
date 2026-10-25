@@ -21,6 +21,14 @@ class DatabaseConfig:
     pool_recycle: int = 3600
     echo: bool = False
 
+    def engine_options(self) -> dict[str, Any]:
+        """Keyword arguments for `create_async_engine`, besides the URL."""
+        return {
+            "pool_size": self.pool_size,
+            "pool_recycle": self.pool_recycle,
+            "echo": self.echo,
+        }
+
 
 @dataclass(frozen=True)
 class SessionConfig:

@@ -68,11 +68,9 @@ class NeoZenFactory:
         from sqlalchemy.ext.asyncio import create_async_engine  # noqa: PLC0415
 
         if self._engine is None:
+            database = self.config.database
             self._engine = create_async_engine(
-                self.config.database.url,
-                pool_size=self.config.database.pool_size,
-                pool_recycle=self.config.database.pool_recycle,
-                echo=self.config.database.echo,
+                database.url, **database.engine_options()
             )
         return self._engine
 

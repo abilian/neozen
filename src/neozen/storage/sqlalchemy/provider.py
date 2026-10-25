@@ -15,6 +15,9 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from neozen.core.repository import RepositoryProtocol
+
+if typing.TYPE_CHECKING:
+    from neozen.config import DatabaseConfig
 from neozen.storage.sqlalchemy.repositories import NeoZenRepository
 
 # A dict, not functools.cache: mypy doesn't treat class objects as Hashable.
@@ -54,13 +57,19 @@ class SQLAlchemyProvider(dishka.Provider):
             identifier = await request.get(IdentifierProtocol[Subject])
     """
 
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, **engine_options: typing.Any) -> None:
         super().__init__()
         self.url = url
+        self.engine_options = engine_options
+
+    @classmethod
+    def from_config(cls, database: DatabaseConfig) -> SQLAlchemyProvider:
+        """A provider using the `[database]` settings (pool size, recycle, echo)."""
+        return cls(database.url, **database.engine_options())
 
     @dishka.provide(scope=dishka.Scope.APP)
     async def engine(self) -> AsyncIterator[AsyncEngine]:
-        engine = create_async_engine(self.url)
+        engine = create_async_engine(self.url, **self.engine_options)
         yield engine
         await engine.dispose()
 

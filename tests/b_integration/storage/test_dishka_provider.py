@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import typing
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import dishka
 import pytest
@@ -12,6 +13,7 @@ from sqlalchemy import String
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from neozen.config import DatabaseConfig
 from neozen.core.identifiers import (
     EmailIdentifierProvider,
     IdentifierProtocol,
@@ -19,7 +21,7 @@ from neozen.core.identifiers import (
     PhoneSubjectModel,
     UsernameIdentifierProvider,
 )
-from neozen.core.repository import RepositoryProtocol
+from neozen.core.repository import DoesNotExist, RepositoryProtocol
 from neozen.storage.sqlalchemy import Base, Subject
 from neozen.storage.sqlalchemy.oauth_models import (
     OAuthAuthorizationCode,
@@ -30,7 +32,6 @@ from neozen.storage.sqlalchemy.provider import SQLAlchemyProvider
 
 if typing.TYPE_CHECKING:
     from collections.abc import AsyncIterator
-    from pathlib import Path
 
 pytestmark = pytest.mark.anyio
 
@@ -159,3 +160,53 @@ async def test_delete_uses_each_models_primary_key(db_url: str) -> None:
 
         assert await codes.count() == 0
         assert await grants.count() == 0
+
+
+async def test_concurrent_deletes_only_one_wins(db_url: str) -> None:
+    """Single-use codes rely on this: the second delete sees the row gone."""
+    async with make_container(db_url) as container:
+        async with container() as setup:
+            clients = await setup.get(RepositoryProtocol[OAuthClient])
+            await clients.create(
+                client_id="app",
+                client_name="App",
+                client_type="public",
+                redirect_uris="[]",
+                allowed_scopes="",
+                allowed_grant_types="authorization_code",
+                token_endpoint_auth_method="none",
+            )
+            codes = await setup.get(RepositoryProtocol[OAuthAuthorizationCode])
+            await codes.create(
+                code="c1",
+                client_id="app",
+                subject_id="s1",
+                expires_at=datetime.now(UTC) + timedelta(minutes=5),
+                response_type="code",
+                scope="",
+            )
+            await (await setup.get(AsyncSession)).commit()
+
+        async with container() as first, container() as second:
+            first_codes = await first.get(RepositoryProtocol[OAuthAuthorizationCode])
+            second_codes = await second.get(RepositoryProtocol[OAuthAuthorizationCode])
+            first_code = await first_codes.get_one_by(code="c1")
+            second_code = await second_codes.get_one_by(code="c1")
+
+            await first_codes.delete(first_code)
+            await (await first.get(AsyncSession)).commit()
+            with pytest.raises(DoesNotExist):
+                await second_codes.delete(second_code)
+
+
+async def test_provider_from_config_applies_engine_settings(tmp_path: Path) -> None:
+    database = DatabaseConfig(
+        url=f"sqlite+aiosqlite:///{tmp_path / 'cfg.db'}", pool_size=3, echo=True
+    )
+    container = dishka.make_async_container(SQLAlchemyProvider.from_config(database))
+    try:
+        engine = await container.get(AsyncEngine)
+        assert engine.echo is True
+        assert engine.pool.size() == 3
+    finally:
+        await container.close()
