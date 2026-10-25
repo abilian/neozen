@@ -4,15 +4,35 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import threading
 import typing
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from flask import Flask, Response, flash, g, redirect, request, url_for
 
-from neozen.core.session import SessionService
+from neozen.core.session import SessionError, SessionService
 
 from .mixins import AnonymousUser
+
+_thread_state = threading.local()
+
+
+def run_sync[T](coro: typing.Coroutine[typing.Any, typing.Any, T]) -> T:
+    """Run a coroutine to completion from Flask's synchronous code.
+
+    Each thread gets its own event loop, created on first use and reused
+    for the thread's lifetime, so concurrent request threads never share
+    a loop.
+    """
+    # ponytail: one loop per thread. Async connection pools shared across
+    # threads still tie each connection to the loop that opened it; use a
+    # NullPool, or move to a single background loop, if that bites.
+    loop = getattr(_thread_state, "loop", None)
+    if loop is None:
+        loop = _thread_state.loop = asyncio.new_event_loop()
+    return loop.run_until_complete(coro)
+
 
 if typing.TYPE_CHECKING:
     from neozen.core.subject import Subject
@@ -90,7 +110,6 @@ class NeoZen:
         self.login_message_category = login_message_category
 
         # Event loop for async operations
-        self._loop: asyncio.AbstractEventLoop | None = None
 
         # Callbacks (stored on extension, not app state, so they can be set before init_app)
         self._subject_loader: SubjectLoader | AsyncSubjectLoader | None = None
@@ -156,19 +175,6 @@ class NeoZen:
             raise RuntimeError(msg)
         return current_app.extensions["neozen"]
 
-    def _get_loop(self) -> asyncio.AbstractEventLoop:
-        """Get or create event loop for async operations."""
-        if self._loop is None or self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
-        return self._loop
-
-    def _run_async(
-        self, coro: typing.Coroutine[typing.Any, typing.Any, typing.Any]
-    ) -> typing.Any:
-        """Run async code in Flask's sync context."""
-        loop = self._get_loop()
-        return loop.run_until_complete(coro)
-
     def subject_loader(
         self, callback: SubjectLoader | AsyncSubjectLoader
     ) -> SubjectLoader | AsyncSubjectLoader:
@@ -228,9 +234,9 @@ class NeoZen:
 
         # Validate session token
         try:
-            session = self._run_async(state.session_service.validate_session(token))
+            session = run_sync(state.session_service.validate_session(token))
             g._neozen_session = session
-        except Exception:
+        except SessionError:
             # Invalid or expired session
             pass
 
@@ -250,7 +256,7 @@ class NeoZen:
         # Call subject loader (handle both sync and async)
         loader = self._subject_loader
         if inspect.iscoroutinefunction(loader):
-            subject = self._run_async(loader(subject_id))
+            subject = run_sync(loader(subject_id))
         else:
             subject = loader(subject_id)
 

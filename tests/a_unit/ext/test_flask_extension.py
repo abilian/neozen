@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
+
 from flask import Flask, jsonify
 
 from neozen.ext.flask import (
@@ -11,6 +14,7 @@ from neozen.ext.flask import (
     current_user,
     login_required,
 )
+from neozen.ext.flask.extension import run_sync
 
 
 class TestAnonymousUser:
@@ -201,3 +205,29 @@ class TestCurrentUserProxy:
             data = response.get_json()
             assert data["is_authenticated"] is False
             assert data["is_anonymous"] is True
+
+
+def test_run_sync_is_safe_across_threads() -> None:
+    # Two request threads running coroutines at the same time must not
+    # share an event loop ("This event loop is already running").
+
+    both_running = threading.Barrier(2, timeout=5)
+    errors: list[BaseException] = []
+
+    async def work() -> int:
+        await asyncio.to_thread(both_running.wait)
+        return 1
+
+    def request_thread() -> None:
+        try:
+            assert run_sync(work()) == 1
+        except BaseException as e:  # ken: BLE001 collect for the main thread
+            errors.append(e)
+
+    threads = [threading.Thread(target=request_thread) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []

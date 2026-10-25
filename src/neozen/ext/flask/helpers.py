@@ -9,6 +9,9 @@ from datetime import timedelta
 from flask import g, request
 from werkzeug.local import LocalProxy
 
+from neozen.core.session import SessionError
+
+from .extension import run_sync
 from .mixins import AnonymousUser
 
 if typing.TYPE_CHECKING:
@@ -81,7 +84,7 @@ def login_user(
     user_agent = request.headers.get("User-Agent")
 
     # Create session token
-    token = neozen._run_async(
+    token = run_sync(
         state.session_service.create_session(
             subject_id=subject.id,
             ip_address=ip_address,
@@ -128,8 +131,8 @@ def logout_user() -> bool:
     if state.session_service:
         token = request.cookies.get(neozen.cookie_name)
         if token:
-            with contextlib.suppress(Exception):
-                neozen._run_async(state.session_service.revoke_session_by_token(token))
+            with contextlib.suppress(SessionError):
+                run_sync(state.session_service.revoke_session_by_token(token))
 
     # Clear user from request context
     g._neozen_user = None
