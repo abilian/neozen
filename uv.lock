@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12.4"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -1487,6 +1487,7 @@ wheels = [
 name = "neozen"
 version = "0.9.0"
 source = { editable = "." }
+default-groups = ["dev", "playwright"]
 dependencies = [
     { name = "advanced-alchemy" },
     { name = "alembic" },
@@ -1496,6 +1497,7 @@ dependencies = [
     { name = "email-validator" },
     { name = "ldap3" },
     { name = "litestar", extra = ["standard"] },
+    { name = "pwdlib", extra = ["argon2"] },
     { name = "pydantic" },
     { name = "pyjwt" },
     { name = "sqlalchemy" },
@@ -1623,7 +1625,7 @@ requires-dist = [
     { name = "anyio", specifier = ">=4.0.0" },
     { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "databases", extras = ["aiosqlite"], marker = "extra == 'databases'", specifier = ">=0.9.0" },
-    { name = "dishka", specifier = ">=1.0.0" },
+    { name = "dishka", specifier = ">=1.10.1" },
     { name = "email-validator", specifier = ">=2.3.0" },
     { name = "flask", extras = ["async"], marker = "extra == 'demo'", specifier = ">=3.0.0" },
     { name = "httpx", marker = "extra == 'oauth-client'", specifier = ">=0.28.0" },
@@ -1636,6 +1638,7 @@ requires-dist = [
     { name = "neozen", extras = ["password", "phone", "totp", "oauth-client", "webauthn", "oidc", "ldap", "sqlalchemy", "peewee", "tortoise", "databases", "demo"], marker = "extra == 'all'" },
     { name = "peewee", marker = "extra == 'peewee'", specifier = ">=3.17.0" },
     { name = "phonenumbers", marker = "extra == 'phone'", specifier = ">=9.0.0" },
+    { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3.0" },
     { name = "pwdlib", extras = ["argon2"], marker = "extra == 'password'", specifier = ">=0.3.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pyjwt", specifier = ">=2.12.1" },
