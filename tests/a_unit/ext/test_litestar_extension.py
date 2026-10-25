@@ -17,6 +17,8 @@ from neozen.ext.litestar import (
     get_current_user,
     is_authenticated,
     login_required,
+    permissions_required,
+    roles_required,
 )
 
 # =============================================================================
@@ -30,6 +32,8 @@ class DemoUser:
 
     id: str
     email: str
+    roles: tuple[str, ...] = ()
+    permissions: tuple[str, ...] = ()
 
 
 @dataclass
@@ -76,6 +80,12 @@ def session_service():
 def users_db():
     return {
         "user_1": DemoUser("user_1", "test@example.com"),
+        "admin_1": DemoUser(
+            "admin_1",
+            "admin@example.com",
+            roles=("admin",),
+            permissions=("user:delete",),
+        ),
     }
 
 
@@ -116,6 +126,18 @@ def app(config):
     def protected_redirect(request: Request) -> Response:
         return Response(content={"status": "ok"}, media_type="application/json")
 
+    @get("/admin-only", guards=[roles_required("admin")], sync_to_thread=False)
+    def admin_only(request: Request) -> Response:
+        return Response(content={"status": "ok"}, media_type="application/json")
+
+    @get(
+        "/can-delete",
+        guards=[permissions_required("user:delete")],
+        sync_to_thread=False,
+    )
+    def can_delete(request: Request) -> Response:
+        return Response(content={"status": "ok"}, media_type="application/json")
+
     @get("/login", sync_to_thread=False)
     def login_route(request: Request) -> Response:
         return Response(content={"page": "login"}, media_type="application/json")
@@ -133,7 +155,14 @@ def app(config):
         )
 
     return Litestar(
-        route_handlers=[index, protected, protected_redirect, login_route],
+        route_handlers=[
+            index,
+            protected,
+            protected_redirect,
+            admin_only,
+            can_delete,
+            login_route,
+        ],
         plugins=[NeoZenPlugin(config)],
         exception_handlers={AuthenticationRequiredError: handle_auth_error},
     )
@@ -239,6 +268,29 @@ class TestLoginRequired:
         assert response.status_code == 200
         data = response.json()
         assert data["user_id"] == "user_1"
+
+
+class TestRoleAndPermissionGuards:
+    """The guards must load the user themselves, before the handler runs."""
+
+    def _login(self, client, session_service, subject_id: str) -> None:
+        token = secrets.token_urlsafe(32)
+        session_service.sessions[token] = {"subject_id": subject_id}
+        client.cookies.set("neozen_session", token)
+
+    @pytest.mark.parametrize("path", ["/admin-only", "/can-delete"])
+    def test_unauthenticated_returns_401(self, client, path):
+        assert client.get(path).status_code == 401
+
+    @pytest.mark.parametrize("path", ["/admin-only", "/can-delete"])
+    def test_authorized_user_passes(self, client, session_service, path):
+        self._login(client, session_service, "admin_1")
+        assert client.get(path).status_code == 200
+
+    @pytest.mark.parametrize("path", ["/admin-only", "/can-delete"])
+    def test_unauthorized_user_gets_403(self, client, session_service, path):
+        self._login(client, session_service, "user_1")
+        assert client.get(path).status_code == 403
 
 
 class TestHelpers:

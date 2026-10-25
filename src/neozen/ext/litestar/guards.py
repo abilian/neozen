@@ -5,8 +5,10 @@ from __future__ import annotations
 import typing
 
 from litestar.connection import ASGIConnection
-from litestar.exceptions import NotAuthorizedException
+from litestar.exceptions import NotAuthorizedException, PermissionDeniedException
 from litestar.handlers import BaseRouteHandler
+
+from .helpers import get_current_user
 
 if typing.TYPE_CHECKING:
     from .config import NeoZenConfig
@@ -144,7 +146,7 @@ def login_required(
     return LoginRequiredGuard(redirect=redirect, scopes=scopes)
 
 
-class PermissionDeniedError(NotAuthorizedException):
+class PermissionDeniedError(PermissionDeniedException):
     """Exception raised when a permission check fails.
 
     Attributes:
@@ -197,14 +199,7 @@ class RolesRequiredGuard:
             AuthenticationRequiredError: If user is not authenticated
             PermissionDeniedError: If user lacks required roles
         """
-        state = connection.scope.get("state", {})
-        session = state.get("neozen_session")
-
-        if session is None:
-            raise AuthenticationRequiredError(detail="Authentication required")
-
-        # Get user from state
-        user = state.get("neozen_user")
+        user = await get_current_user(connection)
         if user is None:
             raise AuthenticationRequiredError(detail="Authentication required")
 
@@ -263,14 +258,7 @@ class PermissionsRequiredGuard:
         """
         from neozen.web.auth import check_user_permissions  # noqa: PLC0415
 
-        state = connection.scope.get("state", {})
-        session = state.get("neozen_session")
-
-        if session is None:
-            raise AuthenticationRequiredError(detail="Authentication required")
-
-        # Get user from state
-        user = state.get("neozen_user")
+        user = await get_current_user(connection)
         if user is None:
             raise AuthenticationRequiredError(detail="Authentication required")
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import typing
 
 from litestar import Request, Response
+from litestar.connection import ASGIConnection
 
 if typing.TYPE_CHECKING:
     from neozen.core.subject import Subject
@@ -12,7 +13,9 @@ if typing.TYPE_CHECKING:
     from .config import NeoZenConfig
 
 
-def get_config(request: Request[typing.Any, typing.Any, typing.Any]) -> NeoZenConfig:
+def get_config(
+    request: ASGIConnection[typing.Any, typing.Any, typing.Any, typing.Any],
+) -> NeoZenConfig:
     """Get the NeoZen config from request state.
 
     Args:
@@ -35,7 +38,7 @@ def get_config(request: Request[typing.Any, typing.Any, typing.Any]) -> NeoZenCo
 
 
 async def get_current_user(
-    request: Request[typing.Any, typing.Any, typing.Any],
+    request: ASGIConnection[typing.Any, typing.Any, typing.Any, typing.Any],
 ) -> Subject | None:
     """Get the current authenticated user from request state.
 
