@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any, Literal
 
+from neozen.core.oidc.keys import SigningAlgorithm
+
 
 @dataclass(frozen=True)
 class DatabaseConfig:
@@ -97,7 +99,13 @@ class OAuthConfig:
 
 @dataclass(frozen=True)
 class OAuthServerConfig:
-    """OAuth authorization server configuration."""
+    """OAuth authorization server configuration.
+
+    Access tokens are opaque unless `jwt_issuer` is set; then they are
+    RFC 9068 JWTs signed with `jwt_algorithm` for `jwt_audience`.
+    `require_pkce = false` lets confidential clients skip PKCE; public
+    clients always need it.
+    """
 
     enabled: bool = False
     access_token_lifetime: timedelta = field(default_factory=lambda: timedelta(hours=1))
@@ -109,7 +117,7 @@ class OAuthServerConfig:
     )
     require_pkce: bool = True
     allow_refresh_token_rotation: bool = True
-    jwt_algorithm: Literal["RS256", "ES256", "HS256"] = "RS256"
+    jwt_algorithm: SigningAlgorithm = "RS256"
     jwt_issuer: str | None = None
     jwt_audience: str | None = None
 

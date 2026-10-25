@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from neozen.core.oidc.keys import SigningAlgorithm
 
 
 @dataclass
@@ -40,9 +43,7 @@ class OIDCProviderMetadata:
     # Response types (OIDC Core 1.0 Section 3)
     response_types_supported: list[str] = field(default_factory=lambda: ["code"])
 
-    response_modes_supported: list[str] = field(
-        default_factory=lambda: ["query", "fragment"]
-    )
+    response_modes_supported: list[str] = field(default_factory=lambda: ["query"])
 
     grant_types_supported: list[str] = field(
         default_factory=lambda: [
@@ -111,6 +112,7 @@ def build_metadata_from_base_url(
     base_url: str,
     *,
     include_registration: bool = False,
+    signing_algorithm: SigningAlgorithm = "RS256",
 ) -> OIDCProviderMetadata:
     """Convenience: build provider metadata from a base URL.
 
@@ -121,6 +123,10 @@ def build_metadata_from_base_url(
     - /oauth/revoke
     - /userinfo
     - /.well-known/jwks.json
+
+    `signing_algorithm` must match the key manager's: it is advertised as
+    the ID token signing algorithm. (OIDC Core §15.1 expects RS256 support
+    from general-purpose providers.)
     """
     base = base_url.rstrip("/")
     return OIDCProviderMetadata(
@@ -134,6 +140,7 @@ def build_metadata_from_base_url(
         registration_endpoint=f"{base}/oauth/register"
         if include_registration
         else None,
+        id_token_signing_alg_values_supported=[signing_algorithm],
     )
 
 

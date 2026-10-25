@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
-from pydantic import AnyUrl, BaseModel, Field, ValidationError
+from pydantic import AnyUrl, BaseModel, Field, ValidationError, model_validator
 
 from neozen.core.crypto import generate_token_hash_pair
 from neozen.core.oauth.client_service import OAuthClientService
@@ -45,19 +45,32 @@ class AuthorizationRequest(BaseModel):
     redirect_uri: AnyUrl | None = None
     scope: str | None = None
     state: str | None = None
-    code_challenge: typing.Annotated[str, Field(pattern=r"^[A-Za-z0-9\-\._~]{43,128}$")]
+    code_challenge: (
+        typing.Annotated[str, Field(pattern=r"^[A-Za-z0-9\-\._~]{43,128}$")] | None
+    ) = None
     code_challenge_method: CodeChallengeMethod = "S256"
 
+    @model_validator(mode="before")
+    @classmethod
+    def _empty_pkce_fields_are_absent(cls, data: typing.Any) -> typing.Any:
+        """HTML forms send an empty hidden field as ``""``."""
+        if isinstance(data, dict):
+            return {
+                key: value
+                for key, value in data.items()
+                if not (key.startswith("code_challenge") and value == "")
+            }
+        return data
 
-class ConsentRequest(BaseModel):
-    """Request model for consent submission."""
 
-    client_id: str
-    redirect_uri: str | None = None
-    scope: str | None = None
-    state: str | None = None
-    code_challenge: str
-    code_challenge_method: CodeChallengeMethod = "S256"
+class ConsentRequest(AuthorizationRequest):
+    """Consent submission: the original request echoed back, plus the answer.
+
+    Parsing it applies every check the authorization request had, so a
+    tampered form cannot change redirect_uri, scope or the PKCE method.
+    """
+
+    response_type: str = "code"
     approved: bool
 
 
@@ -113,8 +126,8 @@ class ConsentData:
     scope: str | None
     redirect_uri: str | None
     state: str | None
-    code_challenge: str
-    code_challenge_method: CodeChallengeMethod
+    code_challenge: str | None
+    code_challenge_method: CodeChallengeMethod | None
 
 
 # =============================================================================
@@ -123,6 +136,11 @@ class ConsentData:
 
 
 _DEFAULT_CODE_PREFIX = "nz_ac_"
+
+
+def _challenge_method(request: AuthorizationRequest) -> CodeChallengeMethod | None:
+    """The PKCE method, or None when the request carries no challenge."""
+    return request.code_challenge_method if request.code_challenge else None
 
 
 class AuthorizationEndpoint[
@@ -168,6 +186,8 @@ class AuthorizationEndpoint[
         code_hash_key: str,
         code_prefix: str = _DEFAULT_CODE_PREFIX,
         code_lifetime: timedelta = timedelta(minutes=10),
+        *,
+        require_pkce: bool = True,
     ) -> None:
         """Initialize the authorization endpoint.
 
@@ -178,6 +198,8 @@ class AuthorizationEndpoint[
             code_hash_key: Key for hashing authorization codes.
             code_prefix: Prefix for generated codes.
             code_lifetime: How long codes are valid.
+            require_pkce: Require PKCE from confidential clients too. Public
+                clients must always use it.
         """
         self.client_service = client_service
         self.grant_repository = grant_repository
@@ -185,6 +207,7 @@ class AuthorizationEndpoint[
         self.code_hash_key = code_hash_key
         self.code_prefix = code_prefix
         self.code_lifetime = code_lifetime
+        self.require_pkce = require_pkce
 
     async def handle_authorization_request[S: Subject](
         self,
@@ -231,7 +254,7 @@ class AuthorizationEndpoint[
             redirect_uri=redirect_uri,
             state=request.state,
             code_challenge=request.code_challenge,
-            code_challenge_method=request.code_challenge_method,
+            code_challenge_method=_challenge_method(request),
         )
 
         # Check if subject is authenticated
@@ -344,8 +367,17 @@ class AuthorizationEndpoint[
                 "Client is not authorized for authorization_code grant.",
             )
 
-        # Check PKCE for public clients
-        if client.is_public_client() and request.code_challenge_method != "S256":
+        # PKCE: always for public clients (S256 only), optional for
+        # confidential clients when require_pkce is off.
+        if request.code_challenge is None:
+            if self.require_pkce or client.is_public_client():
+                return self._error_response(
+                    redirect_uri,
+                    request.state,
+                    "invalid_request",
+                    "code_challenge is required.",
+                )
+        elif client.is_public_client() and request.code_challenge_method != "S256":
             return self._error_response(
                 redirect_uri,
                 request.state,
@@ -377,7 +409,7 @@ class AuthorizationEndpoint[
                 scope=request.scope,
                 state=request.state,
                 code_challenge=request.code_challenge,
-                code_challenge_method=request.code_challenge_method,
+                code_challenge_method=_challenge_method(request),
             )
         except DoesNotExist:
             # Need consent
@@ -401,28 +433,19 @@ class AuthorizationEndpoint[
         """
         try:
             request = ConsentRequest.model_validate(payload)
-            # The form echoes the original request back; validate it again
-            # exactly as the authorization request was, so a tampered form
-            # cannot change redirect_uri, scope or the PKCE method.
-            auth_request = AuthorizationRequest.model_validate({
-                "response_type": "code",
-                **request.model_dump(exclude={"approved"}),
-            })
         except ValidationError as e:
             return AuthorizationResponse(
                 error="invalid_request",
                 error_description=self._format_validation_error(e),
             )
 
-        client, redirect_uri, error = await self._validate_client_and_redirect(
-            auth_request
-        )
+        client, redirect_uri, error = await self._validate_client_and_redirect(request)
         if error:
             return error
         assert client is not None
         assert redirect_uri is not None
 
-        error = self._validate_request_params(client, auth_request, redirect_uri)
+        error = self._validate_request_params(client, request, redirect_uri)
         if error:
             return error
 
@@ -455,7 +478,7 @@ class AuthorizationEndpoint[
             scope=request.scope,
             state=request.state,
             code_challenge=request.code_challenge,
-            code_challenge_method=request.code_challenge_method,
+            code_challenge_method=_challenge_method(request),
         )
 
     async def _generate_authorization_code(
@@ -465,8 +488,8 @@ class AuthorizationEndpoint[
         redirect_uri: str | None,
         scope: str | None,
         state: str | None,
-        code_challenge: str,
-        code_challenge_method: CodeChallengeMethod,
+        code_challenge: str | None,
+        code_challenge_method: CodeChallengeMethod | None,
     ) -> AuthorizationResponse:
         """Generate an authorization code and return redirect response."""
         code, code_hash = generate_token_hash_pair(

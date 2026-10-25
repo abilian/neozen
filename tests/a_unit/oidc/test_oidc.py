@@ -510,3 +510,11 @@ class TestBuildMetadataFromBaseURL:
             base_url="https://auth.example.com/",
         )
         assert "//" not in meta.token_endpoint.replace("https://", "")
+
+
+def test_discovery_advertises_the_signing_algorithm() -> None:
+    meta = build_metadata_from_base_url(
+        "https://auth.test", "https://auth.test", signing_algorithm="ES256"
+    )
+    assert meta.id_token_signing_alg_values_supported == ["ES256"]
+    assert meta.response_modes_supported == ["query"]

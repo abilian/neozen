@@ -235,7 +235,7 @@ def create_oauth_blueprint[
     bp = Blueprint("oauth", __name__)
 
     # Create endpoint adapters
-    token_ep = TokenEndpoint(token_service)
+    token_ep = TokenEndpoint(token_service, client_service)
     introspection_ep = IntrospectionEndpoint(
         client_service=client_service, token_service=token_service
     )

@@ -49,8 +49,8 @@ class AuthCode(OAuthAuthorizationCodeModel):
     response_type: str
     redirect_uri: str | None
     scope: str
-    code_challenge: str
-    code_challenge_method: str
+    code_challenge: str | None
+    code_challenge_method: str | None
 
 
 @dataclasses.dataclass
@@ -63,7 +63,9 @@ def codes() -> MockStorage[AuthCode]:
     return MockStorage(AuthCode)
 
 
-def _endpoint(client: Client, codes: MockStorage[AuthCode]) -> AuthorizationEndpoint:
+def _endpoint(
+    client: Client, codes: MockStorage[AuthCode], *, require_pkce: bool = True
+) -> AuthorizationEndpoint:
     return AuthorizationEndpoint(
         client_service=OAuthClientService(
             MockStorage(Client, [client]), PasswordHash.recommended()
@@ -71,6 +73,7 @@ def _endpoint(client: Client, codes: MockStorage[AuthCode]) -> AuthorizationEndp
         grant_repository=MockStorage(Grant),
         authorization_code_repository=codes,
         code_hash_key="test-key",
+        require_pkce=require_pkce,
     )
 
 
@@ -136,3 +139,47 @@ class TestHandleConsent:
         )
         assert response.error == "invalid_request"
         assert await codes.count() == 0
+
+
+def _consent_without_pkce() -> dict[str, str | bool]:
+    payload = _consent()
+    del payload["code_challenge"], payload["code_challenge_method"]
+    return payload
+
+
+@pytest.mark.anyio
+class TestRequirePKCE:
+    async def test_pkce_required_by_default(self, codes: MockStorage[AuthCode]) -> None:
+        response = await _endpoint(Client("app"), codes).handle_consent(
+            _consent_without_pkce(), User()
+        )
+        assert response.error == "invalid_request"
+        assert await codes.count() == 0
+
+    async def test_confidential_client_may_skip_pkce_when_not_required(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        endpoint = _endpoint(Client("app"), codes, require_pkce=False)
+        response = await endpoint.handle_consent(_consent_without_pkce(), User())
+        assert response.code
+        [code] = await codes.get_many_by()
+        assert code.code_challenge is None
+        assert code.code_challenge_method is None
+
+    async def test_public_client_always_needs_pkce(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        client = Client("app", client_type="public")
+        endpoint = _endpoint(client, codes, require_pkce=False)
+        response = await endpoint.handle_consent(_consent_without_pkce(), User())
+        assert response.error == "invalid_request"
+        assert await codes.count() == 0
+
+    async def test_empty_pkce_form_fields_count_as_absent(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        """A consent form renders absent values as empty hidden fields."""
+        endpoint = _endpoint(Client("app"), codes, require_pkce=False)
+        payload = _consent(code_challenge="", code_challenge_method="")
+        response = await endpoint.handle_consent(payload, User())
+        assert response.code

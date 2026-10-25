@@ -363,6 +363,7 @@ id_token_gen = IDTokenGenerator(
 # Wire OIDC into the OAuth token endpoint
 endpoint = TokenEndpoint(
     oauth_token_service,
+    oauth_client_service,  # authenticates the client on every request
     id_token_generator=id_token_gen,
     claims_provider=claims_provider,
 )

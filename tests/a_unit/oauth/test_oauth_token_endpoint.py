@@ -2,74 +2,36 @@
 
 from __future__ import annotations
 
-import dataclasses
+import typing
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from pwdlib import PasswordHash
 
 from neozen.core.crypto import get_token_hash
 from neozen.core.oauth import (
-    CodeChallengeMethod,
-    OAuthAccessTokenModel,
-    OAuthAuthorizationCodeModel,
-    OAuthClientModel,
-    OAuthRefreshTokenModel,
     TokenInvalidClientError,
     TokenInvalidGrantError,
     TokenInvalidRequestError,
     TokenInvalidScopeError,
+    TokenUnauthorizedClientError,
     TokenUnsupportedGrantTypeError,
 )
+from neozen.core.oauth.client_service import OAuthClientService
 from neozen.core.oauth.services import OAuthTokenService
 from neozen.web.oauth import TokenEndpoint, TokenResponse
 from tests.conftest import MockStorage
 
+from .stubs import (
+    MockOAuthAccessToken,
+    MockOAuthAuthorizationCode,
+    MockOAuthClient,
+    MockOAuthRefreshToken,
+)
+
 # =============================================================================
 # Mock Models
 # =============================================================================
-
-
-@dataclasses.dataclass
-class MockOAuthClient(OAuthClientModel):
-    client_id: str
-    allowed_grant_types: str = ""
-    allowed_scopes: str = ""
-
-
-@dataclasses.dataclass
-class MockOAuthAuthorizationCode(OAuthAuthorizationCodeModel):
-    code: str
-    client_id: str
-    subject_id: str
-    expires_at: datetime
-    response_type: str
-    redirect_uri: str | None
-    scope: str
-    code_challenge: str
-    code_challenge_method: CodeChallengeMethod
-
-
-@dataclasses.dataclass
-class MockOAuthAccessToken(OAuthAccessTokenModel):
-    token_hash: str
-    client_id: str
-    subject_id: str
-    scope: str
-    expires_at: datetime
-    created_at: datetime
-    revoked_at: datetime | None
-
-
-@dataclasses.dataclass
-class MockOAuthRefreshToken(OAuthRefreshTokenModel):
-    token_hash: str
-    client_id: str
-    subject_id: str
-    scope: str
-    expires_at: datetime | None
-    created_at: datetime
-    revoked_at: datetime | None
-    access_token_hash: str | None
 
 
 # =============================================================================
@@ -78,6 +40,36 @@ class MockOAuthRefreshToken(OAuthRefreshTokenModel):
 
 
 TOKEN_HASH_KEY = "test_secret_key"
+SERVICE_SECRET = "service-secret"
+HASHER = PasswordHash.recommended()
+
+
+async def _create_service_client(
+    storage: MockStorage[MockOAuthClient], **fields: typing.Any
+) -> MockOAuthClient:
+    """A confidential client authenticating with SERVICE_SECRET."""
+    return await storage.create(
+        client_id="svc_1",
+        client_type="confidential",
+        client_secret_hash=HASHER.hash(SERVICE_SECRET),
+        **fields,
+    )
+
+
+async def _store_code(
+    storage: MockStorage[MockOAuthAuthorizationCode], challenge: str | None
+) -> None:
+    await storage.create(
+        code="test_code",
+        client_id="client_1",
+        subject_id="user_1",
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        response_type="code",
+        redirect_uri=None,
+        scope="read",
+        code_challenge=challenge,
+        code_challenge_method="plain" if challenge else None,
+    )
 
 
 @pytest.fixture
@@ -122,10 +114,18 @@ def token_service(
 
 
 @pytest.fixture
+def client_service(
+    client_storage: MockStorage[MockOAuthClient],
+) -> OAuthClientService[MockOAuthClient]:
+    return OAuthClientService(client_storage, HASHER)
+
+
+@pytest.fixture
 def token_endpoint(
     token_service: OAuthTokenService,
+    client_service: OAuthClientService[MockOAuthClient],
 ) -> TokenEndpoint:
-    return TokenEndpoint(token_service)
+    return TokenEndpoint(token_service, client_service)
 
 
 # =============================================================================
@@ -193,15 +193,52 @@ class TestAuthorizationCodeGrant:
     async def test_missing_code_verifier(
         self,
         client_storage: MockStorage[MockOAuthClient],
+        auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
         token_endpoint: TokenEndpoint,
     ) -> None:
         await client_storage.create(client_id="client_1")
+        await _store_code(auth_code_storage, challenge="a" * 43)
 
-        with pytest.raises(TokenInvalidRequestError):
+        with pytest.raises(TokenInvalidGrantError):
             await token_endpoint({
                 "grant_type": "authorization_code",
                 "code": "test_code",
                 "client_id": "client_1",
+            })
+
+    async def test_code_without_challenge_needs_no_verifier(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        await client_storage.create(client_id="client_1")
+        await _store_code(auth_code_storage, challenge=None)
+
+        response = await token_endpoint({
+            "grant_type": "authorization_code",
+            "code": "test_code",
+            "client_id": "client_1",
+        })
+
+        assert response.access_token
+
+    async def test_verifier_for_code_without_challenge_is_rejected(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        """RFC 9700 §4.8.2: PKCE downgrade attack."""
+        await client_storage.create(client_id="client_1")
+        await _store_code(auth_code_storage, challenge=None)
+
+        with pytest.raises(TokenInvalidGrantError):
+            await token_endpoint({
+                "grant_type": "authorization_code",
+                "code": "test_code",
+                "client_id": "client_1",
+                "code_verifier": "a" * 43,
             })
 
     async def test_unknown_client(
@@ -517,6 +554,7 @@ class TestIDTokenIntegration:
 
         return TokenEndpoint(
             token_service,
+            OAuthClientService(token_service.client_repository, HASHER),
             id_token_generator=IDTokenGenerator(
                 key_manager=InMemoryKeyManager(),
                 issuer="https://auth.test",
@@ -644,17 +682,20 @@ class TestClientCredentialsGrant:
         client_storage: MockStorage[MockOAuthClient],
         token_endpoint: TokenEndpoint,
     ) -> None:
-        await client_storage.create(
-            client_id="svc_1",
+        await _create_service_client(
+            client_storage,
             allowed_grant_types="client_credentials",
             allowed_scopes="api:read api:write",
         )
 
-        response = await token_endpoint({
-            "grant_type": "client_credentials",
-            "client_id": "svc_1",
-            "scope": "api:read",
-        })
+        response = await token_endpoint(
+            {
+                "grant_type": "client_credentials",
+                "client_id": "svc_1",
+                "scope": "api:read",
+            },
+            client_secret=SERVICE_SECRET,
+        )
 
         assert isinstance(response, TokenResponse)
         assert response.access_token.startswith("nz_at_")
@@ -670,15 +711,18 @@ class TestClientCredentialsGrant:
         token_endpoint: TokenEndpoint,
     ) -> None:
         """Scope is optional for client_credentials."""
-        await client_storage.create(
-            client_id="svc_1",
+        await _create_service_client(
+            client_storage,
             allowed_grant_types="client_credentials",
         )
 
-        response = await token_endpoint({
-            "grant_type": "client_credentials",
-            "client_id": "svc_1",
-        })
+        response = await token_endpoint(
+            {
+                "grant_type": "client_credentials",
+                "client_id": "svc_1",
+            },
+            client_secret=SERVICE_SECRET,
+        )
 
         assert isinstance(response, TokenResponse)
         assert response.scope is None
@@ -689,15 +733,15 @@ class TestClientCredentialsGrant:
         token_endpoint: TokenEndpoint,
     ) -> None:
         """client_id can come from Basic auth header instead of body."""
-        await client_storage.create(
-            client_id="svc_1",
+        await _create_service_client(
+            client_storage,
             allowed_grant_types="client_credentials",
         )
 
         response = await token_endpoint(
             {"grant_type": "client_credentials"},
             client_id="svc_1",
-            client_secret="secret",
+            client_secret=SERVICE_SECRET,
         )
 
         assert isinstance(response, TokenResponse)
@@ -709,8 +753,8 @@ class TestClientCredentialsGrant:
         token_endpoint: TokenEndpoint,
     ) -> None:
         """If client_id is in both body and auth header, they must match."""
-        await client_storage.create(
-            client_id="svc_1",
+        await _create_service_client(
+            client_storage,
             allowed_grant_types="client_credentials",
         )
 
@@ -746,34 +790,40 @@ class TestClientCredentialsGrant:
         token_endpoint: TokenEndpoint,
     ) -> None:
         """Client must have client_credentials in allowed_grant_types."""
-        await client_storage.create(
-            client_id="svc_1",
+        await _create_service_client(
+            client_storage,
             allowed_grant_types="authorization_code",  # No client_credentials
         )
 
         with pytest.raises(TokenInvalidGrantError):
-            await token_endpoint({
-                "grant_type": "client_credentials",
-                "client_id": "svc_1",
-            })
+            await token_endpoint(
+                {
+                    "grant_type": "client_credentials",
+                    "client_id": "svc_1",
+                },
+                client_secret=SERVICE_SECRET,
+            )
 
     async def test_scope_not_allowed(
         self,
         client_storage: MockStorage[MockOAuthClient],
         token_endpoint: TokenEndpoint,
     ) -> None:
-        await client_storage.create(
-            client_id="svc_1",
+        await _create_service_client(
+            client_storage,
             allowed_grant_types="client_credentials",
             allowed_scopes="api:read",
         )
 
         with pytest.raises(TokenInvalidScopeError):
-            await token_endpoint({
-                "grant_type": "client_credentials",
-                "client_id": "svc_1",
-                "scope": "api:write admin:all",
-            })
+            await token_endpoint(
+                {
+                    "grant_type": "client_credentials",
+                    "client_id": "svc_1",
+                    "scope": "api:write admin:all",
+                },
+                client_secret=SERVICE_SECRET,
+            )
 
     async def test_token_subject_is_client(
         self,
@@ -782,20 +832,85 @@ class TestClientCredentialsGrant:
         token_endpoint: TokenEndpoint,
     ) -> None:
         """The token's subject_id should be the client_id itself."""
-        await client_storage.create(
-            client_id="svc_1",
+        await _create_service_client(
+            client_storage,
             allowed_grant_types="client_credentials",
         )
 
-        response = await token_endpoint({
-            "grant_type": "client_credentials",
-            "client_id": "svc_1",
-        })
+        response = await token_endpoint(
+            {
+                "grant_type": "client_credentials",
+                "client_id": "svc_1",
+            },
+            client_secret=SERVICE_SECRET,
+        )
 
         token_hash = get_token_hash(response.access_token, TOKEN_HASH_KEY)
         stored = await access_token_storage.get_one_by(token_hash=token_hash)
         assert stored.subject_id == "svc_1"
         assert stored.client_id == "svc_1"
+
+    async def test_wrong_secret_is_rejected(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        await _create_service_client(
+            client_storage, allowed_grant_types="client_credentials"
+        )
+
+        with pytest.raises(TokenInvalidClientError):
+            await token_endpoint(
+                {"grant_type": "client_credentials"},
+                client_id="svc_1",
+                client_secret="not-the-secret",
+            )
+
+    async def test_missing_secret_is_rejected(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        await _create_service_client(
+            client_storage, allowed_grant_types="client_credentials"
+        )
+
+        with pytest.raises(TokenInvalidClientError):
+            await token_endpoint({
+                "grant_type": "client_credentials",
+                "client_id": "svc_1",
+            })
+
+    async def test_inactive_client_is_rejected(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        await _create_service_client(
+            client_storage, allowed_grant_types="client_credentials", is_active=False
+        )
+
+        with pytest.raises(TokenInvalidClientError):
+            await token_endpoint(
+                {"grant_type": "client_credentials"},
+                client_id="svc_1",
+                client_secret=SERVICE_SECRET,
+            )
+
+    async def test_public_client_cannot_use_grant(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        await client_storage.create(
+            client_id="app", allowed_grant_types="client_credentials"
+        )
+
+        with pytest.raises(TokenUnauthorizedClientError):
+            await token_endpoint({
+                "grant_type": "client_credentials",
+                "client_id": "app",
+            })
 
 
 # =============================================================================
@@ -837,3 +952,90 @@ class TestTokenResponse:
             "refresh_token": "rt_456",
             "scope": "read write",
         }
+
+
+@pytest.mark.anyio
+class TestConfidentialCodeExchange:
+    async def _seed(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+    ) -> None:
+        await _create_service_client(client_storage)
+        await auth_code_storage.create(
+            code="test_code",
+            client_id="svc_1",
+            subject_id="user_1",
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            response_type="code",
+            redirect_uri=None,
+            scope="read",
+            code_challenge="a" * 43,
+            code_challenge_method="plain",
+        )
+
+    async def test_stolen_code_needs_the_client_secret(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        await self._seed(client_storage, auth_code_storage)
+
+        with pytest.raises(TokenInvalidClientError):
+            await token_endpoint({
+                "grant_type": "authorization_code",
+                "code": "test_code",
+                "client_id": "svc_1",
+                "code_verifier": "a" * 43,
+            })
+        assert await auth_code_storage.count() == 1
+
+    async def test_client_id_from_basic_auth_only(
+        self,
+        client_storage: MockStorage[MockOAuthClient],
+        auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+        token_endpoint: TokenEndpoint,
+    ) -> None:
+        await self._seed(client_storage, auth_code_storage)
+
+        response = await token_endpoint(
+            {
+                "grant_type": "authorization_code",
+                "code": "test_code",
+                "code_verifier": "a" * 43,
+            },
+            client_id="svc_1",
+            client_secret=SERVICE_SECRET,
+        )
+
+        assert response.access_token
+
+
+@pytest.mark.anyio
+async def test_challenge_without_method_fails_verification(
+    client_storage: MockStorage[MockOAuthClient],
+    auth_code_storage: MockStorage[MockOAuthAuthorizationCode],
+    token_endpoint: TokenEndpoint,
+) -> None:
+    """A half-filled PKCE row must not be treated as "no PKCE"."""
+    await client_storage.create(client_id="client_1")
+    verifier = "a" * 43
+    await auth_code_storage.create(
+        code="test_code",
+        client_id="client_1",
+        subject_id="user_1",
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        response_type="code",
+        redirect_uri=None,
+        scope="read",
+        code_challenge=verifier,
+        code_challenge_method=None,
+    )
+
+    with pytest.raises(TokenInvalidGrantError):
+        await token_endpoint({
+            "grant_type": "authorization_code",
+            "code": "test_code",
+            "client_id": "client_1",
+        })

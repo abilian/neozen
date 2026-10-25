@@ -11,10 +11,6 @@ from pydantic import BaseModel, ValidationError
 
 from neozen.core.oauth.client_service import OAuthClientService
 from neozen.core.oauth.exceptions import (
-    ClientAuthenticationError,
-    ClientInactiveError,
-    ClientNotFoundError,
-    TokenInvalidClientError,
     TokenInvalidRequestError,
 )
 from neozen.core.oauth.models import (
@@ -23,6 +19,7 @@ from neozen.core.oauth.models import (
     OAuthRefreshTokenModel,
 )
 from neozen.core.oauth.services import OAuthTokenService
+from neozen.web.oauth.utils import authenticate_client
 
 
 class RevocationRequest(BaseModel):
@@ -96,21 +93,9 @@ class RevocationEndpoint[
             TokenInvalidClientError: Client authentication failed.
             TokenInvalidRequestError: Invalid request parameters.
         """
-        # Authenticate client
-        if not client_id:
-            msg = "Client authentication required."
-            raise TokenInvalidClientError(msg)
-
-        try:
-            await self.client_service.authenticate_client(client_id, client_secret)
-        except ClientNotFoundError as e:
-            msg = "Unknown client."
-            raise TokenInvalidClientError(msg) from e
-        except ClientInactiveError as e:
-            msg = "Client is inactive."
-            raise TokenInvalidClientError(msg) from e
-        except ClientAuthenticationError as e:
-            raise TokenInvalidClientError(str(e)) from e
+        client = await authenticate_client(
+            self.client_service, client_id, client_secret
+        )
 
         # Parse request
         try:
@@ -123,16 +108,18 @@ class RevocationEndpoint[
                 msg = "Invalid request"
             raise TokenInvalidRequestError(msg) from e
 
-        # Revoke based on type hint
+        # Revoke based on type hint. Only the caller's own tokens are revoked
+        # (RFC 7009 §2.1); anyone else's are treated as unknown.
+        owner = client.client_id
         if request.token_type_hint == "access_token":
-            await self.token_service.revoke_access_token(request.token)
+            await self.token_service.revoke_access_token(request.token, owner)
         elif request.token_type_hint == "refresh_token":
-            await self.token_service.revoke_refresh_token(request.token)
+            await self.token_service.revoke_refresh_token(request.token, owner)
         else:
             # Try both - access token first, then refresh token
-            revoked = await self.token_service.revoke_access_token(request.token)
+            revoked = await self.token_service.revoke_access_token(request.token, owner)
             if not revoked:
-                await self.token_service.revoke_refresh_token(request.token)
+                await self.token_service.revoke_refresh_token(request.token, owner)
 
         # Per RFC 7009, always return success (200 OK with empty body)
         # The caller handles the HTTP response

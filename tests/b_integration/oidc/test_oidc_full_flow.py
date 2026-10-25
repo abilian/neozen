@@ -22,8 +22,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from pwdlib import PasswordHash
 
 from neozen.core.crypto import get_token_hash
+from neozen.core.oauth.client_service import OAuthClientService
 from neozen.core.oauth.models import (
     OAuthAccessTokenModel,
     OAuthAuthorizationCodeModel,
@@ -59,6 +61,9 @@ class MockClient(OAuthClientModel):
     allowed_scopes: str = "openid profile email"
     is_active: bool = True
     client_type: str = "confidential"
+    client_secret_hash: str | None = dataclasses.field(
+        default_factory=lambda: HASHER.hash(CLIENT_SECRET)
+    )
 
 
 @dataclasses.dataclass
@@ -128,6 +133,8 @@ class MockSubjectLookup:
 
 
 TOKEN_HASH_KEY = "test-secret-key"
+CLIENT_SECRET = "client-secret"
+HASHER = PasswordHash.recommended()
 ISSUER = "https://auth.example.com"
 
 
@@ -224,6 +231,7 @@ def token_endpoint(
 ) -> TokenEndpoint:
     return TokenEndpoint(
         oauth_service,
+        OAuthClientService(oauth_service.client_repository, HASHER),
         id_token_generator=id_token_generator,
         claims_provider=claims_provider,
     )
@@ -306,13 +314,16 @@ class TestFullOIDCFlow:
         )
 
         # ---- 2. Token exchange ----
-        token_response = await token_endpoint({
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": "https://app.example.com/callback",
-            "client_id": "client_app",
-            "code_verifier": verifier,
-        })
+        token_response = await token_endpoint(
+            {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": "https://app.example.com/callback",
+                "client_id": "client_app",
+                "code_verifier": verifier,
+            },
+            client_secret=CLIENT_SECRET,
+        )
 
         assert token_response.access_token.startswith("nz_at_")
         assert token_response.refresh_token is not None
@@ -362,13 +373,16 @@ class TestFullOIDCFlow:
             scope="profile",  # no openid
         )
 
-        response = await token_endpoint({
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": "https://app.example.com/callback",
-            "client_id": "client_app",
-            "code_verifier": verifier,
-        })
+        response = await token_endpoint(
+            {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": "https://app.example.com/callback",
+                "client_id": "client_app",
+                "code_verifier": verifier,
+            },
+            client_secret=CLIENT_SECRET,
+        )
 
         assert response.access_token.startswith("nz_at_")
         assert response.id_token is None
@@ -389,13 +403,16 @@ class TestFullOIDCFlow:
             scope="openid",
         )
 
-        response = await token_endpoint({
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": "https://app.example.com/callback",
-            "client_id": "client_app",
-            "code_verifier": verifier,
-        })
+        response = await token_endpoint(
+            {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": "https://app.example.com/callback",
+                "client_id": "client_app",
+                "code_verifier": verifier,
+            },
+            client_secret=CLIENT_SECRET,
+        )
 
         userinfo = await userinfo_endpoint(f"Bearer {response.access_token}")
         assert userinfo == {"sub": alice.id}
@@ -418,20 +435,26 @@ class TestFullOIDCFlow:
             subject_id=alice.id,
             scope="openid email",
         )
-        first = await token_endpoint({
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": "https://app.example.com/callback",
-            "client_id": "client_app",
-            "code_verifier": verifier,
-        })
+        first = await token_endpoint(
+            {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": "https://app.example.com/callback",
+                "client_id": "client_app",
+                "code_verifier": verifier,
+            },
+            client_secret=CLIENT_SECRET,
+        )
 
         # Then refresh
-        refreshed = await token_endpoint({
-            "grant_type": "refresh_token",
-            "refresh_token": first.refresh_token,
-            "client_id": "client_app",
-        })
+        refreshed = await token_endpoint(
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": first.refresh_token,
+                "client_id": "client_app",
+            },
+            client_secret=CLIENT_SECRET,
+        )
 
         assert refreshed.access_token != first.access_token
         assert refreshed.id_token is not None
@@ -504,11 +527,14 @@ class TestClientCredentialsFlow:
             allowed_scopes="api:read api:write",
         )
 
-        response = await token_endpoint({
-            "grant_type": "client_credentials",
-            "client_id": "service_account",
-            "scope": "api:read",
-        })
+        response = await token_endpoint(
+            {
+                "grant_type": "client_credentials",
+                "client_id": "service_account",
+                "scope": "api:read",
+            },
+            client_secret=CLIENT_SECRET,
+        )
 
         assert response.access_token.startswith("nz_at_")
         assert response.refresh_token is None  # not issued for cc grant
@@ -546,20 +572,23 @@ class TestTokenRevocation:
             subject_id=alice.id,
             scope="openid email",
         )
-        response = await token_endpoint({
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": "https://app.example.com/callback",
-            "client_id": "client_app",
-            "code_verifier": verifier,
-        })
+        response = await token_endpoint(
+            {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": "https://app.example.com/callback",
+                "client_id": "client_app",
+                "code_verifier": verifier,
+            },
+            client_secret=CLIENT_SECRET,
+        )
 
         # Works initially
         result = await userinfo_endpoint(f"Bearer {response.access_token}")
         assert result["sub"] == alice.id
 
         # Revoke
-        await oauth_service.revoke_access_token(response.access_token)
+        await oauth_service.revoke_access_token(response.access_token, "client_app")
 
         # Now rejected
         with pytest.raises(UserInfoError) as exc_info:

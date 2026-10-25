@@ -85,12 +85,16 @@ def validate_config(config: NeoZenConfig, *, require_secret_key: bool = True) ->
                 )
 
     # OAuth Server
-    if config.oauth_server.enabled and config.oauth_server.jwt_algorithm not in (
-        "RS256",
-        "ES256",
-        "HS256",
+    oauth_server = config.oauth_server
+    # Tokens are verified with the public JWKS, so no shared-secret HS256.
+    if oauth_server.enabled and oauth_server.jwt_algorithm not in ("RS256", "ES256"):
+        errors.append("oauth_server.jwt_algorithm must be RS256 or ES256")
+    if (
+        oauth_server.enabled
+        and oauth_server.jwt_issuer
+        and not oauth_server.jwt_audience
     ):
-        errors.append("oauth_server.jwt_algorithm must be RS256, ES256, or HS256")
+        errors.append("oauth_server.jwt_audience is required when jwt_issuer is set")
 
     # Session
     if config.session.lifetime.total_seconds() < 60:

@@ -83,6 +83,45 @@ Password policy is enforced at the application level. NeoZen provides
 | `lockout_duration_seconds` | 300 | Lockout period |
 | `progressive` | true | Increase duration on repeat lockouts |
 
+## OAuth Server
+
+The `[oauth_server]` section of `neozen.toml`. `NeoZenFactory` turns it into configured services: `create_oauth_token_service(...)`, `create_authorization_endpoint(...)` and `create_key_manager()`. They raise `ConfigError` unless `enabled = true`. Token and code hashes are keyed with `security.secret_key`.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `enabled` | false | Allow the factory to build OAuth services |
+| `access_token_lifetime` | `1h` | Access token validity |
+| `refresh_token_lifetime` | `30d` | Refresh token validity |
+| `authorization_code_lifetime` | `10m` | Authorization code validity |
+| `require_pkce` | true | When false, confidential clients may skip PKCE. Public clients always need S256 |
+| `allow_refresh_token_rotation` | true | Issue a new refresh token on each refresh and revoke the old one |
+| `jwt_issuer` | unset | When set, access tokens are RFC 9068 JWTs (`typ: at+jwt`) with this `iss`; otherwise they are opaque |
+| `jwt_audience` | unset | `aud` claim of JWT access tokens; required when `jwt_issuer` is set |
+| `jwt_algorithm` | `RS256` | Signing algorithm: `RS256` or `ES256` |
+
+JWT access tokens are signed with the active key of the `KeyManager` passed to `create_oauth_token_service`, so resource servers can verify them against the JWKS. They are still stored hashed, so introspection and revocation work as for opaque tokens. `create_key_manager()` returns an in-memory key manager for development; keys are lost on restart, so pass a persistent `KeyManager` in production.
+
+```toml
+[oauth_server]
+enabled = true
+access_token_lifetime = "15m"
+jwt_issuer = "https://auth.example.com"
+jwt_audience = "https://api.example.com"
+jwt_algorithm = "ES256"
+```
+
+```python
+factory = NeoZenFactory(load_config())
+key_manager = factory.create_key_manager()
+token_service = factory.create_oauth_token_service(
+    client_repo, code_repo, access_token_repo, refresh_token_repo,
+    key_manager=key_manager,
+)
+authorization_endpoint = factory.create_authorization_endpoint(
+    client_service, grant_repo, code_repo
+)
+```
+
 ## Token Prefixes
 
 | Prefix | Purpose |

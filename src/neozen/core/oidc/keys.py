@@ -1,8 +1,8 @@
 """Key management for OIDC ID token signing.
 
 Provides JWK/JWKS dataclasses and a `KeyManager` protocol with an
-in-memory implementation that generates RSA keys via the `cryptography`
-library.
+in-memory implementation that generates RSA (RS256) or P-256 (ES256) keys
+via the `cryptography` library.
 
 Production deployments should implement `KeyManager` against a
 persistent store (database, file, KMS) and rotate keys periodically.
@@ -13,21 +13,27 @@ from __future__ import annotations
 import base64
 import secrets
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
+
+SigningAlgorithm = Literal["RS256", "ES256"]
+
+
+def _b64url(raw: bytes) -> str:
+    """Encode bytes as base64url (no padding)."""
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 
 def _b64url_uint(value: int) -> str:
     """Encode an unsigned integer as base64url (no padding)."""
     byte_length = (value.bit_length() + 7) // 8
-    raw = value.to_bytes(byte_length, "big")
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+    return _b64url(value.to_bytes(byte_length, "big"))
 
 
 @dataclass(frozen=True)
 class JWK:
     """A JSON Web Key (RFC 7517).
 
-    Currently supports RSA keys. The `kid` (key ID) is used to identify
+    Supports RSA and EC keys. The `kid` (key ID) is used to identify
     which key was used to sign a JWT.
     """
 
@@ -154,11 +160,53 @@ def _generate_rsa_signing_key(kid: str | None = None) -> SigningKey:
     )
 
 
+def _generate_ec_signing_key(kid: str | None = None) -> SigningKey:
+    """Generate a P-256 signing key for ES256."""
+    # Lazy import: pyjwt[crypto] / cryptography is an optional extra.
+    from cryptography.hazmat.primitives import serialization  # noqa: PLC0415
+    from cryptography.hazmat.primitives.asymmetric import ec  # noqa: PLC0415
+
+    if kid is None:
+        kid = secrets.token_urlsafe(16)
+
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+    # RFC 7518 §6.2.1: coordinates are the full 32 bytes for P-256.
+    public_numbers = private_key.public_key().public_numbers()
+    public_jwk = JWK(
+        kty="EC",
+        kid=kid,
+        use="sig",
+        alg="ES256",
+        crv="P-256",
+        x=_b64url(public_numbers.x.to_bytes(32, "big")),
+        y=_b64url(public_numbers.y.to_bytes(32, "big")),
+    )
+
+    return SigningKey(
+        kid=kid,
+        alg="ES256",
+        private_pem=private_pem,
+        public_jwk=public_jwk,
+    )
+
+
+_KEY_GENERATORS = {
+    "RS256": _generate_rsa_signing_key,
+    "ES256": _generate_ec_signing_key,
+}
+
+
 class InMemoryKeyManager:
     """In-memory `KeyManager` for development and testing.
 
-    Generates keys on first access. Not suitable for production:
-    keys are lost on process restart.
+    Generates keys on first access, using `algorithm`. Not suitable for
+    production: keys are lost on process restart.
 
     Example:
         manager = InMemoryKeyManager()
@@ -166,7 +214,8 @@ class InMemoryKeyManager:
         jwks = await manager.get_jwks()
     """
 
-    def __init__(self) -> None:
+    def __init__(self, algorithm: SigningAlgorithm = "RS256") -> None:
+        self.algorithm = algorithm
         self._keys: dict[str, SigningKey] = {}
         self._active_kid: str | None = None
 
@@ -196,7 +245,7 @@ class InMemoryKeyManager:
                 is_active=False,
             )
 
-        new_key = _generate_rsa_signing_key()
+        new_key = _KEY_GENERATORS[self.algorithm]()
         self._keys[new_key.kid] = new_key
         self._active_kid = new_key.kid
         return new_key
@@ -213,5 +262,6 @@ __all__ = [
     "JWKS",
     "InMemoryKeyManager",
     "KeyManager",
+    "SigningAlgorithm",
     "SigningKey",
 ]

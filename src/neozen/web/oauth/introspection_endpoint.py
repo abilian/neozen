@@ -12,9 +12,6 @@ from pydantic import BaseModel, ValidationError
 
 from neozen.core.oauth.client_service import OAuthClientService
 from neozen.core.oauth.exceptions import (
-    ClientAuthenticationError,
-    ClientInactiveError,
-    ClientNotFoundError,
     TokenInvalidClientError,
     TokenInvalidRequestError,
 )
@@ -24,6 +21,7 @@ from neozen.core.oauth.models import (
     OAuthRefreshTokenModel,
 )
 from neozen.core.oauth.services import OAuthTokenService
+from neozen.web.oauth.utils import authenticate_client
 
 
 class IntrospectionRequest(BaseModel):
@@ -127,8 +125,14 @@ class IntrospectionEndpoint[
             TokenInvalidClientError: Client authentication failed.
             TokenInvalidRequestError: Invalid request parameters.
         """
-        # Authenticate client
-        await self._authenticate_client(client_id, client_secret)
+        # RFC 7662 §2.1: the caller must be authorized. Public clients hold
+        # no secret, so they could probe any token.
+        client = await authenticate_client(
+            self.client_service, client_id, client_secret
+        )
+        if client.is_public_client():
+            msg = "Public clients cannot introspect tokens."
+            raise TokenInvalidClientError(msg)
 
         # Parse request
         request = self._parse_request(payload)
@@ -149,25 +153,6 @@ class IntrospectionEndpoint[
             iat=result.get("iat"),
             token_type=result.get("token_type"),
         )
-
-    async def _authenticate_client(
-        self, client_id: str | None, client_secret: str | None
-    ) -> None:
-        """Authenticate the client making the request."""
-        if not client_id:
-            msg = "Client authentication required."
-            raise TokenInvalidClientError(msg)
-
-        try:
-            await self.client_service.authenticate_client(client_id, client_secret)
-        except ClientNotFoundError as e:
-            msg = "Unknown client."
-            raise TokenInvalidClientError(msg) from e
-        except ClientInactiveError as e:
-            msg = "Client is inactive."
-            raise TokenInvalidClientError(msg) from e
-        except ClientAuthenticationError as e:
-            raise TokenInvalidClientError(str(e)) from e
 
     def _parse_request(self, payload: dict[str, typing.Any]) -> IntrospectionRequest:
         """Parse and validate the request payload."""

@@ -12,11 +12,11 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field, ValidationError
 
+from neozen.core.oauth.client_service import OAuthClientService
 from neozen.core.oauth.exceptions import (
     AuthorizationCodeExpiredError,
     AuthorizationCodeNotFoundError,
     ClientMismatchError,
-    InvalidClientError,
     PKCEVerificationFailedError,
     RedirectUriMismatchError,
     RefreshTokenExpiredError,
@@ -27,6 +27,7 @@ from neozen.core.oauth.exceptions import (
     TokenInvalidGrantError,
     TokenInvalidRequestError,
     TokenInvalidScopeError,
+    TokenUnauthorizedClientError,
     TokenUnsupportedGrantTypeError,
 )
 from neozen.core.oauth.models import (
@@ -36,6 +37,7 @@ from neozen.core.oauth.models import (
     OAuthRefreshTokenModel,
 )
 from neozen.core.oauth.services import OAuthTokenService
+from neozen.web.oauth.utils import authenticate_client
 
 if typing.TYPE_CHECKING:
     from neozen.core.oidc.claims import ClaimsProvider
@@ -52,8 +54,8 @@ class AuthorizationCodeTokenRequest(BaseModel):
     grant_type: typing.Literal["authorization_code"]
     code: str
     redirect_uri: str | None = None
-    client_id: str
-    code_verifier: str = Field(min_length=43, max_length=128)
+    client_id: str | None = None  # May come from Basic auth instead
+    code_verifier: str | None = Field(default=None, min_length=43, max_length=128)
 
 
 class RefreshTokenRequest(BaseModel):
@@ -132,7 +134,7 @@ class TokenEndpoint[
 
     Example:
         service = OAuthTokenService(...)
-        endpoint = TokenEndpoint(service)
+        endpoint = TokenEndpoint(service, client_service)
 
         # Handle HTTP request
         response = await endpoint(request_payload)
@@ -141,6 +143,7 @@ class TokenEndpoint[
     def __init__(
         self,
         service: OAuthTokenService[OC, OAC, OAT, ORT],
+        client_service: OAuthClientService[OC],
         *,
         id_token_generator: IDTokenGenerator | None = None,
         claims_provider: ClaimsProvider | None = None,
@@ -149,6 +152,7 @@ class TokenEndpoint[
 
         Args:
             service: The OAuth token service for business logic.
+            client_service: Authenticates the client on every request.
             id_token_generator: Optional ID token generator. When set,
                 the endpoint will include `id_token` in the response
                 whenever the request includes the `openid` scope.
@@ -157,6 +161,7 @@ class TokenEndpoint[
                 `id_token_generator` is set.
         """
         self.service = service
+        self.client_service = client_service
         self.id_token_generator = id_token_generator
         self.claims_provider = claims_provider
 
@@ -216,8 +221,7 @@ class TokenEndpoint[
         # Verify client_id consistency
         client_id = self._resolve_client_id(request.client_id, auth_client_id)
 
-        # Get client
-        client = await self._get_client(client_id)
+        client = await self._authenticate_client(client_id, auth_client_secret)
 
         # Validate authorization code (delegates to service)
         try:
@@ -275,15 +279,12 @@ class TokenEndpoint[
         # Resolve client_id (from request, auth header, or will get from token)
         client_id = request.client_id or auth_client_id
 
-        # Validate refresh token first to get client_id if not provided
-        try:
-            # We need client_id - if not provided, we'll validate after getting token
-            if not client_id:
-                # This is a simplified flow - in production you'd want to
-                # get the client_id from the token first
-                msg = "client_id is required"
-                raise TokenInvalidRequestError(msg)
+        if not client_id:
+            msg = "client_id is required"
+            raise TokenInvalidRequestError(msg)
+        client = await self._authenticate_client(client_id, auth_client_secret)
 
+        try:
             stored_refresh = await self.service.validate_refresh_token(
                 refresh_token=request.refresh_token,
                 client_id=client_id,
@@ -300,9 +301,6 @@ class TokenEndpoint[
         except ClientMismatchError as e:
             msg = "Refresh token was not issued to this client."
             raise TokenInvalidGrantError(msg) from e
-
-        # Get client
-        client = await self._get_client(client_id)
 
         # Validate scope
         try:
@@ -356,8 +354,12 @@ class TokenEndpoint[
             msg = "Client ID mismatch."
             raise TokenInvalidClientError(msg)
 
-        # Get client
-        client = await self._get_client(client_id)
+        client = await self._authenticate_client(client_id, auth_client_secret)
+
+        # RFC 6749 §4.4: only confidential clients may use this grant.
+        if client.is_public_client():
+            msg = "Public clients cannot use the client_credentials grant."
+            raise TokenUnauthorizedClientError(msg)
 
         # Verify client is allowed to use this grant type
         if not client.is_grant_type_allowed("client_credentials"):
@@ -463,21 +465,23 @@ class TokenEndpoint[
             raise TokenInvalidRequestError(msg) from e
 
     def _resolve_client_id(
-        self, request_client_id: str, auth_client_id: str | None
+        self, request_client_id: str | None, auth_client_id: str | None
     ) -> str:
-        """Resolve client_id from request and auth header."""
-        if auth_client_id and auth_client_id != request_client_id:
+        """Resolve client_id from the request body and the auth header."""
+        if request_client_id and auth_client_id and auth_client_id != request_client_id:
             msg = "Client ID mismatch."
             raise TokenInvalidClientError(msg)
-        return request_client_id
+        client_id = request_client_id or auth_client_id
+        if not client_id:
+            msg = "client_id is required"
+            raise TokenInvalidRequestError(msg)
+        return client_id
 
-    async def _get_client(self, client_id: str) -> OC:
-        """Get OAuth client."""
-        try:
-            return await self.service.get_client(client_id)
-        except InvalidClientError as e:
-            msg = "Unknown client."
-            raise TokenInvalidClientError(msg) from e
+    async def _authenticate_client(
+        self, client_id: str, client_secret: str | None
+    ) -> OC:
+        """Authenticate the client; confidential clients need their secret."""
+        return await authenticate_client(self.client_service, client_id, client_secret)
 
 
 __all__ = [

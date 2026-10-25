@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .types import NeoZenConfig
+from .exceptions import ConfigError
+from .types import NeoZenConfig, OAuthServerConfig
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
@@ -15,6 +16,18 @@ if TYPE_CHECKING:
     from neozen.core.factors.password_policy import PasswordPolicy
     from neozen.core.factors.totp import TOTPConfig as CoreTOTPConfig
     from neozen.core.factors.webauthn import WebAuthnConfig as CoreWebAuthnConfig
+    from neozen.core.oauth.client_service import OAuthClientService
+    from neozen.core.oauth.models import (
+        OAuthAccessTokenModel,
+        OAuthAuthorizationCodeModel,
+        OAuthClientModel,
+        OAuthGrantModel,
+        OAuthRefreshTokenModel,
+    )
+    from neozen.core.oauth.services import OAuthTokenService
+    from neozen.core.oidc.keys import InMemoryKeyManager, KeyManager
+    from neozen.core.repository import RepositoryProtocol
+    from neozen.web.oauth.authorization_endpoint import AuthorizationEndpoint
 
 
 class NeoZenFactory:
@@ -134,6 +147,95 @@ class NeoZenFactory:
             origin=cfg.origin,
             challenge_timeout_seconds=int(cfg.challenge_timeout.total_seconds()),
             user_verification=cfg.user_verification,
+        )
+
+    def _oauth_server(self) -> OAuthServerConfig:
+        cfg = self.config.oauth_server
+        if not cfg.enabled:
+            msg = "oauth_server is not enabled"
+            raise ConfigError(msg)
+        return cfg
+
+    def create_key_manager(self) -> InMemoryKeyManager:
+        """Create an in-memory signing key manager for `oauth_server.jwt_algorithm`.
+
+        Keys are lost on restart: use it for development, and pass a
+        persistent `KeyManager` to `create_oauth_token_service` in production.
+        """
+        from neozen.core.oidc.keys import InMemoryKeyManager  # noqa: PLC0415
+
+        return InMemoryKeyManager(self._oauth_server().jwt_algorithm)
+
+    def create_oauth_token_service[
+        OC: OAuthClientModel,
+        OAC: OAuthAuthorizationCodeModel,
+        OAT: OAuthAccessTokenModel,
+        ORT: OAuthRefreshTokenModel,
+    ](
+        self,
+        client_repository: RepositoryProtocol[OC],
+        authorization_code_repository: RepositoryProtocol[OAC],
+        access_token_repository: RepositoryProtocol[OAT],
+        refresh_token_repository: RepositoryProtocol[ORT],
+        *,
+        key_manager: KeyManager | None = None,
+    ) -> OAuthTokenService[OC, OAC, OAT, ORT]:
+        """Create the token service with the configured lifetimes and rotation.
+
+        When `oauth_server.jwt_issuer` is set, access tokens are JWTs signed
+        by `key_manager`, which is then required.
+        """
+        from neozen.core.oauth.jwt_access_token import (  # noqa: PLC0415
+            JWTAccessTokenSigner,
+        )
+        from neozen.core.oauth.services import OAuthTokenService  # noqa: PLC0415
+
+        cfg = self._oauth_server()
+        signer = None
+        if cfg.jwt_issuer:
+            if key_manager is None or not cfg.jwt_audience:
+                msg = "JWT access tokens need a key_manager and jwt_audience"
+                raise ConfigError(msg)
+            signer = JWTAccessTokenSigner(
+                key_manager=key_manager,
+                issuer=cfg.jwt_issuer,
+                audience=cfg.jwt_audience,
+            )
+        return OAuthTokenService(
+            client_repository=client_repository,
+            authorization_code_repository=authorization_code_repository,
+            access_token_repository=access_token_repository,
+            refresh_token_repository=refresh_token_repository,
+            token_hash_key=self.config.security.secret_key,
+            access_token_lifetime=cfg.access_token_lifetime,
+            refresh_token_lifetime=cfg.refresh_token_lifetime,
+            rotate_refresh_tokens=cfg.allow_refresh_token_rotation,
+            access_token_signer=signer,
+        )
+
+    def create_authorization_endpoint[
+        OC: OAuthClientModel,
+        OG: OAuthGrantModel,
+        OAC: OAuthAuthorizationCodeModel,
+    ](
+        self,
+        client_service: OAuthClientService[OC],
+        grant_repository: RepositoryProtocol[OG],
+        authorization_code_repository: RepositoryProtocol[OAC],
+    ) -> AuthorizationEndpoint[OC, OG, OAC]:
+        """Create the authorization endpoint with the configured code lifetime and PKCE rule."""
+        from neozen.web.oauth.authorization_endpoint import (  # noqa: PLC0415
+            AuthorizationEndpoint,
+        )
+
+        cfg = self._oauth_server()
+        return AuthorizationEndpoint(
+            client_service=client_service,
+            grant_repository=grant_repository,
+            authorization_code_repository=authorization_code_repository,
+            code_hash_key=self.config.security.secret_key,
+            code_lifetime=cfg.authorization_code_lifetime,
+            require_pkce=cfg.require_pkce,
         )
 
     def get_session_lifetime_seconds(self) -> int:

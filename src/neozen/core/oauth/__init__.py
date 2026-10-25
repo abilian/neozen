@@ -5,15 +5,6 @@ Core business logic for OAuth. HTTP adapters are in neozen.web.oauth.
 
 from __future__ import annotations
 
-from neozen.core.oauth.authorization_code import (
-    AuthorizationCodeGrant,
-    AuthorizationCodeGrantConsentResponse,
-    AuthorizationCodeGrantGrantedResponse,
-    AuthorizationCodeGrantProvider,
-    AuthorizationCodeGrantRedirectionError,
-    AuthorizationCodeGrantRequest,
-    MissingOrInvalidClientIDError,
-)
 from neozen.core.oauth.client_service import (
     ClientCredentials,
     OAuthClientService,
@@ -47,6 +38,7 @@ from neozen.core.oauth.exceptions import (
     TokenUnsupportedGrantTypeError,
     UnauthenticatedSubjectError,
 )
+from neozen.core.oauth.jwt_access_token import JWTAccessTokenSigner
 from neozen.core.oauth.models import (
     OAuthAccessTokenModel,
     OAuthAuthorizationCodeModel,
@@ -74,6 +66,7 @@ __all__ = [
     # Services
     "AccessTokenResult",
     "ClientCredentials",
+    "JWTAccessTokenSigner",
     "OAuthClientService",
     "OAuthTokenService",
     "TokenPair",
@@ -81,13 +74,6 @@ __all__ = [
     "compute_s256_challenge",
     "verify_pkce",
     # Authorization Code Grant
-    "AuthorizationCodeGrant",
-    "AuthorizationCodeGrantConsentResponse",
-    "AuthorizationCodeGrantGrantedResponse",
-    "AuthorizationCodeGrantProvider",
-    "AuthorizationCodeGrantRedirectionError",
-    "AuthorizationCodeGrantRequest",
-    "MissingOrInvalidClientIDError",
     # Exceptions - Base
     "OAuthError",
     # Exceptions - Authorization

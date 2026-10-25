@@ -16,6 +16,7 @@ from neozen.core.oauth.exceptions import (
     AuthorizationCodeNotFoundError,
     ClientMismatchError,
     InvalidClientError,
+    PKCEVerificationFailedError,
     RedirectUriMismatchError,
     RefreshTokenExpiredError,
     RefreshTokenNotFoundError,
@@ -31,6 +32,9 @@ from neozen.core.oauth.models import (
 from neozen.core.oauth.pkce import verify_pkce
 from neozen.core.repository import DoesNotExist, RepositoryProtocol
 from neozen.core.utils import ensure_utc
+
+if typing.TYPE_CHECKING:
+    from neozen.core.oauth.jwt_access_token import JWTAccessTokenSigner
 
 
 @dataclass
@@ -88,6 +92,7 @@ class OAuthTokenService[
         access_token_lifetime: timedelta = timedelta(hours=1),
         refresh_token_lifetime: timedelta | None = timedelta(days=30),
         rotate_refresh_tokens: bool = True,
+        access_token_signer: JWTAccessTokenSigner | None = None,
     ) -> None:
         self.client_repository = client_repository
         self.authorization_code_repository = authorization_code_repository
@@ -99,6 +104,45 @@ class OAuthTokenService[
         self.access_token_lifetime = access_token_lifetime
         self.refresh_token_lifetime = refresh_token_lifetime
         self.rotate_refresh_tokens = rotate_refresh_tokens
+        self.access_token_signer = access_token_signer
+
+    async def _issue_access_token(
+        self,
+        subject_id: typing.Any,
+        client_id: str,
+        scope: str | None,
+        issued_at: datetime,
+    ) -> AccessTokenResult:
+        """Generate an access token (opaque, or a JWT with a signer) and store its hash."""
+        expires_at = issued_at + self.access_token_lifetime
+        if self.access_token_signer is None:
+            token, token_hash = generate_token_hash_pair(
+                self.token_hash_key, prefix=self.access_token_prefix
+            )
+        else:
+            token = await self.access_token_signer.sign(
+                subject_id=subject_id,
+                client_id=client_id,
+                scope=scope,
+                issued_at=issued_at,
+                expires_at=expires_at,
+            )
+            token_hash = get_token_hash(token, key=self.token_hash_key)
+        await self.access_token_repository.create(
+            token_hash=token_hash,
+            client_id=client_id,
+            subject_id=subject_id,
+            scope=scope,
+            expires_at=expires_at,
+            created_at=issued_at,
+            revoked_at=None,
+        )
+        return AccessTokenResult(
+            access_token=token,
+            access_token_hash=token_hash,
+            expires_at=expires_at,
+            scope=scope,
+        )
 
     async def get_client(self, client_id: str) -> OC:
         """Get OAuth client by ID.
@@ -117,7 +161,7 @@ class OAuthTokenService[
         code: str,
         client_id: str,
         redirect_uri: str | None,
-        code_verifier: str,
+        code_verifier: str | None,
     ) -> OAC:
         """Validate an authorization code for token exchange.
 
@@ -125,7 +169,8 @@ class OAuthTokenService[
             code: The authorization code.
             client_id: The client ID making the request.
             redirect_uri: The redirect URI (must match original if provided).
-            code_verifier: The PKCE code verifier.
+            code_verifier: The PKCE code verifier, or None when the code was
+                issued without a challenge.
 
         Returns:
             The validated authorization code model.
@@ -154,12 +199,19 @@ class OAuthTokenService[
         if auth_code.redirect_uri and redirect_uri != auth_code.redirect_uri:
             raise RedirectUriMismatchError
 
-        # Verify PKCE
-        verify_pkce(
-            code_verifier,
-            auth_code.code_challenge,
-            auth_code.code_challenge_method,
-        )
+        # Verify PKCE. A verifier for a code issued without a challenge is
+        # rejected too (RFC 9700 §4.8.2, PKCE downgrade).
+        if auth_code.code_challenge is None:
+            if code_verifier is not None:
+                raise PKCEVerificationFailedError
+        elif code_verifier is None:
+            raise PKCEVerificationFailedError
+        else:
+            verify_pkce(
+                code_verifier,
+                auth_code.code_challenge,
+                auth_code.code_challenge_method,
+            )
 
         return auth_code
 
@@ -250,28 +302,14 @@ class OAuthTokenService[
         """
         now = datetime.now(UTC)
 
-        # Generate tokens
-        access_token, access_token_hash = generate_token_hash_pair(
-            self.token_hash_key, prefix=self.access_token_prefix
+        access = await self._issue_access_token(
+            auth_code.subject_id, client.client_id, auth_code.scope, now
         )
         refresh_token, refresh_token_hash = generate_token_hash_pair(
             self.token_hash_key, prefix=self.refresh_token_prefix
         )
-
-        access_expires_at = now + self.access_token_lifetime
         refresh_expires_at = (
             now + self.refresh_token_lifetime if self.refresh_token_lifetime else None
-        )
-
-        # Store access token
-        await self.access_token_repository.create(
-            token_hash=access_token_hash,
-            client_id=client.client_id,
-            subject_id=auth_code.subject_id,
-            scope=auth_code.scope,
-            expires_at=access_expires_at,
-            created_at=now,
-            revoked_at=None,
         )
 
         # Store refresh token
@@ -283,7 +321,7 @@ class OAuthTokenService[
             expires_at=refresh_expires_at,
             created_at=now,
             revoked_at=None,
-            access_token_hash=access_token_hash,
+            access_token_hash=access.access_token_hash,
         )
 
         # OAuth 2.1 §4.1.2: authorization codes MUST be single-use.
@@ -292,11 +330,11 @@ class OAuthTokenService[
         await self.authorization_code_repository.delete(auth_code)
 
         return TokenPair(
-            access_token=access_token,
-            access_token_hash=access_token_hash,
+            access_token=access.access_token,
+            access_token_hash=access.access_token_hash,
             refresh_token=refresh_token,
             refresh_token_hash=refresh_token_hash,
-            access_expires_at=access_expires_at,
+            access_expires_at=access.expires_at,
             refresh_expires_at=refresh_expires_at,
             scope=auth_code.scope,
         )
@@ -319,30 +357,9 @@ class OAuthTokenService[
         Returns:
             Access token result (no refresh token).
         """
-        now = datetime.now(UTC)
-
-        # Generate access token
-        access_token, access_token_hash = generate_token_hash_pair(
-            self.token_hash_key, prefix=self.access_token_prefix
-        )
-        access_expires_at = now + self.access_token_lifetime
-
         # The "subject" for client_credentials is the client itself
-        await self.access_token_repository.create(
-            token_hash=access_token_hash,
-            client_id=client.client_id,
-            subject_id=client.client_id,
-            scope=scope,
-            expires_at=access_expires_at,
-            created_at=now,
-            revoked_at=None,
-        )
-
-        return AccessTokenResult(
-            access_token=access_token,
-            access_token_hash=access_token_hash,
-            expires_at=access_expires_at,
-            scope=scope,
+        return await self._issue_access_token(
+            client.client_id, client.client_id, scope, datetime.now(UTC)
         )
 
     async def refresh_access_token(
@@ -363,27 +380,8 @@ class OAuthTokenService[
         """
         now = datetime.now(UTC)
 
-        # Generate new access token
-        access_token, access_token_hash = generate_token_hash_pair(
-            self.token_hash_key, prefix=self.access_token_prefix
-        )
-        access_expires_at = now + self.access_token_lifetime
-
-        await self.access_token_repository.create(
-            token_hash=access_token_hash,
-            client_id=client.client_id,
-            subject_id=stored_refresh.subject_id,
-            scope=scope,
-            expires_at=access_expires_at,
-            created_at=now,
-            revoked_at=None,
-        )
-
-        result = AccessTokenResult(
-            access_token=access_token,
-            access_token_hash=access_token_hash,
-            expires_at=access_expires_at,
-            scope=scope,
+        result = await self._issue_access_token(
+            stored_refresh.subject_id, client.client_id, scope, now
         )
 
         # Optionally rotate refresh token
@@ -409,7 +407,7 @@ class OAuthTokenService[
                 expires_at=new_refresh_expires_at,
                 created_at=now,
                 revoked_at=None,
-                access_token_hash=access_token_hash,
+                access_token_hash=result.access_token_hash,
             )
 
             result.new_refresh_token = new_refresh
@@ -418,11 +416,13 @@ class OAuthTokenService[
 
         return result
 
-    async def revoke_access_token(self, token: str) -> bool:
-        """Revoke an access token.
+    async def revoke_access_token(self, token: str, client_id: str) -> bool:
+        """Revoke an access token issued to `client_id`.
 
         Args:
             token: The access token to revoke.
+            client_id: The client the token must belong to; tokens issued
+                to other clients are treated as not found.
 
         Returns:
             True if token was found and revoked, False if not found.
@@ -431,7 +431,7 @@ class OAuthTokenService[
 
         try:
             stored = await self.access_token_repository.get_one_by(
-                token_hash=token_hash
+                token_hash=token_hash, client_id=client_id
             )
         except DoesNotExist:
             return False
@@ -442,11 +442,13 @@ class OAuthTokenService[
             )
         return True
 
-    async def revoke_refresh_token(self, token: str) -> bool:
-        """Revoke a refresh token.
+    async def revoke_refresh_token(self, token: str, client_id: str) -> bool:
+        """Revoke a refresh token issued to `client_id`.
 
         Args:
             token: The refresh token to revoke.
+            client_id: The client the token must belong to; tokens issued
+                to other clients are treated as not found.
 
         Returns:
             True if token was found and revoked, False if not found.
@@ -455,7 +457,7 @@ class OAuthTokenService[
 
         try:
             stored = await self.refresh_token_repository.get_one_by(
-                token_hash=token_hash
+                token_hash=token_hash, client_id=client_id
             )
         except DoesNotExist:
             return False

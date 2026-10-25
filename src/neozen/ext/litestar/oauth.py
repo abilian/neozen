@@ -72,7 +72,7 @@ def _error_response(error: str, description: str | None, status_code: int) -> Re
 def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
     """Create the token endpoint handler."""
 
-    @post("/token", sync_to_thread=False)
+    @post("/token")
     async def token_handler(request: Request) -> Response:
         """OAuth 2.1 Token Endpoint."""
         form = await request.form()
@@ -99,7 +99,7 @@ def _create_introspect_handler(
 ) -> typing.Callable:
     """Create the introspection endpoint handler."""
 
-    @post("/introspect", sync_to_thread=False)
+    @post("/introspect")
     async def introspect_handler(request: Request) -> Response:
         """OAuth 2.1 Token Introspection Endpoint (RFC 7662)."""
         form = await request.form()
@@ -118,7 +118,7 @@ def _create_introspect_handler(
 def _create_revoke_handler(revocation_ep: RevocationEndpoint) -> typing.Callable:
     """Create the revocation endpoint handler."""
 
-    @post("/revoke", sync_to_thread=False)
+    @post("/revoke")
     async def revoke_handler(request: Request) -> Response:
         """OAuth 2.1 Token Revocation Endpoint (RFC 7009)."""
         form = await request.form()
@@ -142,7 +142,7 @@ def _create_authorize_handler(
 ) -> typing.Callable:
     """Create the authorization endpoint GET handler."""
 
-    @get("/authorize", sync_to_thread=False)
+    @get("/authorize")
     async def authorize_handler(request: Request) -> Response:
         """OAuth 2.1 Authorization Endpoint."""
         subject = get_current_subject(request) if get_current_subject else None
@@ -183,7 +183,7 @@ def _create_authorize_consent_handler(
 ) -> typing.Callable:
     """Create the authorization consent POST handler."""
 
-    @post("/authorize", sync_to_thread=False)
+    @post("/authorize")
     async def authorize_consent_handler(request: Request) -> Response:
         """Handle consent form submission."""
         subject = get_current_subject(request) if get_current_subject else None
@@ -236,7 +236,7 @@ def create_oauth_router[
         Litestar Router with OAuth endpoints.
     """
     # Create endpoint adapters
-    token_ep = TokenEndpoint(token_service)
+    token_ep = TokenEndpoint(token_service, client_service)
     introspection_ep = IntrospectionEndpoint(
         client_service=client_service, token_service=token_service
     )

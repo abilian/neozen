@@ -124,9 +124,9 @@ class OAuthAuthorizationCode(Base):
     response_type: Mapped[str] = mapped_column(String(128), nullable=False)
     redirect_uri: Mapped[str | None] = mapped_column(Text(), nullable=True)
     scope: Mapped[str] = mapped_column(Text(), nullable=False)
-    code_challenge: Mapped[str] = mapped_column(String(128), nullable=False)
-    code_challenge_method: Mapped[CodeChallengeMethod] = mapped_column(
-        String(128), nullable=False
+    code_challenge: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    code_challenge_method: Mapped[CodeChallengeMethod | None] = mapped_column(
+        String(128), nullable=True
     )
 
 

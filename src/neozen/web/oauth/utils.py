@@ -7,7 +7,18 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from neozen.core.oauth.exceptions import (
+    ClientAuthenticationError,
+    ClientInactiveError,
+    ClientNotFoundError,
+    TokenInvalidClientError,
+)
+
+if TYPE_CHECKING:
+    from neozen.core.oauth.client_service import OAuthClientService
+    from neozen.core.oauth.models import OAuthClientModel
 
 # RFC 6749 §5.1: responses carrying tokens or credentials must not be cached.
 NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
@@ -27,6 +38,30 @@ def token_error_headers(error: str) -> dict[str, str]:
 def token_error_status(error: str) -> int:
     """HTTP status for a token endpoint error code (RFC 6749 §5.2)."""
     return 401 if error == "invalid_client" else 400
+
+
+async def authenticate_client[OC: OAuthClientModel](
+    client_service: OAuthClientService[OC],
+    client_id: str | None,
+    client_secret: str | None,
+) -> OC:
+    """Authenticate the calling client (RFC 6749 §2.3), or raise ``invalid_client``.
+
+    Confidential clients must present their secret; public clients present
+    none. Unknown and inactive clients fail the same way.
+    """
+    if not client_id:
+        msg = "Client authentication required."
+        raise TokenInvalidClientError(msg)
+    try:
+        return await client_service.authenticate_client(client_id, client_secret)
+    except (
+        ClientNotFoundError,
+        ClientInactiveError,
+        ClientAuthenticationError,
+    ) as e:
+        msg = "Client authentication failed."
+        raise TokenInvalidClientError(msg) from e
 
 
 def parse_basic_auth(header: str | None) -> tuple[str | None, str | None]:

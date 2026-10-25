@@ -17,14 +17,15 @@ from neozen.core.oauth.types import CodeChallengeMethod
 def verify_pkce(
     code_verifier: str,
     code_challenge: str,
-    method: CodeChallengeMethod,
+    method: CodeChallengeMethod | None,
 ) -> None:
     """Verify PKCE code verifier against stored challenge.
 
     Args:
         code_verifier: The code verifier from the token request.
         code_challenge: The stored code challenge from authorization.
-        method: The challenge method ("plain" or "S256").
+        method: The challenge method ("plain" or "S256"); anything else,
+            including a missing method, fails.
 
     Raises:
         PKCEVerificationFailedError: If verification fails.

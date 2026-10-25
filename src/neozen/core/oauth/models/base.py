@@ -94,8 +94,8 @@ class OAuthAuthorizationCodeModel(NeoZenModel):
     response_type: str
     redirect_uri: str | None
     scope: str
-    code_challenge: str
-    code_challenge_method: CodeChallengeMethod
+    code_challenge: str | None
+    code_challenge_method: CodeChallengeMethod | None
 
 
 class OAuthAccessTokenModel(NeoZenModel):

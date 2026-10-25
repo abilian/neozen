@@ -114,7 +114,7 @@ class TestOAuthAuthorizationCodeFlow:
         await client_repo.add(client)
         await session.commit()
 
-        # 2. Simulate authorization code creation (normally done by AuthorizationCodeGrant)
+        # 2. Simulate authorization code creation (normally done by AuthorizationEndpoint)
         code_verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
         # For plain PKCE, challenge equals verifier
         code_challenge = code_verifier
