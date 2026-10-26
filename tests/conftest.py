@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import sysconfig
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
+from _pytest._code.code import ExceptionInfo, Traceback
 
 # Playwright has no musl wheels, so Alpine CI syncs without it.
 collect_ignore = [] if importlib.util.find_spec("playwright") else ["d_playwright"]
@@ -36,6 +39,41 @@ collect_ignore = [] if importlib.util.find_spec("playwright") else ["d_playwrigh
 # the source.
 logging.getLogger("tortoise").setLevel(logging.WARNING)
 logging.getLogger("databases").setLevel(logging.WARNING)
+
+
+# Failure reports show only frames from this repository: a SQLAlchemy or
+# Werkzeug error otherwise runs to hundreds of lines, once per chained
+# exception. `--full-trace` shows everything.
+_LIBRARY_PATHS = tuple({
+    sysconfig.get_path(name) for name in ("stdlib", "purelib", "platlib")
+})
+
+
+def _own_frames(excinfo: ExceptionInfo[BaseException]) -> Traceback:
+    traceback = excinfo.traceback
+    own = traceback.filter(lambda entry: not str(entry.path).startswith(_LIBRARY_PATHS))
+    # An exception raised entirely inside a library: keep where it was raised.
+    return own or traceback[-1:]
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
+    report = yield
+    excinfo = call.excinfo
+    if (
+        report.failed
+        and excinfo is not None
+        and not item.config.getoption("fulltrace")
+        and not excinfo.errisinstance(pytest.fail.Exception)
+    ):
+        style = item.config.getoption("tbstyle")
+        report.longrepr = excinfo.getrepr(
+            style="long" if style == "auto" else style,
+            tbfilter=_own_frames,
+        )
+    return report
 
 
 def pytest_collection_modifyitems(config, items):

@@ -28,7 +28,7 @@ def run_async(coro):
 
 
 @pytest.fixture
-def flask_app(tmp_path: Path):
+def flask_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Create a fresh Flask demo app for each test."""
     from demos.shared.auth import RoleServiceFactory
     from neozen.admin.services import AdminService
@@ -56,27 +56,23 @@ def flask_app(tmp_path: Path):
     # Import and patch Flask app
     import demos.flask.app as flask_module
 
-    # Store original values
-    orig_engine = flask_module.engine
-    orig_session_factory = flask_module.session_factory
-    orig_role_service = flask_module.role_service
-
-    # Patch module globals
-    flask_module.engine = engine
-    flask_module.session_factory = session_factory
-    flask_module.role_service = RoleServiceFactory(session_factory)
+    # Patch module globals. The extension's session service captured the
+    # demo's own database at import, so point it at the test one too.
+    monkeypatch.setattr(flask_module, "engine", engine)
+    monkeypatch.setattr(flask_module, "session_factory", session_factory)
+    monkeypatch.setattr(
+        flask_module, "role_service", RoleServiceFactory(session_factory)
+    )
+    monkeypatch.setattr(
+        flask_module.session_service, "session_factory", session_factory
+    )
 
     # Get the app
     app = flask_module.app
     app.config["TESTING"] = True
     app.config["WTF_CSRF_ENABLED"] = False
 
-    yield app
-
-    # Restore original values
-    flask_module.engine = orig_engine
-    flask_module.session_factory = orig_session_factory
-    flask_module.role_service = orig_role_service
+    return app
 
     # Cleanup - dispose engine and close all connections
     async def cleanup():

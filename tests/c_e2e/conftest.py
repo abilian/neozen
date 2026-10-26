@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from neozen.storage.sqlalchemy.base import Base
 
@@ -17,9 +18,13 @@ if str(project_root) not in sys.path:
 
 
 def create_test_database(db_path: str) -> tuple[AsyncEngine, async_sessionmaker]:
-    """Create async SQLAlchemy engine and session factory for tests."""
+    """Create async SQLAlchemy engine and session factory for tests.
+
+    No pool: tests run each coroutine on a fresh event loop, and a pooled
+    aiosqlite connection stays bound to the loop that opened it.
+    """
     db_url = f"sqlite+aiosqlite:///{db_path}"
-    engine = create_async_engine(db_url, echo=False)
+    engine = create_async_engine(db_url, poolclass=NullPool)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     return engine, session_factory
 
