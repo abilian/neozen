@@ -13,23 +13,28 @@ uv add neozen
 
 ## Optional Dependencies
 
-NeoZen uses optional dependencies to keep the core lightweight:
+NeoZen uses optional dependencies to keep the core lightweight. The core includes Litestar, SQLAlchemy and Argon2id password hashing.
 
 ```bash
-# Password hashing (Argon2id)
-uv add "neozen[password]"
+# Factors and identifiers
+uv add "neozen[totp]"          # TOTP / MFA
+uv add "neozen[webauthn]"      # WebAuthn / passkeys
+uv add "neozen[phone]"         # phone number identifiers
+uv add "neozen[oauth-client]"  # social login (Google, GitHub)
+uv add "neozen[oidc]"          # OpenID Connect provider (signing keys)
+uv add "neozen[ldap]"          # LDAP storage
 
-# TOTP / MFA
-uv add "neozen[totp]"
+# Framework adapters (the Litestar one needs nothing extra)
+uv add "neozen[flask]"
+uv add "neozen[starlette]"
 
-# WebAuthn / Passkeys
-uv add "neozen[webauthn]"
-
-# Social login (Google, GitHub)
-uv add "neozen[oauth]"
+# Other storage backends
+uv add "neozen[peewee]"
+uv add "neozen[tortoise]"
+uv add "neozen[databases]"     # raw SQL via `databases`
 
 # Everything
-uv add "neozen[password,totp,webauthn,oauth]"
+uv add "neozen[all]"
 ```
 
 ## Database Setup

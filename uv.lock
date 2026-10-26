@@ -1538,6 +1538,9 @@ demo = [
     { name = "starlette" },
     { name = "uvicorn" },
 ]
+flask = [
+    { name = "flask", extra = ["async"] },
+]
 ldap = [
     { name = "ldap3" },
 ]
@@ -1560,6 +1563,9 @@ phone = [
 sqlalchemy = [
     { name = "advanced-alchemy" },
     { name = "sqlalchemy" },
+]
+starlette = [
+    { name = "starlette" },
 ]
 tortoise = [
     { name = "aiosqlite" },
@@ -1628,6 +1634,7 @@ requires-dist = [
     { name = "dishka", specifier = ">=1.10.1" },
     { name = "email-validator", specifier = ">=2.3.0" },
     { name = "flask", extras = ["async"], marker = "extra == 'demo'", specifier = ">=3.0.0" },
+    { name = "flask", extras = ["async"], marker = "extra == 'flask'", specifier = ">=3.0.0" },
     { name = "httpx", marker = "extra == 'oauth-client'", specifier = ">=0.28.0" },
     { name = "itsdangerous", marker = "extra == 'demo'", specifier = ">=2.0.0" },
     { name = "jinja2", marker = "extra == 'demo'", specifier = ">=3.1.0" },
@@ -1635,7 +1642,7 @@ requires-dist = [
     { name = "ldap3", marker = "extra == 'ldap'", specifier = ">=2.9.0" },
     { name = "litestar", marker = "extra == 'demo'", specifier = ">=2.0.0" },
     { name = "litestar", extras = ["standard"], specifier = ">=2.19.0" },
-    { name = "neozen", extras = ["password", "phone", "totp", "oauth-client", "webauthn", "oidc", "ldap", "sqlalchemy", "peewee", "tortoise", "databases", "demo"], marker = "extra == 'all'" },
+    { name = "neozen", extras = ["password", "phone", "totp", "oauth-client", "webauthn", "oidc", "ldap", "sqlalchemy", "peewee", "tortoise", "databases", "flask", "starlette", "demo"], marker = "extra == 'all'" },
     { name = "peewee", marker = "extra == 'peewee'", specifier = ">=3.17.0" },
     { name = "phonenumbers", marker = "extra == 'phone'", specifier = ">=9.0.0" },
     { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3.0" },
@@ -1648,12 +1655,13 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.45" },
     { name = "sqlalchemy", marker = "extra == 'sqlalchemy'", specifier = ">=2.0.0" },
     { name = "starlette", marker = "extra == 'demo'", specifier = ">=0.40.0" },
+    { name = "starlette", marker = "extra == 'starlette'", specifier = ">=0.40.0" },
     { name = "tortoise-orm", extras = ["asyncpg"], marker = "extra == 'tortoise'", specifier = ">=0.22.0" },
     { name = "uvicorn", specifier = ">=0.40.0" },
     { name = "uvicorn", marker = "extra == 'demo'", specifier = ">=0.30.0" },
     { name = "webauthn", marker = "extra == 'webauthn'", specifier = ">=2.0.0" },
 ]
-provides-extras = ["password", "phone", "totp", "oauth-client", "webauthn", "oidc", "ldap", "sqlalchemy", "peewee", "tortoise", "databases", "demo", "all"]
+provides-extras = ["password", "phone", "totp", "oauth-client", "webauthn", "oidc", "ldap", "sqlalchemy", "peewee", "tortoise", "databases", "flask", "starlette", "demo", "all"]
 
 [package.metadata.requires-dev]
 dev = [

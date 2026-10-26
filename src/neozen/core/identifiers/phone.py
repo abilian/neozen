@@ -5,7 +5,6 @@ from __future__ import annotations
 import typing
 
 import dishka
-import phonenumbers
 
 from neozen.core.identifiers.base import (
     IdentifierProtocol,
@@ -62,6 +61,9 @@ class PhoneIdentifier[S: PhoneSubjectModel](IdentifierProtocol[S]):
         return identifier
 
     async def verify_identifier(self, identifier: str) -> str:
+        # Lazy import: phonenumbers is an optional extra (`neozen[phone]`)
+        import phonenumbers  # noqa: PLC0415
+
         try:
             parsed = phonenumbers.parse(identifier, self.default_region)
         except phonenumbers.NumberParseException as e:

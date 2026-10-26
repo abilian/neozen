@@ -41,3 +41,10 @@ tasks:
   - nox: |
       cd neozen
       uvx nox
+  - package: |
+      cd neozen
+      uv build --out-dir /tmp/dist
+      # The wheel must install and run with no extra.
+      uv venv /tmp/wheel-venv
+      VIRTUAL_ENV=/tmp/wheel-venv uv pip install /tmp/dist/*.whl
+      cd /tmp && /tmp/wheel-venv/bin/neozen --version
