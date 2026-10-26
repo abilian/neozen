@@ -7,6 +7,9 @@ the core services for business logic.
 
 from __future__ import annotations
 
+import dataclasses
+import hmac
+import json
 import typing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -73,6 +76,7 @@ class ConsentRequest(AuthorizationRequest):
 
     response_type: str = "code"
     approved: bool
+    consent_token: str = ""  # checked after the request itself
 
 
 # =============================================================================
@@ -130,6 +134,8 @@ class ConsentData:
     code_challenge: str | None
     code_challenge_method: CodeChallengeMethod | None
     nonce: str | None = None
+    # Set when consent is required: the consent form must post it back.
+    consent_token: str | None = None
 
 
 # =============================================================================
@@ -138,6 +144,10 @@ class ConsentData:
 
 
 _DEFAULT_CODE_PREFIX = "nz_ac_"
+
+
+# How long a consent page may stay open before its form is refused.
+CONSENT_TOKEN_LIFETIME = timedelta(minutes=10)
 
 
 def _challenge_method(request: AuthorizationRequest) -> CodeChallengeMethod | None:
@@ -412,10 +422,42 @@ class AuthorizationEndpoint[
                 request=request,
             )
         except DoesNotExist:
-            # Need consent
+            # Need consent. The token ties the consent form to this subject
+            # and request, so a cross-site POST cannot grant access (CSRF).
+            expires = int((datetime.now(UTC) + CONSENT_TOKEN_LIFETIME).timestamp())
+            token = self._consent_token(subject.id, request, expires)
             return AuthorizationResponse(
-                requires_consent=True, consent_data=consent_data
+                requires_consent=True,
+                consent_data=dataclasses.replace(consent_data, consent_token=token),
             )
+
+    def _consent_token(
+        self, subject_id: typing.Any, request: AuthorizationRequest, expires: int
+    ) -> str:
+        """``<expiry>.<HMAC>`` over the subject and every request parameter."""
+        message = json.dumps([
+            "consent",
+            str(subject_id),
+            request.client_id,
+            str(request.redirect_uri or ""),
+            request.scope,
+            request.state,
+            request.code_challenge,
+            _challenge_method(request),
+            request.nonce,
+            expires,
+        ])
+        mac = hmac.new(self.code_hash_key.encode(), message.encode(), "sha256")
+        return f"{expires}.{mac.hexdigest()}"
+
+    def _consent_token_is_valid(
+        self, token: str, subject_id: typing.Any, request: AuthorizationRequest
+    ) -> bool:
+        expires, _, _ = token.partition(".")
+        if not expires.isdigit() or int(expires) < datetime.now(UTC).timestamp():
+            return False
+        expected = self._consent_token(subject_id, request, int(expires))
+        return hmac.compare_digest(token, expected)
 
     async def handle_consent[S: Subject](
         self,
@@ -448,6 +490,13 @@ class AuthorizationEndpoint[
         error = self._validate_request_params(client, request, redirect_uri)
         if error:
             return error
+
+        # Refused without a redirect: the form did not come from our page.
+        if not self._consent_token_is_valid(request.consent_token, subject.id, request):
+            return AuthorizationResponse(
+                error="invalid_request",
+                error_description="The consent form has expired or is invalid.",
+            )
 
         # Handle denial
         if not request.approved:

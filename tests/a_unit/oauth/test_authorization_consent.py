@@ -15,7 +15,11 @@ from neozen.core.oauth.models import (
     OAuthClientModel,
     OAuthGrantModel,
 )
-from neozen.web.oauth.authorization_endpoint import AuthorizationEndpoint
+from neozen.web.oauth.authorization_endpoint import (
+    AuthorizationEndpoint,
+    AuthorizationRequest,
+    AuthorizationResponse,
+)
 from tests.conftest import MockStorage
 
 REGISTERED_URI = "https://app.example.com/callback"
@@ -25,6 +29,7 @@ CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
 @dataclasses.dataclass
 class Client(OAuthClientModel):
     client_id: str
+    client_name: str = "App"
     client_type: str = "confidential"
     redirect_uris: str = json.dumps([REGISTERED_URI])
     allowed_scopes: str = "openid profile"
@@ -91,14 +96,30 @@ def _consent(**overrides: str) -> dict[str, str | bool]:
     }
 
 
+async def _submit(
+    endpoint: AuthorizationEndpoint,
+    payload: dict[str, str | bool],
+    subject: User,
+) -> AuthorizationResponse:
+    """Load the consent page as a browser would, then post the form back.
+
+    The form carries the consent token the page was rendered with.
+    """
+    query = {k: v for k, v in payload.items() if k != "approved"}
+    page = await endpoint.handle_authorization_request(
+        {"response_type": "code", **query}, subject
+    )
+    if page.consent_data and page.consent_data.consent_token:
+        payload = {"consent_token": page.consent_data.consent_token, **payload}
+    return await endpoint.handle_consent(payload, subject)
+
+
 @pytest.mark.anyio
 class TestHandleConsent:
     async def test_valid_consent_issues_code(
         self, codes: MockStorage[AuthCode]
     ) -> None:
-        response = await _endpoint(Client("app"), codes).handle_consent(
-            _consent(), User()
-        )
+        response = await _submit(_endpoint(Client("app"), codes), _consent(), User())
         assert response.error is None
         assert response.code
         assert response.redirect_uri == REGISTERED_URI
@@ -106,8 +127,10 @@ class TestHandleConsent:
     async def test_unregistered_redirect_uri_is_rejected(
         self, codes: MockStorage[AuthCode]
     ) -> None:
-        response = await _endpoint(Client("app"), codes).handle_consent(
-            _consent(redirect_uri="https://evil.example.com/steal"), User()
+        response = await _submit(
+            _endpoint(Client("app"), codes),
+            _consent(redirect_uri="https://evil.example.com/steal"),
+            User(),
         )
         assert response.error == "invalid_request"
         assert response.redirect_uri is None
@@ -116,7 +139,8 @@ class TestHandleConsent:
     async def test_denial_with_unregistered_redirect_uri_does_not_redirect(
         self, codes: MockStorage[AuthCode]
     ) -> None:
-        response = await _endpoint(Client("app"), codes).handle_consent(
+        response = await _submit(
+            _endpoint(Client("app"), codes),
             _consent(redirect_uri="https://evil.example.com/", approved=False),
             User(),
         )
@@ -125,8 +149,8 @@ class TestHandleConsent:
     async def test_scope_beyond_client_allowance_is_rejected(
         self, codes: MockStorage[AuthCode]
     ) -> None:
-        response = await _endpoint(Client("app"), codes).handle_consent(
-            _consent(scope="openid admin"), User()
+        response = await _submit(
+            _endpoint(Client("app"), codes), _consent(scope="openid admin"), User()
         )
         assert response.error == "invalid_scope"
         assert await codes.count() == 0
@@ -135,8 +159,8 @@ class TestHandleConsent:
         self, codes: MockStorage[AuthCode]
     ) -> None:
         client = Client("app", client_type="public")
-        response = await _endpoint(client, codes).handle_consent(
-            _consent(code_challenge_method="plain"), User()
+        response = await _submit(
+            _endpoint(client, codes), _consent(code_challenge_method="plain"), User()
         )
         assert response.error == "invalid_request"
         assert await codes.count() == 0
@@ -151,8 +175,8 @@ def _consent_without_pkce() -> dict[str, str | bool]:
 @pytest.mark.anyio
 class TestRequirePKCE:
     async def test_pkce_required_by_default(self, codes: MockStorage[AuthCode]) -> None:
-        response = await _endpoint(Client("app"), codes).handle_consent(
-            _consent_without_pkce(), User()
+        response = await _submit(
+            _endpoint(Client("app"), codes), _consent_without_pkce(), User()
         )
         assert response.error == "invalid_request"
         assert await codes.count() == 0
@@ -161,7 +185,7 @@ class TestRequirePKCE:
         self, codes: MockStorage[AuthCode]
     ) -> None:
         endpoint = _endpoint(Client("app"), codes, require_pkce=False)
-        response = await endpoint.handle_consent(_consent_without_pkce(), User())
+        response = await _submit(endpoint, _consent_without_pkce(), User())
         assert response.code
         [code] = await codes.get_many_by()
         assert code.code_challenge is None
@@ -172,7 +196,7 @@ class TestRequirePKCE:
     ) -> None:
         client = Client("app", client_type="public")
         endpoint = _endpoint(client, codes, require_pkce=False)
-        response = await endpoint.handle_consent(_consent_without_pkce(), User())
+        response = await _submit(endpoint, _consent_without_pkce(), User())
         assert response.error == "invalid_request"
         assert await codes.count() == 0
 
@@ -182,7 +206,7 @@ class TestRequirePKCE:
         """A consent form renders absent values as empty hidden fields."""
         endpoint = _endpoint(Client("app"), codes, require_pkce=False)
         payload = _consent(code_challenge="", code_challenge_method="")
-        response = await endpoint.handle_consent(payload, User())
+        response = await _submit(endpoint, payload, User())
         assert response.code
 
 
@@ -193,7 +217,7 @@ async def test_defaulted_redirect_uri_is_not_recorded(
     """The token request need not repeat a redirect_uri it never sent."""
     payload = _consent()
     del payload["redirect_uri"]
-    response = await _endpoint(Client("app"), codes).handle_consent(payload, User())
+    response = await _submit(_endpoint(Client("app"), codes), payload, User())
     assert response.redirect_uri == REGISTERED_URI
     [code] = await codes.get_many_by()
     assert code.redirect_uri is None
@@ -202,6 +226,60 @@ async def test_defaulted_redirect_uri_is_not_recorded(
 @pytest.mark.anyio
 async def test_nonce_is_recorded_on_the_code(codes: MockStorage[AuthCode]) -> None:
     payload = _consent(nonce="n-0S6_WzA2Mj")
-    await _endpoint(Client("app"), codes).handle_consent(payload, User())
+    await _submit(_endpoint(Client("app"), codes), payload, User())
     [code] = await codes.get_many_by()
     assert code.nonce == "n-0S6_WzA2Mj"
+
+
+@pytest.mark.anyio
+class TestConsentToken:
+    """The consent POST must come from the page NeoZen rendered (CSRF)."""
+
+    async def _token(
+        self, endpoint: AuthorizationEndpoint, subject: User, **overrides: str
+    ) -> str:
+        query = {k: v for k, v in _consent(**overrides).items() if k != "approved"}
+        page = await endpoint.handle_authorization_request(
+            {"response_type": "code", **query}, subject
+        )
+        assert page.consent_data
+        assert page.consent_data.consent_token
+        return page.consent_data.consent_token
+
+    async def test_missing_token_is_refused(self, codes: MockStorage[AuthCode]) -> None:
+        endpoint = _endpoint(Client("app"), codes)
+        response = await endpoint.handle_consent(_consent(), User())
+        assert response.error == "invalid_request"
+        assert response.redirect_uri is None
+        assert await codes.count() == 0
+
+    async def test_token_of_another_subject_is_refused(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        endpoint = _endpoint(Client("app"), codes)
+        token = await self._token(endpoint, User(id="mallory"))
+        payload = {**_consent(), "consent_token": token}
+        response = await endpoint.handle_consent(payload, User())
+        assert response.error == "invalid_request"
+        assert await codes.count() == 0
+
+    async def test_token_does_not_cover_a_changed_scope(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        endpoint = _endpoint(Client("app"), codes)
+        token = await self._token(endpoint, User(), scope="openid")
+        payload = {**_consent(scope="openid profile"), "consent_token": token}
+        response = await endpoint.handle_consent(payload, User())
+        assert response.error == "invalid_request"
+        assert await codes.count() == 0
+
+    async def test_expired_token_is_refused(self, codes: MockStorage[AuthCode]) -> None:
+        endpoint = _endpoint(Client("app"), codes)
+        request = AuthorizationRequest.model_validate({
+            "response_type": "code",
+            **{k: v for k, v in _consent().items() if k != "approved"},
+        })
+        token = endpoint._consent_token("alice", request, expires=1)
+        payload = {**_consent(), "consent_token": token}
+        response = await endpoint.handle_consent(payload, User())
+        assert response.error == "invalid_request"

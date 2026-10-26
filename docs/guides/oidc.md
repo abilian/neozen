@@ -67,6 +67,24 @@ Each adapter can mount discovery and JWKS for you: `create_oidc_router` (Litesta
 | End Session | `/oauth/end_session` | Logout flow |
 | Registration | `/oauth/register` | Dynamic client registration |
 
+## Consent Form
+
+When a user hasn't yet granted a client access, the authorization endpoint answers with `requires_consent` and a `consent_data` object, and your app renders the consent page. Its form posts back to the authorization endpoint with every field of `consent_data` as a hidden input, plus the user's answer:
+
+```html
+<form method="post" action="/oauth/authorize">
+  {% for name in ["client_id", "redirect_uri", "scope", "state",
+                  "code_challenge", "code_challenge_method", "nonce",
+                  "consent_token"] %}
+    <input type="hidden" name="{{ name }}" value="{{ consent_data[name] or '' }}">
+  {% endfor %}
+  <button name="approved" value="true">Allow</button>
+  <button name="approved" value="false">Deny</button>
+</form>
+```
+
+`consent_token` is what makes the form safe against cross-site request forgery: it is signed, expires after ten minutes, and is bound to the signed-in user and to the exact request. A submission without a valid one is refused, whatever framework serves the page. Empty values are fine: missing PKCE fields count as absent.
+
 ## Key Management
 
 The `KeyManager` protocol manages RSA signing keys for ID tokens:
