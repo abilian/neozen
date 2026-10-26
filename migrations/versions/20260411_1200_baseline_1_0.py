@@ -30,10 +30,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-from neozen.storage.sqlalchemy import (
-    models,  # noqa: F401  side-effect: register models
-    security_models,  # noqa: F401  side-effect: register models
-)
+import neozen.storage.sqlalchemy  # noqa: F401  side-effect: registers every table
 from neozen.storage.sqlalchemy.base import Base
 
 # revision identifiers, used by Alembic.

@@ -22,7 +22,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
 # Ensure all model modules are imported so Base.metadata sees every table
-from neozen.storage.sqlalchemy import models, security_models  # noqa: F401
+import neozen.storage.sqlalchemy  # noqa: F401  side-effect: registers every table
 from neozen.storage.sqlalchemy.base import Base
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -139,3 +139,50 @@ class TestBaselineMetadata:
         assert f("sqlite+aiosqlite:///x.db") == "sqlite:///x.db"
         assert f("postgresql+asyncpg://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
         assert f("postgresql://u:p@h/db") == "postgresql://u:p@h/db"
+
+
+def _code_columns(url: str) -> dict[str, dict]:
+    engine = create_engine(url)
+    return {
+        c["name"]: c for c in inspect(engine).get_columns("oauth_authorization_codes")
+    }
+
+
+class TestOAuthSchemaRevision:
+    def test_fresh_database_has_current_oauth_schema(
+        self, alembic_db_url: str, alembic_cfg: Config
+    ) -> None:
+        command.upgrade(alembic_cfg, "head")
+        tables = set(inspect(create_engine(alembic_db_url)).get_table_names())
+        assert {"oauth_clients", "oauth_authorization_codes"} <= tables
+        columns = _code_columns(alembic_db_url)
+        assert "nonce" in columns
+        assert columns["code_challenge"]["nullable"]
+
+    def test_older_database_is_brought_up_to_date(
+        self, alembic_db_url: str, alembic_cfg: Config
+    ) -> None:
+        """OAuth tables made by create_all before 0.9, stamped at the baseline."""
+        engine = create_engine(alembic_db_url)
+        codes = Base.metadata.tables["oauth_authorization_codes"]
+        Base.metadata.create_all(
+            engine, tables=[t for t in Base.metadata.sorted_tables if t is not codes]
+        )
+        with engine.begin() as conn:
+            conn.exec_driver_sql(
+                "CREATE TABLE oauth_authorization_codes ("
+                " code VARCHAR(64) PRIMARY KEY,"
+                " client_id VARCHAR REFERENCES oauth_clients (client_id),"
+                " subject_id VARCHAR(128) NOT NULL, expires_at DATETIME NOT NULL,"
+                " response_type VARCHAR(128) NOT NULL, redirect_uri TEXT,"
+                " scope TEXT NOT NULL, code_challenge VARCHAR(128) NOT NULL,"
+                " code_challenge_method VARCHAR(128) NOT NULL)"
+            )
+        command.stamp(alembic_cfg, "1_0_baseline")
+
+        command.upgrade(alembic_cfg, "head")
+
+        columns = _code_columns(alembic_db_url)
+        assert "nonce" in columns
+        assert columns["code_challenge"]["nullable"]
+        assert columns["code_challenge_method"]["nullable"]

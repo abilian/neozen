@@ -9,7 +9,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from neozen.core.oauth.types import CodeChallengeMethod
-from neozen.storage.sqlalchemy import Base
+from neozen.storage.sqlalchemy.base import Base
 
 
 class OAuthClient(Base):

@@ -6,6 +6,12 @@ using Advanced-Alchemy repositories.
 
 from __future__ import annotations
 
+# Importing every model module here keeps Base.metadata complete, so
+# migrations, create_all and tests always see the whole schema.
+from neozen.storage.sqlalchemy import (  # noqa: F401  side-effect: register models
+    oauth_models,
+    security_models,
+)
 from neozen.storage.sqlalchemy.base import Base
 from neozen.storage.sqlalchemy.factories import (
     RoleServiceFactory,

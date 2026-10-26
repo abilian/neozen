@@ -21,10 +21,7 @@ from sqlalchemy import engine_from_config, pool
 
 # Import all models so Base.metadata reflects every table.
 # This is the entire SQLAlchemy schema NeoZen ships.
-from neozen.storage.sqlalchemy import (
-    models,  # noqa: F401  side-effect
-    security_models,  # noqa: F401  side-effect
-)
+import neozen.storage.sqlalchemy  # noqa: F401  side-effect: registers every table
 from neozen.storage.sqlalchemy.base import Base
 
 config = context.config
