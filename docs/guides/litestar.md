@@ -104,6 +104,18 @@ async def logout_submit(request: Request) -> Response:
     return response
 ```
 
+## CSRF Protection
+
+NeoZen's session cookie is `SameSite=Lax`, which stops most cross-site form posts but not all of them (older browsers, `SameSite=None` deployments). The plugin doesn't own your login, logout or settings forms, so turn on Litestar's CSRF middleware:
+
+```python
+from litestar.config.csrf import CSRFConfig
+
+app = Litestar(..., csrf_config=CSRFConfig(secret=SECRET_KEY, cookie_secure=True))
+```
+
+With Litestar's template engine, put `{{ csrf_input | safe }}` in each form; HTMX and JavaScript send the token in the `x-csrftoken` header instead. The OAuth consent form is the exception: NeoZen protects it itself, with a `consent_token` (see [Consent Form](oidc.md#consent-form)).
+
 ## Direct Factor Wiring
 
 If you own your User model and don't want to use NeoZen's

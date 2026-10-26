@@ -76,6 +76,25 @@ def logout():
     return redirect(url_for("index"))
 ```
 
+## CSRF Protection
+
+NeoZen's session cookie is `SameSite=Lax`, which stops most cross-site form posts but not all of them (older browsers, `SameSite=None` deployments). The extension doesn't own your login, logout or settings forms, so protect them with your framework's CSRF support. For Flask, that's [Flask-WTF](https://flask-wtf.readthedocs.io/en/stable/csrf/):
+
+```python
+from flask_wtf import CSRFProtect
+
+CSRFProtect(app)  # every POST must now carry the token
+```
+
+```html
+<form method="post" action="/login">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  ...
+</form>
+```
+
+The OAuth consent form is the exception: NeoZen protects it itself, with a `consent_token` (see [Consent Form](oidc.md#consent-form)).
+
 ## Admin Guard
 
 ```python

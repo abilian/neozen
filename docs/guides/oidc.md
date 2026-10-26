@@ -83,7 +83,7 @@ When a user hasn't yet granted a client access, the authorization endpoint answe
 </form>
 ```
 
-`consent_token` is what makes the form safe against cross-site request forgery: it is signed, expires after ten minutes, and is bound to the signed-in user and to the exact request. A submission without a valid one is refused, whatever framework serves the page. Empty values are fine: missing PKCE fields count as absent.
+`consent_token` is what makes the form safe against cross-site request forgery: it is signed, expires after ten minutes, and is bound to the signed-in user and to the exact request. A submission without a valid one is refused, whatever framework serves the page. Your other forms (login, logout, settings) need your framework's CSRF protection: see the [Flask](flask.md#csrf-protection) and [Litestar](litestar.md#csrf-protection) guides; with Starlette, use a middleware such as [starlette-csrf](https://github.com/frankie567/starlette-csrf). Empty values are fine: missing PKCE fields count as absent.
 
 ## Key Management
 
