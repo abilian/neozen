@@ -12,12 +12,16 @@ admin or API surface.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from litestar import Request, Response, get
 from litestar.status_codes import HTTP_503_SERVICE_UNAVAILABLE
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker
+
+logger = logging.getLogger(__name__)
 
 
 @get("/healthz", sync_to_thread=False, exclude_from_auth=True)
@@ -42,9 +46,11 @@ async def readyz(request: Request) -> Response:
     try:
         async with session_factory() as session:
             await session.execute(text("SELECT 1"))
-    except Exception as exc:
+    except (SQLAlchemyError, OSError):
+        # The details stay in the server log, not in a public response.
+        logger.warning("Readiness check failed", exc_info=True)
         return Response(
-            content={"status": "unavailable", "error": str(exc)},
+            content={"status": "unavailable"},
             status_code=HTTP_503_SERVICE_UNAVAILABLE,
             media_type="application/json",
         )

@@ -82,6 +82,7 @@
         <div x-data="{ open: false }" @toggle-edit.window="open = !open" x-show="open" x-cloak>
             <form action="/organizations/{{ organization.id }}/update" method="POST"
                   class="overflow-hidden bg-white shadow ring-1 ring-gray-900/5 sm:rounded-lg">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
                 <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
                     <h3 class="text-base font-semibold leading-6 text-gray-900">Edit Organization</h3>
                 </div>

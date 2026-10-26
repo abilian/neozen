@@ -67,7 +67,7 @@
 
     {% block head %}{% endblock %}
 </head>
-<body class="h-full" hx-boost="true">
+<body class="h-full" hx-boost="true" hx-headers='{"x-csrftoken": "{{ csrf_token }}"}'>
     {% block body %}{% endblock %}
 
     <!-- Toast notifications container -->

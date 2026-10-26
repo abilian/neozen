@@ -14,6 +14,7 @@
 
 <article>
     <form method="post" action="/roles/create">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
         <label for="name">
             Role Name
             <input type="text" id="name" name="name" placeholder="e.g., editor, moderator" required>

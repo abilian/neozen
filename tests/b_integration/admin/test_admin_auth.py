@@ -7,17 +7,18 @@ import re
 from pathlib import Path
 
 import pytest
+from litestar import Litestar
 from litestar.testing import TestClient
 from pwdlib import PasswordHash
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from neozen.admin.app import create_admin_app
+from neozen.admin.app import ROUTE_HANDLERS, create_admin_app
 from neozen.admin.auth import AdminRole, admin_role_for
 from neozen.admin.config import AdminConfig
 from neozen.admin.services import AdminService
 from neozen.serve import ServeConfig, build_serve_app
 
-from .conftest import BASE_URL, superadmin_client
+from .conftest import BASE_URL, send_csrf_token, superadmin_client
 
 
 def _db_url(tmp_path: Path) -> str:
@@ -42,6 +43,7 @@ def _create_subject(db_url: str, email: str, password: str, role: str) -> None:
 
 
 def _login(client: TestClient, email: str, password: str) -> None:
+    send_csrf_token(client)
     client.post(
         "/login",
         data={"email": email, "password": password},
@@ -229,3 +231,87 @@ class TestSessionLifecycle:
             _deactivate(_db_url(tmp_path), "a@example.com")
             response = client.get("/users", follow_redirects=False)
         assert response.status_code == 303
+
+
+class TestCSRF:
+    def _app(self) -> Litestar:
+        return create_admin_app(
+            AdminConfig(db_url="sqlite+aiosqlite:///:memory:", secret_key="k")
+        )
+
+    def test_post_without_token_is_refused(self) -> None:
+        with superadmin_client(self._app()) as client:
+            del client.headers["x-csrftoken"]
+            response = client.post(
+                "/roles/create",
+                data={"name": "editor", "permissions": "post:read"},
+                follow_redirects=False,
+            )
+        assert response.status_code == 403
+
+    def test_pages_carry_the_token(self) -> None:
+        with superadmin_client(self._app()) as client:
+            body = client.get("/roles/create").text
+        token = re.search(r'name="_csrf_token" value="([^"]+)"', body)
+        assert token
+        assert f'"x-csrftoken": "{token.group(1)}"' in body
+
+
+class TestErrorMessages:
+    def test_duplicate_user_gets_a_plain_message(self) -> None:
+        app = create_admin_app(
+            AdminConfig(db_url="sqlite+aiosqlite:///:memory:", secret_key="k")
+        )
+        with superadmin_client(app) as client:
+            form = {"email": "dup@example.com"}
+            client.post("/users/create", data=form, follow_redirects=False)
+            response = client.post("/users/create", data=form)
+        assert "conflicts with an existing record" in response.text
+        assert "UNIQUE" not in response.text
+        assert "INSERT" not in response.text
+
+    def test_readyz_hides_database_errors(self) -> None:
+        app = build_serve_app(
+            ServeConfig(
+                db_url="sqlite+aiosqlite:///:memory:",
+                secret_key="test-secret-not-default",
+                bootstrap_admin=False,
+            )
+        )
+        with TestClient(app=app) as client:
+            broken = create_async_engine("sqlite+aiosqlite:////nonexistent/dir/x.db")
+            app.state.session_factory = async_sessionmaker(broken)
+            response = client.get("/readyz")
+        assert response.status_code == 503
+        assert response.json() == {"status": "unavailable"}
+
+
+def _static_get_paths() -> list[str]:
+    return sorted({
+        path
+        for handler in ROUTE_HANDLERS
+        if "GET" in (handler.http_methods or ())
+        for path in handler.paths
+        if "{" not in path
+    })
+
+
+@pytest.mark.parametrize("path", _static_get_paths())
+def test_every_admin_page_renders(path: str) -> None:
+    """Catches broken templates (a missing macro import broke four pages)."""
+    app = create_admin_app(
+        AdminConfig(db_url="sqlite+aiosqlite:///:memory:", secret_key="k")
+    )
+    with superadmin_client(app) as client:
+        response = client.get(path, follow_redirects=False)
+    assert response.status_code < 500
+
+
+def test_detail_pages_render() -> None:
+    app = create_admin_app(
+        AdminConfig(db_url="sqlite+aiosqlite:///:memory:", secret_key="k")
+    )
+    admin = superadmin_client(app)
+    with admin as client:
+        for path in (f"/users/{admin.subject_id}", "/roles/superuser"):
+            assert client.get(path, follow_redirects=False).status_code == 200, path

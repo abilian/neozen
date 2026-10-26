@@ -12,15 +12,19 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
+from advanced_alchemy.exceptions import IntegrityError as RepositoryIntegrityError
 from jinja2 import Environment, FileSystemLoader
 from litestar import Litestar, Request, Response, get, post
+from litestar.config.csrf import CSRFConfig
 from litestar.datastructures import State
 from litestar.exceptions import NotAuthorizedException
 from litestar.middleware import DefineMiddleware
 from litestar.params import FromPath
 from litestar.status_codes import HTTP_303_SEE_OTHER
+from litestar.template.base import csrf_token
 from markupsafe import escape
 from pwdlib import PasswordHash
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from neozen.admin.auth import (
@@ -39,6 +43,7 @@ from neozen.admin.auth import (
 )
 from neozen.admin.config import AdminConfig
 from neozen.admin.services import AdminService, UserListFilters
+from neozen.core.exceptions import NeoZenException
 from neozen.storage import DoesNotExist
 from neozen.storage.sqlalchemy.base import Base
 from neozen.storage.sqlalchemy.models import RoleAssignment, Session, Subject
@@ -67,6 +72,7 @@ def render_template(
     ctx["request"] = request
     ctx["current_admin"] = get_current_admin(request)
     ctx["impersonation"] = get_impersonation(request)
+    ctx["csrf_token"] = csrf_token({"request": request})
     content = templates.get_template(template_name).render(**ctx)
     return Response(content=content, status_code=status_code, media_type="text/html")
 
@@ -100,6 +106,21 @@ async def get_admin_service(request: Request) -> AsyncGenerator[AdminService, No
 
 
 _password_hash = PasswordHash.recommended()
+
+# Failures an admin action can expect; anything else is a bug and propagates.
+# Duplicates arrive as Advanced Alchemy's error from repositories, and as
+# SQLAlchemy's from a commit.
+_CONFLICT_ERRORS = (RepositoryIntegrityError, IntegrityError)
+ADMIN_ERRORS = (DoesNotExist, *_CONFLICT_ERRORS, NeoZenException, ValueError)
+
+
+def describe_error(error: Exception) -> str:
+    """A message for the admin, without database details."""
+    if isinstance(error, DoesNotExist):
+        return "not found."
+    if isinstance(error, _CONFLICT_ERRORS):
+        return "it conflicts with an existing record (duplicate name or email?)."
+    return str(error)  # NeoZen and validation errors are written for users
 
 
 async def _authenticate_admin(
@@ -303,7 +324,7 @@ async def user_detail(request: Request, user_id: FromPath[str]) -> Response:
                     "active_tab": tab,
                 },
             )
-        except Exception:
+        except ADMIN_ERRORS:
             flash(request, f"User not found: {user_id}", "error")
             return redirect("/users")
 
@@ -318,8 +339,8 @@ async def activate_user(request: Request, user_id: FromPath[str]) -> Response:
             await service.activate_subject(user_id)
             await session.commit()
             flash(request, "User activated successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error activating user: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error activating user: {describe_error(e)}", "error")
         return redirect(f"/users/{user_id}")
 
 
@@ -333,8 +354,8 @@ async def deactivate_user(request: Request, user_id: FromPath[str]) -> Response:
             await service.deactivate_subject(user_id)
             await session.commit()
             flash(request, "User deactivated successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error deactivating user: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error deactivating user: {describe_error(e)}", "error")
         return redirect(f"/users/{user_id}")
 
 
@@ -368,8 +389,8 @@ async def create_user(request: Request) -> Response:
             await session.commit()
             flash(request, f"User '{email}' created successfully.", "success")
             return redirect(f"/users/{user.id}")
-        except Exception as e:
-            flash(request, f"Error creating user: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error creating user: {describe_error(e)}", "error")
             return redirect("/users/create")
 
 
@@ -383,8 +404,8 @@ async def delete_user(request: Request, user_id: FromPath[str]) -> Response:
             await service.delete_subject(user_id)
             await session.commit()
             flash(request, "User deleted successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error deleting user: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error deleting user: {describe_error(e)}", "error")
         return redirect("/users")
 
 
@@ -398,8 +419,8 @@ async def revoke_user_sessions(request: Request, user_id: FromPath[str]) -> Resp
             count = await service.revoke_all_subject_sessions(user_id)
             await session.commit()
             flash(request, f"Revoked {count} session(s) successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error revoking sessions: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error revoking sessions: {describe_error(e)}", "error")
         return redirect(f"/users/{user_id}?tab=sessions")
 
 
@@ -423,8 +444,8 @@ async def add_user_role(request: Request, user_id: FromPath[str]) -> Response:
             )
             await session.commit()
             flash(request, f"Role '{role_name}' assigned successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error assigning role: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error assigning role: {describe_error(e)}", "error")
         return redirect(f"/users/{user_id}?tab=roles")
 
 
@@ -440,8 +461,8 @@ async def remove_user_role(
             await service.remove_role_from_subject(user_id, role_name)
             await session.commit()
             flash(request, f"Role '{role_name}' removed successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error removing role: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error removing role: {describe_error(e)}", "error")
         return redirect(f"/users/{user_id}?tab=roles")
 
 
@@ -572,8 +593,10 @@ async def impersonate_user(request: Request, user_id: FromPath[str]) -> Response
                 f"Now impersonating {user.email}. Click 'Stop Impersonation' to return.",
                 "success",
             )
-        except Exception as e:
-            flash(request, f"Error starting impersonation: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(
+                request, f"Error starting impersonation: {describe_error(e)}", "error"
+            )
         return redirect(f"/users/{user_id}")
 
 
@@ -638,8 +661,8 @@ async def create_role(request: Request) -> Response:
             await session.commit()
             flash(request, f"Role '{name}' created successfully.", "success")
             return redirect("/roles")
-        except Exception as e:
-            flash(request, f"Error creating role: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error creating role: {describe_error(e)}", "error")
             return redirect("/roles/create")
 
 
@@ -652,7 +675,7 @@ async def role_detail(request: Request, role_name: FromPath[str]) -> Response:
         try:
             role = await service.get_role(role_name)
             assignments = await service.get_role_assignments(role_name)
-        except Exception:
+        except ADMIN_ERRORS:
             flash(request, f"Role not found: {role_name}", "error")
             return redirect("/roles")
 
@@ -682,7 +705,7 @@ async def _resolve_assignment_subjects(
     for assignment in assignments:
         try:
             subject = await service.get_subject(assignment.subject_id)
-        except Exception:
+        except ADMIN_ERRORS:
             subject = None
         result.append((assignment, subject))
     return result
@@ -698,8 +721,8 @@ async def delete_role(request: Request, role_name: FromPath[str]) -> Response:
             await service.delete_role(role_name)
             await session.commit()
             flash(request, f"Role '{role_name}' deleted successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error deleting role: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error deleting role: {describe_error(e)}", "error")
         return redirect("/roles")
 
 
@@ -722,7 +745,7 @@ async def list_sessions(request: Request) -> Response:
             try:
                 subject = await service.get_subject(sess.subject_id)
                 sessions_with_subjects.append((sess, subject))
-            except Exception:
+            except ADMIN_ERRORS:
                 sessions_with_subjects.append((sess, None))
 
         return render_template(
@@ -740,8 +763,8 @@ async def revoke_session(request: Request, token_hash: FromPath[str]) -> Respons
             await service.revoke_session(token_hash)
             await session.commit()
             flash(request, "Session revoked successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error revoking session: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error revoking session: {describe_error(e)}", "error")
         return redirect("/sessions")
 
 
@@ -788,8 +811,8 @@ async def create_group(request: Request) -> Response:
             await session.commit()
             flash(request, f"Group '{name}' created successfully.", "success")
             return redirect(f"/groups/{group.id}")
-        except Exception as e:
-            flash(request, f"Error creating group: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error creating group: {describe_error(e)}", "error")
             return redirect("/groups/create")
 
 
@@ -819,7 +842,7 @@ async def group_detail(request: Request, group_id: FromPath[str]) -> Response:
                     "active_tab": tab,
                 },
             )
-        except Exception:
+        except ADMIN_ERRORS:
             flash(request, f"Group not found: {group_id}", "error")
             return redirect("/groups")
 
@@ -845,8 +868,8 @@ async def add_group_member(request: Request, group_id: FromPath[str]) -> Respons
             )
             await session.commit()
             flash(request, "Member added successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error adding member: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error adding member: {describe_error(e)}", "error")
         return redirect(f"/groups/{group_id}?tab=members")
 
 
@@ -862,8 +885,8 @@ async def remove_group_member(
             await service.remove_group_member(group_id, subject_id)
             await session.commit()
             flash(request, "Member removed successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error removing member: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error removing member: {describe_error(e)}", "error")
         return redirect(f"/groups/{group_id}?tab=members")
 
 
@@ -887,8 +910,8 @@ async def add_group_role(request: Request, group_id: FromPath[str]) -> Response:
             )
             await session.commit()
             flash(request, f"Role '{role_name}' assigned to group.", "success")
-        except Exception as e:
-            flash(request, f"Error assigning role: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error assigning role: {describe_error(e)}", "error")
         return redirect(f"/groups/{group_id}?tab=roles")
 
 
@@ -904,8 +927,8 @@ async def remove_group_role(
             await service.remove_role_from_group(group_id, role_name)
             await session.commit()
             flash(request, f"Role '{role_name}' removed from group.", "success")
-        except Exception as e:
-            flash(request, f"Error removing role: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error removing role: {describe_error(e)}", "error")
         return redirect(f"/groups/{group_id}?tab=roles")
 
 
@@ -919,8 +942,8 @@ async def delete_group(request: Request, group_id: FromPath[str]) -> Response:
             await service.delete_group(group_id)
             await session.commit()
             flash(request, "Group deleted successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error deleting group: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error deleting group: {describe_error(e)}", "error")
         return redirect("/groups")
 
 
@@ -973,8 +996,8 @@ async def create_organization(request: Request) -> Response:
             await session.commit()
             flash(request, f"Organization '{name}' created successfully.", "success")
             return redirect(f"/organizations/{org.id}")
-        except Exception as e:
-            flash(request, f"Error creating organization: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error creating organization: {describe_error(e)}", "error")
             return redirect("/organizations/create")
 
 
@@ -998,7 +1021,7 @@ async def organization_detail(request: Request, org_id: FromPath[str]) -> Respon
                     "groups": org_groups,
                 },
             )
-        except Exception:
+        except ADMIN_ERRORS:
             flash(request, f"Organization not found: {org_id}", "error")
             return redirect("/organizations")
 
@@ -1021,8 +1044,8 @@ async def update_organization(request: Request, org_id: FromPath[str]) -> Respon
             )
             await session.commit()
             flash(request, "Organization updated successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error updating organization: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error updating organization: {describe_error(e)}", "error")
         return redirect(f"/organizations/{org_id}")
 
 
@@ -1036,8 +1059,8 @@ async def delete_organization(request: Request, org_id: FromPath[str]) -> Respon
             await service.delete_organization(org_id)
             await session.commit()
             flash(request, "Organization deleted successfully.", "success")
-        except Exception as e:
-            flash(request, f"Error deleting organization: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error deleting organization: {describe_error(e)}", "error")
         return redirect("/organizations")
 
 
@@ -1160,8 +1183,8 @@ async def create_custom_role(request: Request) -> Response:
             await session.commit()
             flash(request, f"Role '{name}' created successfully.", "success")
             return redirect("/roles")
-        except Exception as e:
-            flash(request, f"Error creating role: {e}", "error")
+        except ADMIN_ERRORS as e:
+            flash(request, f"Error creating role: {describe_error(e)}", "error")
             return redirect("/permissions/role-builder")
 
 
@@ -1594,6 +1617,20 @@ AUTH_MIDDLEWARE = DefineMiddleware(AdminAuthMiddleware)
 EXCEPTION_HANDLERS: dict[Any, Any] = {NotAuthorizedException: redirect_to_login_handler}
 
 
+def csrf_config(config: AdminConfig) -> CSRFConfig:
+    """CSRF protection for every admin form and HTMX request.
+
+    Templates post the token back as ``_csrf_token``; HTMX sends it in the
+    ``x-csrftoken`` header (set on ``<body>``).
+    """
+    return CSRFConfig(
+        secret=config.secret_key,
+        cookie_secure=config.cookie_secure,
+        cookie_httponly=True,
+        cookie_samesite="strict",
+    )
+
+
 def session_config(config: AdminConfig) -> RotatingSessionConfig:
     """Session settings for the admin console (login state and flash messages)."""
     return RotatingSessionConfig(
@@ -1647,6 +1684,7 @@ def create_admin_app(config: AdminConfig | None = None) -> Litestar:
         route_handlers=ROUTE_HANDLERS,
         middleware=[sessions.middleware, AUTH_MIDDLEWARE],
         exception_handlers=EXCEPTION_HANDLERS,
+        csrf_config=csrf_config(config),
         on_startup=[on_startup],
         state=State({
             "config": config,
@@ -1664,5 +1702,6 @@ __all__ = [
     "ROUTE_HANDLERS",
     "AdminConfig",
     "create_admin_app",
+    "csrf_config",
     "session_config",
 ]

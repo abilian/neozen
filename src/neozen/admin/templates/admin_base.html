@@ -204,7 +204,7 @@
         }
     </style>
 </head>
-<body>
+<body hx-headers='{"x-csrftoken": "{{ csrf_token }}"}'>
     <nav class="admin-nav container-fluid">
         <ul>
             <li><a href="/" class="brand">NeoZen Admin</a></li>

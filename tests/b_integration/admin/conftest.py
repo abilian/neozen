@@ -13,6 +13,12 @@ from neozen.admin.services import AdminService
 BASE_URL = "https://testserver.local"
 
 
+def send_csrf_token(client: TestClient) -> None:
+    """Get a CSRF cookie and send it back on every request, as the pages do."""
+    client.get("/login")
+    client.headers["x-csrftoken"] = client.cookies["csrftoken"]
+
+
 class SuperadminClient:
     """A test client logged in as a superuser subject created at app startup.
 
@@ -45,6 +51,7 @@ class SuperadminClient:
     def __enter__(self) -> TestClient:
         self.client.__enter__()
         self.client.set_session_data({ADMIN_SESSION_KEY: {"id": self.subject_id}})
+        send_csrf_token(self.client)
         return self.client
 
     def __exit__(self, *exc_info: object) -> None:

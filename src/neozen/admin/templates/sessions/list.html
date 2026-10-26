@@ -34,6 +34,7 @@
             <td>{{ session.expires_at.strftime('%Y-%m-%d %H:%M') if session.expires_at else '-' }}</td>
             <td>
                 <form method="post" action="/sessions/{{ session.token_hash }}/revoke" onsubmit="return confirm('Revoke this session?');">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
                     <button type="submit" class="secondary outline">Revoke</button>
                 </form>
             </td>

@@ -1,7 +1,7 @@
 {% extends "layouts/app.html" %}
 {% from "components/breadcrumb.html" import page_header %}
 {% from "components/button.html" import button %}
-{% from "components/form.html" import input_field, textarea_field %}
+{% from "components/form.html" import input as input_field, textarea as textarea_field %}
 
 {% block title %}Role Builder - NeoZen Admin{% endblock %}
 
@@ -13,6 +13,7 @@
 {% block content %}
 <div class="max-w-4xl" x-data="roleBuilder()">
     <form action="/permissions/role-builder" method="POST" class="space-y-6">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
         <!-- Step 1: Basic Info -->
         <div class="bg-white shadow sm:rounded-lg">
             <div class="px-4 py-5 sm:p-6">

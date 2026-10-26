@@ -60,10 +60,12 @@
     <div class="actions">
         {% if subject.is_active %}
         <form method="post" action="/subjects/{{ subject.id }}/deactivate">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="secondary">Deactivate</button>
         </form>
         {% else %}
         <form method="post" action="/subjects/{{ subject.id }}/activate">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
             <button type="submit">Activate</button>
         </form>
         {% endif %}

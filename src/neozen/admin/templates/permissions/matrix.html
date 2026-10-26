@@ -73,8 +73,8 @@
                         </td>
                         {% for permission in permissions %}
                         <td class="whitespace-nowrap px-3 py-4 text-center">
-                            {% set has_permission = permission in matrix.get(role.name, set()) %}
-                            {% set has_wildcard = '*:*' in matrix.get(role.name, set()) or (permission.split(':')[0] ~ ':*') in matrix.get(role.name, set()) %}
+                            {% set has_permission = permission in matrix.get(role.name, []) %}
+                            {% set has_wildcard = '*:*' in matrix.get(role.name, []) or (permission.split(':')[0] ~ ':*') in matrix.get(role.name, []) %}
                             {% if role.is_system %}
                                 {% if has_permission or has_wildcard %}
                                 <svg class="h-5 w-5 mx-auto text-green-500" viewBox="0 0 20 20" fill="currentColor">

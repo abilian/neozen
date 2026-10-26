@@ -11,6 +11,7 @@
             </span>
         </div>
         <form action="/stop-impersonation" method="POST" class="inline">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="rounded-md bg-yellow-600 px-3 py-1 text-sm font-semibold text-white shadow-sm hover:bg-yellow-500">
                 Stop Impersonation
             </button>

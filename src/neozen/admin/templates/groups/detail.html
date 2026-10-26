@@ -103,6 +103,7 @@
     <div class="overflow-hidden bg-white shadow ring-1 ring-gray-900/5 sm:rounded-lg">
         <div class="px-4 py-5 sm:p-6">
             <form action="/groups/{{ group.id }}/members/add" method="POST" class="flex items-end gap-4">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
                 <div class="flex-1">
                     <label for="subject_id" class="block text-sm font-medium leading-6 text-gray-900">Add Member</label>
                     <select name="subject_id" id="subject_id"
@@ -187,6 +188,7 @@
                     </td>
                     <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                         <form action="/groups/{{ group.id }}/members/{{ member.id }}/remove" method="POST" class="inline">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
                             <button type="submit" class="text-red-600 hover:text-red-900">Remove</button>
                         </form>
                     </td>
@@ -218,6 +220,7 @@
     <div class="overflow-hidden bg-white shadow ring-1 ring-gray-900/5 sm:rounded-lg">
         <div class="px-4 py-5 sm:p-6">
             <form action="/groups/{{ group.id }}/roles/add" method="POST" class="flex items-end gap-4">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
                 <div class="flex-1">
                     <label for="role_name" class="block text-sm font-medium leading-6 text-gray-900">Add Role</label>
                     <select name="role_name" id="role_name"
@@ -285,6 +288,7 @@
                     </td>
                     <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                         <form action="/groups/{{ group.id }}/roles/{{ role.name }}/remove" method="POST" class="inline">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
                             <button type="submit" class="text-red-600 hover:text-red-900">Remove</button>
                         </form>
                     </td>
