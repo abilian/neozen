@@ -26,7 +26,7 @@ WORKDIR /build
 RUN pip install --no-cache-dir build
 
 # Copy only the files needed to build a wheel
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
 
 # Build the wheel
@@ -63,6 +63,10 @@ RUN pip install --no-cache-dir "$(ls /tmp/*.whl)[all]" && rm -rf /tmp/*.whl
 USER neozen
 WORKDIR /home/neozen
 RUN mkdir -p /home/neozen/data
+
+# The migrations, so `alembic upgrade head` runs in the container.
+COPY --chown=neozen alembic.ini ./
+COPY --chown=neozen migrations/ ./migrations/
 
 EXPOSE 8000
 

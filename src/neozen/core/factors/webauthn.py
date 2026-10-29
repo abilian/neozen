@@ -8,10 +8,11 @@ Implements WebAuthn (FIDO2) passwordless authentication with:
 
 from __future__ import annotations
 
+import json
 import secrets
 import typing
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from neozen.core.exceptions import NeoZenException
 from neozen.core.repository import DoesNotExist
@@ -243,7 +244,7 @@ class WebAuthnFactor[S: Subject]:
 
         # Store challenge
         challenge_b64 = self._webauthn_helpers.bytes_to_base64url(options.challenge)
-        expires_at = datetime.now(UTC) + __import__("datetime").timedelta(
+        expires_at = datetime.now(UTC) + timedelta(
             seconds=self.config.challenge_timeout_seconds
         )
 
@@ -259,7 +260,7 @@ class WebAuthnFactor[S: Subject]:
         options_json = self._webauthn.options_to_json(options)
 
         return RegistrationOptions(
-            options_json=__import__("json").loads(options_json),
+            options_json=json.loads(options_json),
             challenge=challenge_b64,
         )
 
@@ -285,9 +286,22 @@ class WebAuthnFactor[S: Subject]:
 
         """
 
-        # Get and validate challenge
+        try:
+            credential = self._webauthn_helpers.parse_registration_credential_json(
+                response
+            )
+            signed = self._webauthn_helpers.parse_client_data_json(
+                credential.response.client_data_json
+            ).challenge
+        except self._rejections() as e:
+            msg = f"Registration verification failed: {e}"
+            raise WebAuthnRegistrationError(msg) from e
+
+        # The challenge the browser signed: a subject that started twice
+        # (a retry, a second tab) has several pending.
         try:
             challenge_record = await self.challenge_repository.get_one_by(
+                challenge=self._webauthn_helpers.bytes_to_base64url(signed),
                 subject_id=subject.id,
                 operation="registration",
             )
@@ -300,54 +314,44 @@ class WebAuthnFactor[S: Subject]:
             raise WebAuthnChallengeExpiredError
 
         try:
-            # Parse the registration response
-            credential = self._webauthn_structs.RegistrationCredential.model_validate(
-                response
-            )
-
-            # Verify the registration
             verification = self._webauthn.verify_registration_response(
                 credential=credential,
-                expected_challenge=self._webauthn.base64url_to_bytes(
-                    challenge_record.challenge
-                ),
+                expected_challenge=signed,
                 expected_rp_id=self.config.rp_id,
                 expected_origin=self.config.origin,
             )
-
-            # Store the credential
-            credential_record = await self.credential_repository.create(
-                id=self.id_generator(),
-                subject_id=subject.id,
-                credential_id=self._webauthn_helpers.bytes_to_base64url(
-                    verification.credential_id
-                ),
-                public_key=self._webauthn_helpers.bytes_to_base64url(
-                    verification.credential_public_key
-                ),
-                sign_count=verification.sign_count,
-                transports=",".join(
-                    t.value for t in (credential.response.transports or [])
-                ),
-                device_type=verification.credential_device_type,
-                backed_up=verification.credential_backed_up,
-                name=credential_name,
-                created_at=datetime.now(UTC),
-                last_used_at=None,
-            )
-
-            # Clean up challenge
-            await self.challenge_repository.delete(challenge_record)
-
-            return credential_record
-
-        except Exception as e:
-            if isinstance(
-                e, (WebAuthnChallengeExpiredError, WebAuthnRegistrationError)
-            ):
-                raise
+        except self._rejections() as e:
             msg = f"Registration verification failed: {e}"
             raise WebAuthnRegistrationError(msg) from e
+
+        credential_record = await self.credential_repository.create(
+            id=self.id_generator(),
+            subject_id=subject.id,
+            credential_id=self._webauthn_helpers.bytes_to_base64url(
+                verification.credential_id
+            ),
+            public_key=self._webauthn_helpers.bytes_to_base64url(
+                verification.credential_public_key
+            ),
+            sign_count=verification.sign_count,
+            transports=",".join(
+                t.value for t in (credential.response.transports or [])
+            ),
+            device_type=verification.credential_device_type,
+            backed_up=verification.credential_backed_up,
+            name=credential_name,
+            created_at=datetime.now(UTC),
+            last_used_at=None,
+        )
+        await self.challenge_repository.delete(challenge_record)
+        return credential_record
+
+    def _rejections(self) -> tuple[type[Exception], ...]:
+        """What a malformed or forged browser response raises."""
+        return (
+            self._webauthn_helpers.exceptions.WebAuthnException,
+            ValueError,  # bad base64
+        )
 
     async def begin_authentication(
         self,
@@ -393,7 +397,7 @@ class WebAuthnFactor[S: Subject]:
 
         # Store challenge
         challenge_b64 = self._webauthn_helpers.bytes_to_base64url(options.challenge)
-        expires_at = datetime.now(UTC) + __import__("datetime").timedelta(
+        expires_at = datetime.now(UTC) + timedelta(
             seconds=self.config.challenge_timeout_seconds
         )
 
@@ -408,7 +412,7 @@ class WebAuthnFactor[S: Subject]:
         options_json = self._webauthn.options_to_json(options)
 
         return AuthenticationOptions(
-            options_json=__import__("json").loads(options_json),
+            options_json=json.loads(options_json),
             challenge=challenge_b64,
         )
 
@@ -447,20 +451,7 @@ class WebAuthnFactor[S: Subject]:
             await self.challenge_repository.delete(challenge_record)
             raise WebAuthnChallengeExpiredError
 
-        try:
-            return await self._verify_authentication_inner(challenge_record, response)
-        except Exception as e:
-            if isinstance(
-                e,
-                (
-                    WebAuthnChallengeExpiredError,
-                    WebAuthnAuthenticationError,
-                    WebAuthnCredentialNotFoundError,
-                ),
-            ):
-                raise
-            msg = f"Authentication verification failed: {e}"
-            raise WebAuthnAuthenticationError(msg) from e
+        return await self._verify_authentication_inner(challenge_record, response)
 
     async def _verify_authentication_inner(
         self,
@@ -470,12 +461,16 @@ class WebAuthnFactor[S: Subject]:
         """Parse + verify the authentication response and update sign count.
 
         Raises ``WebAuthnCredentialNotFoundError`` if the credential isn't
-        registered; any other failure propagates and is wrapped by the
-        caller as ``WebAuthnAuthenticationError``.
+        registered, ``WebAuthnAuthenticationError`` if the response doesn't
+        verify.
         """
-        credential = self._webauthn_structs.AuthenticationCredential.model_validate(
-            response
-        )
+        try:
+            credential = self._webauthn_helpers.parse_authentication_credential_json(
+                response
+            )
+        except self._rejections() as e:
+            msg = f"Authentication verification failed: {e}"
+            raise WebAuthnAuthenticationError(msg) from e
         credential_id_b64 = self._webauthn_helpers.bytes_to_base64url(credential.raw_id)
         try:
             cred_record = await self.credential_repository.get_one_by(
@@ -484,18 +479,22 @@ class WebAuthnFactor[S: Subject]:
         except DoesNotExist:
             raise WebAuthnCredentialNotFoundError(credential_id_b64) from None
 
-        verification = self._webauthn.verify_authentication_response(
-            credential=credential,
-            expected_challenge=self._webauthn.base64url_to_bytes(
-                challenge_record.challenge
-            ),
-            expected_rp_id=self.config.rp_id,
-            expected_origin=self.config.origin,
-            credential_public_key=self._webauthn.base64url_to_bytes(
-                cred_record.public_key
-            ),
-            credential_current_sign_count=cred_record.sign_count,
-        )
+        try:
+            verification = self._webauthn.verify_authentication_response(
+                credential=credential,
+                expected_challenge=self._webauthn.base64url_to_bytes(
+                    challenge_record.challenge
+                ),
+                expected_rp_id=self.config.rp_id,
+                expected_origin=self.config.origin,
+                credential_public_key=self._webauthn.base64url_to_bytes(
+                    cred_record.public_key
+                ),
+                credential_current_sign_count=cred_record.sign_count,
+            )
+        except self._rejections() as e:
+            msg = f"Authentication verification failed: {e}"
+            raise WebAuthnAuthenticationError(msg) from e
 
         updated_cred = await self.credential_repository.update_obj(
             cred_record,

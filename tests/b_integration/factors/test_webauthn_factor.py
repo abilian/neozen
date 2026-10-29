@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from neozen.core.factors.webauthn import (
+    WebAuthnAuthenticationError,
     WebAuthnConfig,
     WebAuthnCredentialNotFoundError,
     WebAuthnFactor,
@@ -28,6 +29,8 @@ from neozen.storage.sqlalchemy.repositories import (
     WebAuthnChallengeRepository,
     WebAuthnCredentialRepository,
 )
+
+from .soft_authenticator import SoftAuthenticator
 
 # Skip if webauthn is not installed
 pytest.importorskip("webauthn")
@@ -488,3 +491,65 @@ class TestWebAuthnChallengeRepository:
 
         with pytest.raises(DoesNotExist):
             await challenge_repo.get_one_by(challenge="to-delete")
+
+
+@pytest.mark.anyio
+class TestPasskeyRoundTrip:
+    """Register a passkey and sign in with it, against SQLite."""
+
+    @pytest.fixture
+    def authenticator(self, webauthn_config: WebAuthnConfig) -> SoftAuthenticator:
+        return SoftAuthenticator(webauthn_config.rp_id, webauthn_config.origin)
+
+    async def test_register_then_sign_in(
+        self,
+        webauthn_factor: WebAuthnFactor,
+        subject: Subject,
+        authenticator: SoftAuthenticator,
+    ) -> None:
+        options = await webauthn_factor.begin_registration(subject)
+        await webauthn_factor.complete_registration(
+            subject, "laptop", authenticator.register(options.challenge)
+        )
+
+        login = await webauthn_factor.begin_authentication(subject)
+        subject_id, _ = await webauthn_factor.complete_authentication(
+            authenticator.sign_in(login.challenge), login.challenge
+        )
+
+        assert subject_id == subject.id
+
+    async def test_registration_restarted_in_another_tab(
+        self,
+        webauthn_factor: WebAuthnFactor,
+        subject: Subject,
+        authenticator: SoftAuthenticator,
+    ) -> None:
+        first = await webauthn_factor.begin_registration(subject)
+        await webauthn_factor.begin_registration(subject)
+
+        credential = await webauthn_factor.complete_registration(
+            subject, "laptop", authenticator.register(first.challenge)
+        )
+
+        assert credential.subject_id == subject.id
+
+    async def test_forged_signature_is_refused(
+        self,
+        webauthn_factor: WebAuthnFactor,
+        subject: Subject,
+        authenticator: SoftAuthenticator,
+        webauthn_config: WebAuthnConfig,
+    ) -> None:
+        options = await webauthn_factor.begin_registration(subject)
+        await webauthn_factor.complete_registration(
+            subject, "laptop", authenticator.register(options.challenge)
+        )
+        impostor = SoftAuthenticator(webauthn_config.rp_id, webauthn_config.origin)
+        impostor.credential_id = authenticator.credential_id  # other key
+
+        login = await webauthn_factor.begin_authentication(subject)
+        with pytest.raises(WebAuthnAuthenticationError):
+            await webauthn_factor.complete_authentication(
+                impostor.sign_in(login.challenge), login.challenge
+            )
