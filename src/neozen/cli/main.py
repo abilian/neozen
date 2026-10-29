@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from importlib.metadata import version
 
 from neozen.cli.commands import client, config, data, role, serve as serve_cmd, subject
 
@@ -46,7 +47,7 @@ Examples:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.9.0",
+        version=f"%(prog)s {version('neozen')}",
     )
 
     subparsers = parser.add_subparsers(

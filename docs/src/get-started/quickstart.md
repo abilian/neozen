@@ -20,9 +20,9 @@ pip install "neozen[sqlalchemy,password,demo]"
 
 The extras pull in:
 
-- **`sqlalchemy`** — Advanced Alchemy + repositories (the recommended storage)
-- **`password`** — Argon2id password hashing via `pwdlib`
-- **`demo`** — Litestar + Jinja2 + uvicorn for the example below
+- **`sqlalchemy`**: Advanced Alchemy + repositories (the recommended storage)
+- **`password`**: Argon2id password hashing via `pwdlib`
+- **`demo`**: Litestar + Jinja2 + uvicorn for the example below
 
 You can swap `[sqlalchemy]` for `[peewee]`, `[tortoise]`, or
 `[databases]` if you prefer a different ORM. NeoZen's storage
@@ -136,9 +136,9 @@ curl "http://localhost:8000/me?token=$TOKEN"
 # → {"subject_id":"user_..."}
 ```
 
-That's the whole login flow: registration, password verification with
-Argon2id, session token issuance, and session validation. ~80 lines
-of application code, no boilerplate.
+This is the complete login flow: registration, password verification with
+Argon2id, session token issuance, and session validation. It takes about
+80 lines of application code.
 
 ## What you got for free
 
@@ -146,7 +146,7 @@ of application code, no boilerplate.
 - **Server-side sessions** with HMAC-protected tokens, sliding
   expiration, and revocation
 - **SQLAlchemy 2.0 async** repositories via Advanced Alchemy
-- **Bring Your Own Model** — `SubjectRepository` just speaks the
+- **Bring Your Own Model**: `SubjectRepository` just speaks the
   `WritableRepositoryProtocol` interface; you can swap it for your
   own if you have an existing User model
 
@@ -154,18 +154,18 @@ of application code, no boilerplate.
 
 Once login works, layer on what you need. Each guide is independent:
 
-- [Bring Your Own Model](../guides/bring-your-own-model.md) — plug
+- [Bring Your Own Model](../guides/bring-your-own-model.md): plug
   NeoZen into an existing User model
-- [Litestar Integration](../guides/litestar.md) — full Litestar
+- [Litestar Integration](../guides/litestar.md): full Litestar
   app with login forms and protected routes
-- [Flask Integration](../guides/flask.md) — Flask-Login-shaped
+- [Flask Integration](../guides/flask.md): Flask-Login-shaped
   experience with the same backend
-- [Magic Link Authentication](../guides/magic-link.md) — passwordless
+- [Magic Link Authentication](../guides/magic-link.md): passwordless
   login via email
-- [TOTP / MFA](../guides/totp.md) — two-factor authentication
-- [Authorization (RBAC)](../guides/authorization.md) — roles and
+- [TOTP / MFA](../guides/totp.md): two-factor authentication
+- [Authorization (RBAC)](../guides/authorization.md): roles and
   permissions
-- [OpenID Connect Provider](../guides/oidc.md) — turn your app into
+- [OpenID Connect Provider](../guides/oidc.md): turn your app into
   an OIDC provider for downstream services
 
 If you outgrow the embed-in-your-app shape and want to run NeoZen as

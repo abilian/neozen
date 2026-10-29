@@ -1,161 +1,175 @@
 # Changelog
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.0] — 2026-04-?? (unreleased)
+Versions 0.1.0 to 0.8.0 were never tagged or published. They are reconstructed from the commit history, one per development milestone.
 
-**First public release.** 0.9 is not yet semver-stable — the API may
-still evolve before 1.0 — but the bar is "clean": docs, tests,
-packaging, and the reference deployment are all in good shape. See
-[`notes/plan/release-0.9.md`](notes/plan/release-0.9.md) for the
-full release checklist.
+## [0.9.0] - 2026-10-29
+
+**First public release.** The bar for 0.9 is "clean": the docs, tests, packaging and reference deployment are all in good shape. 0.9 is not yet semver-stable, so the API may still change before 1.0.
 
 ### Added
 
-#### Core identity and authentication
-
-- **Subjects**, email/username/phone identifiers with auto-detection
-- **Password factor** using Argon2id via `pwdlib`, with timing-safe
-  comparison and rehash-on-login
-- **Magic link factor** — passwordless email login with 15-minute
-  tokens, rate limiting, anti-enumeration
-- **Email OTP factor** — 6-digit codes via email, 10-minute
-  lifetime, constant-time verification
-- **TOTP factor** (RFC 6238) with QR code enrollment and optional
-  backup codes
-- **WebAuthn/passkey factor** via `webauthn` library
-- **Social login** via `oauth_client` with pre-built configs for
-  Google and GitHub
-- **Email verification flow** with GitHub-style prefixed tokens
-
-#### Authorization
-
-- **RBAC** with roles, permissions, and resource scopes
-- **Policy-based authorization** for rules RBAC can't express
-- **Guards and decorators** for Flask and Litestar
-- Role lifecycle events (assigned, revoked)
-
-#### Sessions
-
-- Server-side sessions with HMAC-protected tokens
-- Sliding-window expiration, per-subject limits, revocation
-- Secure cookie defaults (`Secure`, `HttpOnly`, `SameSite=Lax`)
-
-#### Protocol servers
-
-- **OAuth 2.1 server**: authorization code (PKCE required for public clients, optional for confidential ones), refresh token with rotation and replay detection, client credentials, introspection (RFC 7662), revocation (RFC 7009), opaque or RFC 9068 JWT access tokens (RS256/ES256), configured from `[oauth_server]` via `NeoZenFactory`
-- **OpenID Connect 1.0 Provider**: discovery, JWKS (mounted by each adapter's `create_oidc_*`), ID tokens with `nonce`, UserInfo, consent management, RP-initiated logout, dynamic client registration (RFC 7591), CORS helpers
-- **dishka providers** for SQLAlchemy storage and the identifiers
-- **SCIM 2.0 server**: User and Group resources, recursive-descent
-  filter parser (eq/ne/co/sw/ew/gt/ge/lt/le/pr + and/or/not),
-  pagination, discovery endpoints
-
-#### Storage
-
-- SQLAlchemy 2.0 + Advanced Alchemy (recommended)
-- Peewee, Tortoise, raw SQL, in-memory backends
-- **LDAP backend** (read-only) for OpenLDAP and Active Directory
-  via pure-Python `ldap3`, with bind-based password authentication
-- Split `ReadableRepositoryProtocol` and `WritableRepositoryProtocol`
-  so consumers implement only what they need
-- Factory functions (`create_email_identifier`,
-  `create_password_factor`) for BYOM without `type: ignore`
-
-#### Groups
-
-- Group membership with owner/admin/member roles
-- Last-owner protection, cascade delete
-- Email-based invitation system with single-use tokens
-
-#### i18n
-
-- Framework-agnostic catalog-based translator
-- Regional fallback (fr-CA → fr), `negotiate_locale` (RFC 4647),
-  `str.format` substitution
-- Built-in EN and FR catalogs for all built-in messages
-
-#### Production hardening
-
-- Rate limiting (per-identifier and per-IP)
-- **Account lockout** with optional email notification via the
-  new `LockoutEmailNotifier` bridge
-- Audit logging
-- Health checks
-
-#### Admin console
-
-- Litestar-based admin with Jinja2 templates and Tailwind/HTMX
-- User management, roles, permissions, sessions, audit, groups,
-  organizations
-- **CSV bulk import/export** for subjects with dry-run preview
-  and per-row results
-- **Live polling** on audit log, security dashboard, and main
-  dashboard counters via HTMX
-- Security dashboard and configuration UI
-
-#### Framework adapters
-
-- **Flask** extension (Flask-Login shape)
-- **Litestar** plugin with guards and subject loader
-- **Starlette** middleware and backend
-
-#### Reference deployment (0.9, new)
-
-- `neozen.serve` package — `ServeConfig` with env + `_FILE`
-  secret-mount variant, first-run admin bootstrap with grep-able
-  credential banner, `/healthz` and `/readyz` endpoints
-- `neozen serve` production-mode CLI command
-- Multi-stage `Dockerfile` with non-root user, healthcheck, OCI labels
-- `docker-compose.yml` with PostgreSQL 16
-- Starter Helm chart
-- Alembic migration tooling with async-URL auto-translation
-
-#### Demo applications
-
-- **Litestar demo**: password, magic link, TOTP 2FA, email OTP
-- **Starlette demo**: password, TOTP 2FA
-- **Flask demo**: password, magic link, TOTP 2FA with backup codes
-- All demos runnable on SQLite with no external services
-
-#### Documentation
-
-- Documentation site built with Zensical, about 30 pages, with "NeoZen, in six slides" on the home page
-- Developer quickstart (5 min embed-in-your-app)
-- Self-hosted quickstart (10 min `docker compose up`)
-- Architecture, factor protocols, storage abstraction
-- Per-feature guides: BYOM, Flask, Litestar, magic link, TOTP,
-  Email OTP, RBAC, groups, OIDC, SCIM, LDAP
-- Cheat sheet
-
-#### CLI
-
-- `neozen subject`, `client`, `role`, `config`, `data`, `serve`
-  command groups
-- `neozen data dump/restore/populate` for JSON-based import/export
-  and test data generation
+- **OAuth server configuration**: `NeoZenFactory` builds the token service, authorization endpoint and key manager from `[oauth_server]`: lifetimes, refresh-token rotation, and an `issuer` shared by ID tokens, JWT access tokens and discovery
+- **JWT access tokens** (RFC 9068), signed RS256 or ES256, behind the `jwt_access_tokens` switch. The key manager now supports EC keys
+- **Optional PKCE for confidential clients** (`require_pkce = false`); public clients still need it
+- **OIDC `nonce`**: the ID token returns the `nonce` sent with the authorization request
+- **Discovery and JWKS routes** for each adapter: `create_oidc_router` (Litestar), `create_oidc_routes` (Starlette), `create_oidc_blueprint` (Flask)
+- **dishka providers**: `SQLAlchemyProvider` (engine, per-request session, a repository for any model) and providers for the identifiers
+- **CSRF protection** for the admin console and the OIDC consent form, which now includes a signed `consent_token` valid for ten minutes
+- An Alembic revision that creates missing OAuth tables, adds the `nonce` column and makes the PKCE columns nullable
+- `flask` and `starlette` extras for the framework adapters
+- A CI check that installs the built wheel with no extra and runs the CLI
+- Documentation site built with Zensical, with "NeoZen, in six slides" on the home page, and guides on protecting apps' own forms against CSRF
 
 ### Changed
 
-- License: Apache 2.0, with Apache-2.0 SPDX + classifier in
-  `pyproject.toml`
 - Python requirement: 3.12.4+ (3.12.0–3.12.3 can't resolve PEP 695 type parameters in `typing.get_type_hints`, which the dependency-injection layer relies on)
-- Version: 0.1.0 → 0.9.0 across `pyproject.toml`, CLI `--version`,
-  and `deploy/helm/Chart.yaml`
+- `pwdlib` and `dishka` are core dependencies
+- `TokenEndpoint` takes the client service, and authenticates the client on every grant
+- `oauth_server.issuer` and `jwt_access_tokens` replace `jwt_issuer`
+- Custom authorization code models need a `nonce` attribute
+- Public clients always rotate refresh tokens
+- Token responses are sent with `Cache-Control: no-store`
+- `neozen serve` sets the `Secure` cookie flag by default (`NEOZEN_COOKIE_SECURE`)
+- The admin console shows a plain message when an action fails, and `/readyz` no longer returns database errors
+- `phonenumbers` is imported only when a phone number is checked
+- Build backend: `uv_build`
+- Version: 0.1.0 → 0.9.0 across `pyproject.toml`, CLI `--version`, and `deploy/helm/Chart.yaml`
+
+### Removed
+
+- `AuthorizationCodeGrant`, an unvalidated second way of issuing authorization codes
+
+### Fixed
+
+- The admin console had no authentication and a hard-coded demo login. Every route except login and health checks now needs a superuser or admin
+- The admin session ID is rotated at login. The admin is reloaded on each request, so a removed role takes effect at once
+- The consent submission re-runs the checks of the original authorization request
+- The token endpoint checks client secrets, and returns 401 for a bad client; public clients can't use the client credentials grant
+- Revocation is limited to the caller's own tokens, and public clients can't introspect tokens
+- Authorization codes are single-use under concurrency, and a replayed refresh token revokes the client's tokens for that subject
+- Rate limits are keyed on the peer address: clients could pick their bucket with `X-Forwarded-For`. Behind a proxy, set `FORWARDED_ALLOW_IPS`
+- Security checks fail closed: a crashing pre-hook stops the operation, and factor enrollment errors propagate
+- Litestar role and permission guards always returned 401; they now load the user, and deny with 403
+- Flask runs async calls on one event loop per thread, and closes it when the thread ends
+- The admin CSV export includes every subject, not the first 50
+- Five admin pages that failed to render
+- The OAuth tables were missing from the Alembic baseline
+- Repository deletes work whatever the model's primary key
+- The wheel failed to import without the `phone` extra
 
 ### Not in 0.9 (deferred to later 0.x or a future major version)
 
-See [`notes/plan/release-0.9.md`](notes/plan/release-0.9.md) for the
-full reasoning.
+- **SAML 2.0 SP**: later 0.x point release
+- **Approval workflows**: later 0.x point release
+- **Temporal RBAC + JIT elevation**: later 0.x point release
+- **OIDC/SCIM endpoints mounted into `neozen serve`**: later 0.x follow-up (the library has full OIDC and SCIM support today)
+- **Multi-tenancy**: future major version
+- **SAML 2.0 IdP**: future major version
 
-- **SAML 2.0 SP** — later 0.x point release
-- **Approval workflows** — later 0.x point release
-- **Temporal RBAC + JIT elevation** — later 0.x point release
-- **OIDC/SCIM endpoints mounted into `neozen serve`** — later 0.x
-  follow-up (the library half has full OIDC and SCIM support today)
-- **Multi-tenancy** — future major version
-- **SAML 2.0 IdP** — future major version
+## [0.8.0] - 2026-04-11
 
----
+### Added
 
-*No prior public releases.*
+- **Reference deployment**: the `neozen.serve` package, with `ServeConfig` (environment variables, and a `_FILE` variant for mounted secrets), a first-run admin bootstrap with a grep-able credential banner, and `/healthz` and `/readyz` endpoints
+- `neozen serve`, the production-mode CLI command
+- Multi-stage `Dockerfile` (non-root user, healthcheck, OCI labels), `docker-compose.yml` with PostgreSQL 16, and a starter Helm chart
+- Alembic migrations, with a 1.0 baseline and async-URL auto-translation
+- **Account lockout email notification**, through `LockoutEmailNotifier`
+- Admin console: bulk-operations UI, and live polling on the audit log, the security dashboard and the dashboard counters, via HTMX
+- Demos: TOTP enrollment and 2FA login in the Litestar and Starlette demos, email OTP login in the Litestar demo
+- Developer quickstart (5 minutes, embedded in your app) and self-hosted quickstart (10 minutes, `docker compose up`)
+
+### Changed
+
+- License: Apache 2.0, with the SPDX identifier and classifier in `pyproject.toml`
+
+## [0.7.0] - 2026-04-10
+
+### Added
+
+- **SCIM 2.0 server**: User and Group resources, a recursive-descent filter parser (eq/ne/co/sw/ew/gt/ge/lt/le/pr, and/or/not), pagination and discovery endpoints
+- **LDAP backend** (read-only) for OpenLDAP and Active Directory, through pure-Python `ldap3`, with bind-based password authentication
+- **CSV bulk import and export** of subjects in the admin console, with a dry-run preview and per-row results
+- End-to-end tests for the OIDC and SCIM flows
+- Guides for OIDC, SCIM, LDAP, groups and email OTP
+
+## [0.6.0] - 2026-04-10
+
+### Added
+
+- **OpenID Connect 1.0 provider**: signing keys, ID tokens, discovery, JWKS and UserInfo endpoints
+- **OIDC extras**: consent management, RP-initiated logout, dynamic client registration (RFC 7591) and CORS helpers
+- **Client credentials grant** for the OAuth server
+- **Email templates** and `NotificationService`
+- **Email OTP factor**: 6-digit codes by email, a 10-minute lifetime and constant-time verification
+- **Groups**: membership with owner, admin and member roles, last-owner protection and cascade delete
+- **Invitations** by email, with single-use tokens
+- **i18n**: a framework-agnostic, catalog-based translator, with regional fallback (fr-CA → fr), `negotiate_locale` (RFC 4647) and `str.format` substitution, and built-in English and French catalogs
+- `neozen data dump`, `restore` and `populate`, for JSON-based import and export and test data
+- Cheat sheet
+
+## [0.5.0] - 2026-04-09
+
+### Added
+
+- **Magic link factor**: passwordless email sign-in, with 15-minute tokens, rate limiting and protection against account enumeration
+- Magic link sign-in in the demos
+- **Bring your own model**: split `ReadableRepositoryProtocol` and `WritableRepositoryProtocol`, so consumers implement only what they need, and factory functions (`create_email_identifier`, `create_password_factor`) that need no `type: ignore`
+- Documentation site with Material for MkDocs: architecture, factor protocols, storage abstraction, and guides for bringing your own model, Flask, Litestar, magic links, TOTP and RBAC
+
+## [0.4.0] - 2026-03-24
+
+### Added
+
+- **Admin console**: sign-in, a dashboard, management of users, groups and organizations, permission tools (matrix, role builder, access analyzer), an audit log viewer, a security dashboard, and configuration pages
+- **Audit logging**, with event types and persistence
+- **Rate limiting**, per identifier and per IP, with middleware for Flask, Starlette and Litestar
+- **Account lockout**
+- **Password reset** and **account recovery** flows
+- Health checks
+- A GitHub Actions workflow, and Playwright browser tests
+
+### Changed
+
+- The shared authentication factories moved to `neozen.storage.sqlalchemy`
+
+## [0.3.0] - 2026-03-22
+
+### Added
+
+- **TOTP factor** (RFC 6238), with QR code enrollment and optional backup codes
+- **WebAuthn / passkey factor**, through the `webauthn` library
+- **Social login** through `oauth_client`, with ready-made configurations for Google and GitHub, and OAuth routes in each adapter
+- **Password policy**
+- **Factor protocols** and a factor registry
+- **Events and hooks**: an event bus and a hook manager
+- **Configuration system**: `NeoZenConfig` from TOML and environment variables, validation, `NeoZenFactory`, and `neozen config`
+- OAuth server: authorization, introspection (RFC 7662) and revocation (RFC 7009) endpoints, and a client service
+- TOTP 2FA in the Flask demo, with backup codes
+
+## [0.2.0] - 2026-03-19
+
+### Added
+
+- **RBAC** with roles, permissions and resource scopes, and role lifecycle events
+- **Policy-based authorization** for rules RBAC can't express
+- A first admin console: a Litestar app with Jinja2 templates and Tailwind
+- Peewee, Tortoise and raw SQL storage backends
+- `neozen role`
+
+## [0.1.0] - 2026-01-16
+
+### Added
+
+- **Subjects**, with email, username and phone identifiers and auto-detection
+- **Password factor**, Argon2id through `pwdlib`, with timing-safe comparison and rehash on login
+- **Email verification**, with GitHub-style prefixed tokens
+- **Sessions**: server-side, with HMAC-protected tokens, a sliding expiry window, per-subject limits and revocation, and secure cookie defaults (`Secure`, `HttpOnly`, `SameSite=Lax`)
+- **OAuth 2.1 server**: token endpoint with the authorization code grant (PKCE) and refresh tokens
+- **Storage**: SQLAlchemy 2.0 with Advanced Alchemy, behind repository protocols
+- **Framework adapters**: a Flask extension in the shape of Flask-Login, a Litestar plugin with guards, and Starlette middleware and backend
+- `neozen subject` and `neozen client`
+- Demo apps for Flask, Litestar and Starlette, running on SQLite with no external services
+- CI on builds.sr.ht

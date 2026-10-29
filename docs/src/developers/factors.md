@@ -40,7 +40,7 @@ class FactorProtocol(Protocol):
 
 ## AuthenticatingFactorProtocol
 
-For single-step authentication where the credential exists upfront.
+Single-step factors implement this protocol: the credential exists before sign-in.
 
 ```python
 class AuthenticatingFactorProtocol(FactorProtocol, Protocol):
@@ -74,7 +74,7 @@ class ChallengingFactorProtocol(FactorProtocol, Protocol):
 
 ## EnrollableFactorProtocol
 
-For factors requiring explicit setup before they can be used.
+Factors that need explicit setup before use implement this protocol.
 
 ```python
 class EnrollableFactorProtocol(FactorProtocol, Protocol):

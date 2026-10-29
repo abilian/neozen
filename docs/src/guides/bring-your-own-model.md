@@ -117,7 +117,7 @@ class MinimalAdapter:
 
 ## Dependency Injection with Dishka
 
-If your app uses [dishka](https://dishka.readthedocs.io/), NeoZen ships providers instead of factory functions. `SQLAlchemyProvider` supplies the engine, one session per request and a `RepositoryProtocol[Model]` for any mapped model. The session never commits on its own: commit what you mean to keep, and anything uncommitted is rolled back when the request scope closes. The identifier providers build on it:
+If your app uses [dishka](https://dishka.readthedocs.io/), NeoZen ships providers instead of factory functions. `SQLAlchemyProvider` supplies the engine, one session per request and a `RepositoryProtocol[Model]` for any mapped model. The session never commits on its own: commit what you mean to keep. Anything uncommitted is rolled back when the request scope closes. The identifier providers build on it:
 
 ```python
 import dishka

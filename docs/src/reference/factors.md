@@ -99,7 +99,7 @@ factor = TOTPFactor(
 
 ### Dependencies
 
-Requires `pyotp` (`uv add "neozen[totp]"`). Optional `qrcode` for QR data URIs.
+Requires `pyotp` (`uv add "neozen[totp]"`). QR data URIs also need `qrcode`, which is optional.
 
 ---
 

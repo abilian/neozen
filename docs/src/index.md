@@ -4,7 +4,7 @@ icon: lucide/shield-check
 
 # NeoZen - Authentication and Authorization for Python
 
-<p class="neozen-tagline">Sign-in, sessions, roles and an identity provider, for any Python web app.</p>
+<p class="neozen-tagline">NeoZen gives any Python web app sign-in, sessions, roles and an identity provider.</p>
 
 **NeoZen** (Auth**N** + Auth**Z**) is an open-source authentication and authorization toolkit for Python. Embed it in your Flask, Litestar or Starlette app, or run it as a self-hosted identity provider in front of several apps.
 

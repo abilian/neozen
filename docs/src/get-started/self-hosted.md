@@ -25,12 +25,12 @@ Python app, see the [Developer Quickstart](quickstart.md).
 - Docker (Docker Desktop, Colima, Podman, etc.)
 - 5 minutes
 
-That's it. No Python install, no database setup, no manual
-schema creation.
+You don't need to install Python, set up a database or create the
+schema.
 
 ## 2. Boot the stack
 
-From a clone of the NeoZen repository:
+Run this from a clone of the NeoZen repository:
 
 ```bash
 cd deploy/docker
@@ -39,8 +39,8 @@ docker compose up -d
 
 This brings up two containers:
 
-- **`postgres`** — PostgreSQL 16 with a persistent named volume
-- **`neozen`** — the NeoZen `serve` app on port `8000`
+- **`postgres`**: PostgreSQL 16 with a persistent named volume
+- **`neozen`**: the NeoZen `serve` app on port `8000`
 
 Wait for the healthchecks to pass (usually ~10 seconds):
 
@@ -105,7 +105,7 @@ The PostgreSQL data lives in a Docker named volume, so
 ## Production hardening
 
 The reference compose file is designed for "small team self-hosted"
-deployments — single replica, embedded Postgres, no TLS termination.
+deployments: a single replica, embedded Postgres, and no TLS termination.
 For production:
 
 ### TLS
@@ -117,7 +117,7 @@ Set `FORWARDED_ALLOW_IPS` to the proxy's address (uvicorn reads it from the envi
 
 ### Real secret key
 
-Generate a real secret key — not `change-me-in-production`:
+Replace `change-me-in-production` with a real secret key:
 
 ```bash
 openssl rand -hex 32 > .env.secret
@@ -154,14 +154,14 @@ environment:
 ### Backups
 
 Back up the Postgres volume on a schedule. NeoZen has no opinion
-on how — `pg_dump`, Postgres replication, snapshots, all fine.
+on how: `pg_dump`, Postgres replication and snapshots all work.
 
 ### Monitoring
 
 The serve app exposes two health endpoints:
 
-- `GET /healthz` — liveness. Returns 200 if the process is up.
-- `GET /readyz` — readiness. Returns 200 if the database is reachable.
+- `GET /healthz`: liveness. Returns 200 if the process is up.
+- `GET /readyz`: readiness. Returns 200 if the database is reachable.
 
 Wire both into your orchestrator. Restart on `/healthz` failure;
 remove from service rotation on `/readyz` failure.
@@ -180,10 +180,10 @@ helm install neozen ./deploy/helm \
 kubectl logs deployment/neozen | grep NEOZEN-BOOTSTRAP-CREDENTIALS -A 6
 ```
 
-The chart is intentionally minimal — single replica, externally-managed
-PostgreSQL, no HPA, no NetworkPolicies. See `deploy/helm/README.md`
-for the full configuration reference and what is **deliberately**
-not included.
+The chart is minimal: a single replica and an externally managed
+PostgreSQL, without autoscaling or network policies. See
+`deploy/helm/README.md` for the full configuration reference and for
+what the chart leaves out.
 
 For production, create a Secret out-of-band and reference it via
 `secrets.existingSecret`:
@@ -247,12 +247,12 @@ neozen serve --host 127.0.0.1 --port 9000 --workers 4 --log-level debug --no-boo
 
 ## Where to go next
 
-- [Configuration reference](../reference/configuration.md) — full
+- [Configuration reference](../reference/configuration.md): full
   config schema (TOML + env vars)
-- [Authorization (RBAC)](../guides/authorization.md) — roles and
+- [Authorization (RBAC)](../guides/authorization.md): roles and
   permissions
-- [SCIM 2.0](../guides/scim.md) — provisioning users and groups
+- [SCIM 2.0](../guides/scim.md): provisioning users and groups
   from an upstream IdP (currently library-only; mounting under
   `neozen serve` is a later 0.x follow-up)
-- [LDAP backend](../guides/ldap.md) — authenticate against a
+- [LDAP backend](../guides/ldap.md): authenticate against a
   corporate LDAP/Active Directory directory

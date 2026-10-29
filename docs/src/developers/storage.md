@@ -9,7 +9,7 @@ The repository abstraction is split into three levels:
 
 ### ReadableRepositoryProtocol
 
-For components that only need lookups:
+Components that only need lookups depend on this protocol:
 
 ```python
 class ReadableRepositoryProtocol[Model](Protocol):
@@ -30,7 +30,7 @@ class ReadableRepositoryProtocol[Model](Protocol):
 
 ### WritableRepositoryProtocol
 
-For components that need mutations:
+Components that need mutations depend on this protocol:
 
 ```python
 class WritableRepositoryProtocol[Model](Protocol):
@@ -41,7 +41,7 @@ class WritableRepositoryProtocol[Model](Protocol):
 
 ### RepositoryProtocol
 
-The combined interface (backwards compatible):
+This protocol combines the two, and stays backwards compatible:
 
 ```python
 class RepositoryProtocol[Model](

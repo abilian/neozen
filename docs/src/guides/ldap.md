@@ -109,7 +109,7 @@ from the application's perspective. To add write support, subclass
 
 ## Filter Building
 
-`LDAPSubjectRepository` builds RFC 4515 search filters from kwargs:
+`LDAPSubjectRepository` turns keyword arguments into RFC 4515 search filters, as follows:
 
 | Kwarg | LDAP filter |
 |-------|-------------|

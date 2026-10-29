@@ -119,11 +119,11 @@ Only the HMAC-SHA256 hash is stored in the database.
 
 ## Roadmap
 
-See `notes/plan.md` for the full development plan. Current priorities:
+Planned for later 0.x releases:
 
-1. Complete the admin console (Stage 10)
-2. Full OIDC Provider (Stage 11a)
-3. Canaille parity features (Stages 11b-11g): consent management,
-   additional grant types, email notifications, groups, i18n
-4. SCIM 2.0 (Stage 12)
-5. LDAP backend (Stage 13)
+- SAML 2.0 service provider
+- Approval workflows
+- Temporal RBAC and just-in-time elevation
+- OIDC and SCIM endpoints mounted into `neozen serve` (the library supports both today)
+
+Planned for a future major version: multi-tenancy, and a SAML 2.0 identity provider.

@@ -6,16 +6,14 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 
 NeoZen (**N**eoZe**N** = Auth**N** + Auth**Z**) is a framework-agnostic
-authentication and authorization toolkit for Python — and, secondarily,
+authentication and authorization toolkit for Python. It is also, secondarily,
 a lightweight self-hostable identity provider you can stand up in
 front of one or more apps.
 
 > **Status**: preparing the **0.9 first public release**. The bar is
 > "clean": docs, tests, packaging, and the reference deployment are
-> all in good shape. 0.9 is not yet semver-stable — the API may
-> evolve before 1.0. See
-> [`notes/plan/release-0.9.md`](notes/plan/release-0.9.md) for the
-> release checklist.
+> all in good shape. 0.9 is not yet semver-stable: the API may
+> evolve before 1.0.
 
 ## Two ways to use NeoZen
 
@@ -29,7 +27,7 @@ the factors and storage backend you need.
 pip install "neozen[sqlalchemy,password]"
 ```
 
-See the [Developer Quickstart](docs/src/get-started/quickstart.md) —
+See the [Developer Quickstart](docs/src/get-started/quickstart.md):
 a runnable 80-line Litestar app in under five minutes.
 
 ### As a self-hosted service
@@ -43,7 +41,7 @@ docker compose up -d
 docker compose logs neozen | grep NEOZEN-BOOTSTRAP-CREDENTIALS -A 6
 ```
 
-See the [Self-Hosted Quickstart](docs/src/get-started/self-hosted.md) —
+See the [Self-Hosted Quickstart](docs/src/get-started/self-hosted.md):
 a working self-hosted IAM in under ten minutes.
 
 ## What NeoZen provides
@@ -69,15 +67,15 @@ a working self-hosted IAM in under ten minutes.
 
 ## Design principles
 
-- **Framework-agnostic** — works with Flask, Litestar, Starlette,
+- **Framework-agnostic**: works with Flask, Litestar, Starlette,
   or any WSGI/ASGI app
-- **Protocol-based** — depend on interfaces, not implementations
-- **Bring Your Own Model** — factory functions and split protocols
+- **Protocol-based**: depend on interfaces, not implementations
+- **Bring Your Own Model**: factory functions and split protocols
   let you plug your own User model without inheriting from NeoZen
   base classes
-- **Secure by default** — Argon2id hashing, timing-safe comparison,
+- **Secure by default**: Argon2id hashing, timing-safe comparison,
   rate limiting, account lockout, audit logging
-- **Modular** — use only the components you need
+- **Modular**: use only the components you need
 - **Type-checked** across mypy, ty, and pyrefly
 
 ## Documentation
@@ -109,10 +107,6 @@ uv run ruff check
 # Build the docs
 make -C docs serve
 ```
-
-See [`notes/playbooks/INDEX.md`](notes/playbooks/INDEX.md) for the
-project's development playbooks, and
-[`notes/plan.md`](notes/plan.md) for the staged development plan.
 
 ## License
 

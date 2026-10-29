@@ -36,7 +36,7 @@ service = SessionService(
 
 ## SessionServiceFactory
 
-A convenience wrapper that manages the database session lifecycle:
+This convenience wrapper manages the database session lifecycle:
 
 ```python
 from neozen.storage.sqlalchemy import SessionServiceFactory

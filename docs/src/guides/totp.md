@@ -71,7 +71,7 @@ valid = await factor.authenticate(user, code="ABCD1234")
 
 ## Login Flow with 2FA
 
-A typical two-step login flow:
+A typical two-step login flow looks like this:
 
 ```python
 # Step 1: Password
