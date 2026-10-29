@@ -112,15 +112,6 @@ Maintenance release: fixes, hardening, performance and cleanup.
 - Repository deletes work whatever the model's primary key
 - The wheel failed to import without the `phone` extra
 
-### Not in 0.9 (deferred to later 0.x or a future major version)
-
-- **SAML 2.0 SP**: later 0.x point release
-- **Approval workflows**: later 0.x point release
-- **Temporal RBAC + JIT elevation**: later 0.x point release
-- **OIDC/SCIM endpoints mounted into `neozen serve`**: later 0.x follow-up (the library has full OIDC and SCIM support today)
-- **Multi-tenancy**: future major version
-- **SAML 2.0 IdP**: future major version
-
 ## [0.8.0] - 2026-04-11
 
 ### Added
