@@ -6,14 +6,13 @@
 site_name = "NeoZen Documentation"
 site_description = "Authentication and authorization for modern Python applications"
 site_author = "Abilian SAS"
-site_url = "https://neozen.abilian.com/"
+site_url = "https://neozen.lab.abilian.com/"
 
 docs_dir = "src"
 site_dir = "site"
 
-repo_url = "https://github.com/abilian/neozen"
-repo_name = "abilian/neozen"
-edit_uri = "edit/main/docs/src"
+repo_url = "https://git.sr.ht/~sfermigier/neozen"
+repo_name = "~sfermigier/neozen"
 
 copyright = """
 Copyright &copy; 2026 Abilian SAS
@@ -107,8 +106,6 @@ custom_dir = "overrides"
 
 features = [
     "announce.dismiss",
-    "content.action.edit",
-    "content.action.view",
     "content.code.annotate",
     "content.code.copy",
     "content.code.select",
@@ -151,16 +148,11 @@ code = "Roboto Mono"
 
 [project.theme.icon]
 logo = "lucide/shield-check"
-# Lucide has no brand icons: "lucide/github" fails the build.
-repo = "fontawesome/brands/github"
+repo = "lucide/git-branch"
 
 # =============================================================================
 # Social links
 # =============================================================================
-[[project.extra.social]]
-icon = "fontawesome/brands/github"
-link = "https://github.com/abilian/neozen"
-
 [[project.extra.social]]
 icon = "lucide/git-branch"
 link = "https://git.sr.ht/~sfermigier/neozen"

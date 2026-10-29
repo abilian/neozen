@@ -73,7 +73,7 @@ style: |
 ---
 
 <!-- _class: title -->
-<!-- _footer: "Open source, Apache 2.0 · neozen.abilian.com · Made by Abilian" -->
+<!-- _footer: "Open source, Apache 2.0 · neozen.lab.abilian.com · Made by Abilian" -->
 
 <div class="split">
 <div>
@@ -180,4 +180,4 @@ style: |
 <div class="card"><h3>Self-Hosted Quickstart</h3><p>NeoZen as an identity provider, with Docker Compose.<br><br><code>docker compose up -d</code></p></div>
 </div>
 
-<p style="margin-top: 34px; font-size: 22px;"><strong>neozen.abilian.com</strong> · Apache 2.0, no paid tier · 0.9, the first public release, is coming.</p>
+<p style="margin-top: 34px; font-size: 22px;"><strong>neozen.lab.abilian.com</strong> · Apache 2.0, no paid tier · 0.9 is the first public release.</p>

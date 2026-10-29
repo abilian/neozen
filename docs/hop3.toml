@@ -1,0 +1,15 @@
+# NeoZen Documentation Site
+# Deploy with: `hop3 deploy`
+
+[metadata]
+id = "neozen-docs"
+title = "NeoZen Documentation"
+description = "Official documentation for NeoZen"
+
+[build]
+toolchain = "static"
+static-dir = "site"
+ignore = ["src"]
+
+[env]
+HOST_NAME = "neozen.lab.abilian.com"

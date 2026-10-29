@@ -1,16 +1,13 @@
-# NoeZen
+# NeoZen
 
 **Authentication and authorization for modern Python applications.**
 
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://git.sr.ht/~sfermigier/neozen/tree/main/item/LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 
 NeoZen (**N**eoZe**N** = Auth**N** + Auth**Z**) is a framework-agnostic authentication and authorization toolkit for Python. It is also, secondarily, a lightweight self-hostable identity provider you can stand up in front of one or more apps.
 
-> **Status**: preparing the **0.9 first public release**. The bar is
-> "clean": docs, tests, packaging, and the reference deployment are
-> all in good shape. 0.9 is not yet semver-stable: the API may
-> evolve before 1.0.
+> **Status**: 0.9 is the first public release. Docs, tests, packaging and the reference deployment are in good shape, but 0.9 is not yet semver-stable: the API may evolve before 1.0.
 
 ## Two ways to use NeoZen
 
@@ -22,7 +19,7 @@ NeoZen (**N**eoZe**N** = Auth**N** + Auth**Z**) is a framework-agnostic authenti
 pip install "neozen[sqlalchemy,password]"
 ```
 
-See the [Developer Quickstart](docs/src/get-started/quickstart.md): a runnable 80-line Litestar app in under five minutes.
+See the [Developer Quickstart](https://neozen.lab.abilian.com/get-started/quickstart/): a runnable 80-line Litestar app in under five minutes.
 
 ### As a self-hosted service
 
@@ -34,11 +31,11 @@ docker compose up -d
 docker compose logs neozen | grep NEOZEN-BOOTSTRAP-CREDENTIALS -A 6
 ```
 
-See the [Self-Hosted Quickstart](docs/src/get-started/self-hosted.md): a working self-hosted IAM in under ten minutes.
+See the [Self-Hosted Quickstart](https://neozen.lab.abilian.com/get-started/self-hosted/): a working self-hosted IAM in under ten minutes.
 
 ## What NeoZen provides
 
-- **Authentication**: passwords (Argon2id), maigc links, TOTP, email OTP, WebAuthn/passkeys, social login (Google, GitHub)
+- **Authentication**: passwords (Argon2id), magic links, TOTP, email OTP, WebAuthn/passkeys, social login (Google, GitHub)
 - **Authorization**: role-based access control (RBAC), permissions, policy-based authorization
 - **OAuth 2.1 server**: authorization code with PKCE, refresh, client credentials
 - **OpenID Connect 1.0 Provider**: discovery, JWKS, ID tokens, UserInfo, consent, RP-initiated logout, dynamic client registration
@@ -60,18 +57,18 @@ See the [Self-Hosted Quickstart](docs/src/get-started/self-hosted.md): a working
 
 ## Documentation
 
-Full docs at <https://neozen.abilian.com/> (or build locally with `make -C docs serve`).
+Full docs at <https://neozen.lab.abilian.com/> (or build locally with `make -C docs serve`).
 
-- [Developer Quickstart (5 min)](docs/src/get-started/quickstart.md)
-- [Self-Hosted Quickstart (10 min)](docs/src/get-started/self-hosted.md)
-- [Cheat Sheet](docs/src/guides/cheat-sheet.md)
-- [Bring Your Own Model](docs/src/guides/bring-your-own-model.md)
+- [Developer Quickstart (5 min)](https://neozen.lab.abilian.com/get-started/quickstart/)
+- [Self-Hosted Quickstart (10 min)](https://neozen.lab.abilian.com/get-started/self-hosted/)
+- [Cheat Sheet](https://neozen.lab.abilian.com/guides/cheat-sheet/)
+- [Bring Your Own Model](https://neozen.lab.abilian.com/guides/bring-your-own-model/)
 
 ## Development
 
 ```bash
 # Clone
-git clone https://github.com/abilian/neozen.git
+git clone https://git.sr.ht/~sfermigier/neozen
 cd neozen
 
 # Install with all extras
@@ -89,6 +86,6 @@ make -C docs serve
 
 ## License
 
-Apache License 2.0. See [`LICENSE`](LICENSE).
+Apache License 2.0. See [`LICENSE`](https://git.sr.ht/~sfermigier/neozen/tree/main/item/LICENSE).
 
 NeoZen is sponsored by [Abilian SAS](https://abilian.com). Abilian's interest in NeoZen is in consulting and integration services around the OSS, not in a product upsell. There is no paid tier and no open-core gating.

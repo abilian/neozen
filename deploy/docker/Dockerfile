@@ -40,7 +40,7 @@ FROM python:3.12-slim AS runtime
 
 LABEL org.opencontainers.image.title="NeoZen" \
       org.opencontainers.image.description="Framework-agnostic Python auth toolkit and lightweight self-hosted IAM" \
-      org.opencontainers.image.source="https://github.com/abilian/neozen" \
+      org.opencontainers.image.source="https://git.sr.ht/~sfermigier/neozen" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \

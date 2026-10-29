@@ -40,6 +40,12 @@ dependencies = [
     "uvicorn>=0.40.0",
 ]
 
+[project.urls]
+Homepage = "https://neozen.lab.abilian.com/"
+Documentation = "https://neozen.lab.abilian.com/"
+Repository = "https://git.sr.ht/~sfermigier/neozen"
+Changelog = "https://git.sr.ht/~sfermigier/neozen/tree/main/item/CHANGES.md"
+
 [project.optional-dependencies]
 password = [
     "pwdlib[argon2]>=0.3.0",

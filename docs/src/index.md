@@ -99,7 +99,6 @@ NeoZen is open source under the [Apache License 2.0](https://www.apache.org/lice
 
 ## Community
 
-- **GitHub**: [github.com/abilian/neozen](https://github.com/abilian/neozen)
 - **SourceHut**: [git.sr.ht/~sfermigier/neozen](https://git.sr.ht/~sfermigier/neozen)
 
 ---
