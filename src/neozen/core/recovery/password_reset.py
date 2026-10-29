@@ -98,10 +98,20 @@ class PasswordResetTokenRepository(Protocol):
         ...
 
 
+class RecoverableSubject(Protocol):
+    """What recovery needs of a subject."""
+
+    @property
+    def id(self) -> Any: ...
+
+    @property
+    def email(self) -> str | None: ...
+
+
 class SubjectLookup(Protocol):
     """Protocol for looking up subjects by email."""
 
-    async def get_by_email(self, email: str) -> Any | None:
+    async def get_by_email(self, email: str) -> RecoverableSubject | None:
         """Get subject by email address."""
         ...
 
@@ -216,9 +226,7 @@ class PasswordResetService:
         if subject is None:
             return success_result
 
-        subject_id = getattr(subject, "id", None)
-        if subject_id is None:
-            return success_result
+        subject_id = subject.id
 
         # Check rate limit
         now = datetime.now(UTC)
@@ -369,5 +377,6 @@ __all__ = [
     "PasswordResetService",
     "PasswordResetToken",
     "PasswordResetTokenRepository",
+    "RecoverableSubject",
     "SubjectLookup",
 ]

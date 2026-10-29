@@ -574,3 +574,72 @@ class TestEmailMasking:
         # Should be masked like "u***r@example.com"
         assert "@example.com" in email_option.identifier
         assert "***" in email_option.identifier or "*" in email_option.identifier
+
+
+class CapturingRecoverySender:
+    """Keeps the codes it is asked to send."""
+
+    def __init__(self) -> None:
+        self.codes: list[str] = []
+
+    async def send_recovery_email(
+        self, email: str, session_id: str, code: str, expires_at: Any
+    ) -> bool:
+        self.codes.append(code)
+        return True
+
+
+@pytest.mark.anyio
+class TestEmailRecoveryCode:
+    """The code sent by email is what proves control of the mailbox."""
+
+    @pytest.fixture
+    def sender(self) -> CapturingRecoverySender:
+        return CapturingRecoverySender()
+
+    @pytest.fixture
+    def service(
+        self,
+        recovery_service: AccountRecoveryService,
+        sender: CapturingRecoverySender,
+    ) -> AccountRecoveryService:
+        recovery_service.email_sender = sender
+        return recovery_service
+
+    async def _initiate(self, service: AccountRecoveryService) -> str:
+        initiation = await service.initiate_recovery(
+            identifier="user@example.com", method=RecoveryMethod.EMAIL
+        )
+        return initiation.session_id
+
+    async def test_the_emailed_code_verifies(
+        self, service: AccountRecoveryService, sender: CapturingRecoverySender
+    ) -> None:
+        session_id = await self._initiate(service)
+
+        result = await service.verify_recovery(session_id, sender.codes[-1])
+
+        assert result.verified
+
+    async def test_a_wrong_code_is_refused(
+        self, service: AccountRecoveryService, sender: CapturingRecoverySender
+    ) -> None:
+        session_id = await self._initiate(service)
+        wrong = "000000" if sender.codes[-1] != "000000" else "111111"
+
+        result = await service.verify_recovery(session_id, wrong)
+
+        assert not result.verified
+        assert not await service.complete_recovery(session_id, "new-password-1")
+
+    async def test_a_wrong_code_ends_the_session(
+        self, service: AccountRecoveryService, sender: CapturingRecoverySender
+    ) -> None:
+        """No second guess: a 6-digit code can't be brute-forced."""
+        session_id = await self._initiate(service)
+        wrong = "000000" if sender.codes[-1] != "000000" else "111111"
+        await service.verify_recovery(session_id, wrong)
+
+        result = await service.verify_recovery(session_id, sender.codes[-1])
+
+        assert not result.verified

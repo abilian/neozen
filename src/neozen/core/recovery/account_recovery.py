@@ -5,8 +5,8 @@ Provides unified account recovery functionality with multiple recovery methods.
 
 from __future__ import annotations
 
+import hmac
 import secrets
-import string
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -14,6 +14,7 @@ from typing import Any, Protocol
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
 from neozen.core.recovery.password_reset import (
     PasswordChanger,
+    RecoverableSubject,
     SubjectLookup as EmailSubjectLookup,
 )
 from neozen.core.recovery.types import RecoveryMethod, RecoveryOption
@@ -90,7 +91,7 @@ class RecoverySessionRepository(Protocol):
 class SubjectLookup(EmailSubjectLookup, Protocol):
     """Protocol for looking up subjects, by email or by ID."""
 
-    async def get_by_id(self, subject_id: str) -> Any | None:
+    async def get_by_id(self, subject_id: str) -> RecoverableSubject | None:
         """Get subject by ID."""
         ...
 
@@ -221,6 +222,17 @@ class AccountRecoveryService:
         self.backup_code_checker = backup_code_checker
         self.email_sender = email_sender
 
+    def _email_code(self, session_id: str) -> str:
+        """The code emailed for a recovery session.
+
+        Derived from the session ID with the secret key, so it needs no
+        storage: only the mailbox owner sees it.
+        """
+        message = f"recovery-email:{session_id}".encode()
+        digest = hmac.new(self.token_hash_key.encode(), message, "sha256").digest()
+        length = self.config.email_code_length
+        return str(int.from_bytes(digest[:8]) % 10**length).zfill(length)
+
     def _mask_email(self, email: str) -> str:
         """Mask an email address for display."""
         parts = email.split("@")
@@ -263,7 +275,7 @@ class AccountRecoveryService:
         options: list[RecoveryOption] = []
 
         # Email recovery (always available if we have email)
-        email = getattr(subject, "email", None)
+        email = subject.email
         if email:
             options.append(
                 RecoveryOption(
@@ -273,7 +285,7 @@ class AccountRecoveryService:
                 )
             )
 
-        # Backup codes (if TOTP is enabled)
+        # Backup codes, if the subject's model has TOTP and it is on
         totp_enabled = getattr(subject, "totp_enabled", False)
         if totp_enabled and self.backup_code_checker:
             options.append(
@@ -286,20 +298,16 @@ class AccountRecoveryService:
             )
 
         # Recovery key (if one exists)
-        subject_id = getattr(subject, "id", None)
-        if subject_id:
-            recovery_key = await self.recovery_key_repository.get_for_subject(
-                subject_id
-            )
-            if recovery_key and recovery_key.used_at is None:
-                options.append(
-                    RecoveryOption(
-                        method=RecoveryMethod.RECOVERY_KEY,
-                        identifier="Recovery key",
-                        available=True,
-                        hint="Pre-generated recovery key",
-                    )
+        recovery_key = await self.recovery_key_repository.get_for_subject(subject.id)
+        if recovery_key and recovery_key.used_at is None:
+            options.append(
+                RecoveryOption(
+                    method=RecoveryMethod.RECOVERY_KEY,
+                    identifier="Recovery key",
+                    available=True,
+                    hint="Pre-generated recovery key",
                 )
+            )
 
         return options
 
@@ -330,10 +338,7 @@ class AccountRecoveryService:
                 verification_required=True,
             )
 
-        subject_id = getattr(subject, "id", None)
-        if subject_id is None:
-            msg = "Subject has no ID"
-            raise ValueError(msg)
+        subject_id = subject.id
 
         now = datetime.now(UTC)
         expires_at = now + self.config.session_lifetime
@@ -354,12 +359,8 @@ class AccountRecoveryService:
         hint = None
 
         if method == RecoveryMethod.EMAIL:
-            # Generate and send verification code
-            code = "".join(
-                secrets.choice(string.digits)
-                for _ in range(self.config.email_code_length)
-            )
-            email = getattr(subject, "email", None)
+            code = self._email_code(session.id)
+            email = subject.email
             if email and self.email_sender:
                 await self.email_sender.send_recovery_email(
                     email=email,
@@ -423,28 +424,7 @@ class AccountRecoveryService:
                 error="Recovery already completed",
             )
 
-        method = RecoveryMethod(session.method)
-        verified = False
-
-        if method == RecoveryMethod.EMAIL:
-            # For email, code verification would be done via email token
-            # This is a simplified implementation
-            verified = True  # Assume email verification succeeded
-
-        elif method == RecoveryMethod.BACKUP_CODES:
-            if self.backup_code_checker:
-                verified = await self.backup_code_checker.verify_backup_code(
-                    session.subject_id,
-                    code,
-                )
-
-        elif method == RecoveryMethod.RECOVERY_KEY:
-            key_hash = get_token_hash(code, self.token_hash_key)
-            key = await self.recovery_key_repository.get_by_hash(key_hash)
-            if key and key.subject_id == session.subject_id and key.used_at is None:
-                verified = True
-                await self.recovery_key_repository.mark_used(key.id, now)
-
+        verified = await self._check_code(session, code, now)
         if verified:
             await self.session_repository.update(session_id, verified_at=now)
 
@@ -453,6 +433,34 @@ class AccountRecoveryService:
             session_id=session_id,
             error=None if verified else "Verification failed",
         )
+
+    async def _check_code(
+        self, session: RecoverySessionModel, code: str, now: datetime
+    ) -> bool:
+        """Whether ``code`` proves the session's recovery method."""
+        match RecoveryMethod(session.method):
+            case RecoveryMethod.EMAIL:
+                if hmac.compare_digest(code, self._email_code(session.id)):
+                    return True
+                # One guess per code: a short code can't be brute-forced.
+                await self.session_repository.update(session.id, expires_at=now)
+                return False
+            case RecoveryMethod.BACKUP_CODES:
+                if self.backup_code_checker is None:
+                    return False
+                return await self.backup_code_checker.verify_backup_code(
+                    session.subject_id, code
+                )
+            case RecoveryMethod.RECOVERY_KEY:
+                key_hash = get_token_hash(code, self.token_hash_key)
+                key = await self.recovery_key_repository.get_by_hash(key_hash)
+                if key is None or key.subject_id != session.subject_id:
+                    return False
+                if key.used_at is not None:
+                    return False
+                await self.recovery_key_repository.mark_used(key.id, now)
+                return True
+        return False
 
     async def complete_recovery(
         self,
