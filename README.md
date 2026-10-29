@@ -29,7 +29,7 @@ the factors and storage backend you need.
 pip install "neozen[sqlalchemy,password]"
 ```
 
-See the [Developer Quickstart](docs/getting-started/quickstart.md) —
+See the [Developer Quickstart](docs/src/get-started/quickstart.md) —
 a runnable 80-line Litestar app in under five minutes.
 
 ### As a self-hosted service
@@ -43,7 +43,7 @@ docker compose up -d
 docker compose logs neozen | grep NEOZEN-BOOTSTRAP-CREDENTIALS -A 6
 ```
 
-See the [Self-Hosted Quickstart](docs/getting-started/self-hosted.md) —
+See the [Self-Hosted Quickstart](docs/src/get-started/self-hosted.md) —
 a working self-hosted IAM in under ten minutes.
 
 ## What NeoZen provides
@@ -83,12 +83,12 @@ a working self-hosted IAM in under ten minutes.
 ## Documentation
 
 Full docs at <https://neozen.abilian.com/> (or build locally with
-`uv run mkdocs serve`).
+`make -C docs serve`).
 
-- [Developer Quickstart (5 min)](docs/getting-started/quickstart.md)
-- [Self-Hosted Quickstart (10 min)](docs/getting-started/self-hosted.md)
-- [Cheat Sheet](docs/cheat-sheet.md)
-- [Bring Your Own Model](docs/guides/bring-your-own-model.md)
+- [Developer Quickstart (5 min)](docs/src/get-started/quickstart.md)
+- [Self-Hosted Quickstart (10 min)](docs/src/get-started/self-hosted.md)
+- [Cheat Sheet](docs/src/guides/cheat-sheet.md)
+- [Bring Your Own Model](docs/src/guides/bring-your-own-model.md)
 
 ## Development
 
@@ -107,7 +107,7 @@ uv run pytest tests/a_unit tests/b_integration tests/c_e2e
 uv run ruff check
 
 # Build the docs
-uv run mkdocs serve
+make -C docs serve
 ```
 
 See [`notes/playbooks/INDEX.md`](notes/playbooks/INDEX.md) for the

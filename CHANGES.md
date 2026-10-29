@@ -120,7 +120,7 @@ full release checklist.
 
 #### Documentation
 
-- Material for MkDocs site with ~25 pages
+- Documentation site built with Zensical, about 30 pages, with "NeoZen, in six slides" on the home page
 - Developer quickstart (5 min embed-in-your-app)
 - Self-hosted quickstart (10 min `docker compose up`)
 - Architecture, factor protocols, storage abstraction

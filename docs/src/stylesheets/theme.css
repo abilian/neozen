@@ -1,0 +1,15 @@
+.md-typeset h1, .md-typeset h2 {
+    font-weight: 500;
+}
+
+.highlight > pre > code {
+    border-radius: 3px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+}
+
+/* Home page tagline, under the title. */
+.neozen-tagline {
+    font-size: 1.05rem;
+    color: var(--md-default-fg-color--light);
+}

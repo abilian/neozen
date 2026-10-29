@@ -1,0 +1,172 @@
+# NeoZen Documentation - Zensical Configuration
+# ============================================================================
+
+[project]
+
+site_name = "NeoZen Documentation"
+site_description = "Authentication and authorization for modern Python applications"
+site_author = "Abilian SAS"
+site_url = "https://neozen.abilian.com/"
+
+docs_dir = "src"
+site_dir = "site"
+
+repo_url = "https://github.com/abilian/neozen"
+repo_name = "abilian/neozen"
+edit_uri = "edit/main/docs/src"
+
+copyright = """
+Copyright &copy; 2026 Abilian SAS
+"""
+
+# =============================================================================
+# Navigation Structure (5 Tabs)
+# =============================================================================
+nav = [
+    # -------------------------------------------------------------------------
+    # Tab 1: Home
+    # -------------------------------------------------------------------------
+    { "Home" = [
+        { "Overview" = "index.md" },
+        { "Features" = "features.md" },
+    ]},
+
+    # -------------------------------------------------------------------------
+    # Tab 2: Get Started
+    # -------------------------------------------------------------------------
+    { "Get Started" = [
+        { "Overview" = "get-started/index.md" },
+        { "Installation" = "get-started/installation.md" },
+        { "Developer Quickstart (5 min)" = "get-started/quickstart.md" },
+        { "Self-Hosted Quickstart (10 min)" = "get-started/self-hosted.md" },
+    ]},
+
+    # -------------------------------------------------------------------------
+    # Tab 3: Guides (task-oriented)
+    # -------------------------------------------------------------------------
+    { "Guides" = [
+        { "Overview" = "guides/index.md" },
+        { "Cheat Sheet" = "guides/cheat-sheet.md" },
+        { "Bring Your Own Model" = "guides/bring-your-own-model.md" },
+        { "Frameworks" = [
+            { "Flask" = "guides/flask.md" },
+            { "Litestar" = "guides/litestar.md" },
+        ]},
+        { "Sign-in Factors" = [
+            { "Magic Links" = "guides/magic-link.md" },
+            { "TOTP / MFA" = "guides/totp.md" },
+            { "Email OTP" = "guides/email-otp.md" },
+        ]},
+        { "Authorization (RBAC)" = "guides/authorization.md" },
+        { "Groups & Invitations" = "guides/groups.md" },
+        { "Identity Provider" = [
+            { "OpenID Connect Provider" = "guides/oidc.md" },
+            { "SCIM 2.0" = "guides/scim.md" },
+            { "LDAP Backend" = "guides/ldap.md" },
+        ]},
+    ]},
+
+    # -------------------------------------------------------------------------
+    # Tab 4: Developers (how NeoZen is built, and how to extend it)
+    # -------------------------------------------------------------------------
+    { "Developers" = [
+        { "Overview" = "developers/index.md" },
+        { "Architecture" = "developers/overview.md" },
+        { "Factor Protocols" = "developers/factors.md" },
+        { "Storage Abstraction" = "developers/storage.md" },
+    ]},
+
+    # -------------------------------------------------------------------------
+    # Tab 5: Reference (lookup)
+    # -------------------------------------------------------------------------
+    { "Reference" = [
+        { "Overview" = "reference/index.md" },
+        { "Configuration" = "reference/configuration.md" },
+        { "Factors" = "reference/factors.md" },
+        { "Session Management" = "reference/sessions.md" },
+        { "Authorization" = "reference/authorization.md" },
+        { "Email" = "reference/email.md" },
+        { "OAuth Client" = "reference/oauth-client.md" },
+    ]},
+]
+
+extra_css = ["stylesheets/theme.css", "stylesheets/deck.css"]
+
+# The slide viewer the home page embeds its PDF deck with (pdf.js, loaded from
+# jsDelivr only on a page that has a deck).
+extra_javascript = ["javascripts/deck.js"]
+
+# =============================================================================
+# Theme Configuration
+# =============================================================================
+[project.theme]
+
+variant = "modern"
+language = "en"
+custom_dir = "overrides"
+
+features = [
+    "announce.dismiss",
+    "content.action.edit",
+    "content.action.view",
+    "content.code.annotate",
+    "content.code.copy",
+    "content.code.select",
+    "content.footnote.tooltips",
+    "content.tabs.link",
+    "content.tooltips",
+    "navigation.footer",
+    # navigation.indexes intentionally OFF: it turns a section's index.md into a
+    # clickable section title, which readers don't expect to be a link. Each
+    # section lists an explicit "Overview" item on top instead.
+    "navigation.instant",
+    "navigation.instant.prefetch",
+    "navigation.path",
+    "navigation.sections",
+    "navigation.tabs",
+    "navigation.tabs.sticky",
+    "navigation.top",
+    "navigation.tracking",
+    "search.highlight",
+    "toc.follow",
+]
+
+[[project.theme.palette]]
+scheme = "default"
+primary = "indigo"
+accent = "indigo"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+scheme = "slate"
+primary = "indigo"
+accent = "indigo"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[project.theme.font]
+text = "Roboto"
+code = "Roboto Mono"
+
+[project.theme.icon]
+logo = "lucide/shield-check"
+# Lucide has no brand icons: "lucide/github" fails the build.
+repo = "fontawesome/brands/github"
+
+# =============================================================================
+# Social links
+# =============================================================================
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/abilian/neozen"
+
+[[project.extra.social]]
+icon = "lucide/git-branch"
+link = "https://git.sr.ht/~sfermigier/neozen"
+
+# =============================================================================
+# Plugins
+# =============================================================================
+[project.plugins]
+search = { enabled = true }
