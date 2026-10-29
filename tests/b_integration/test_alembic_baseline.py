@@ -230,3 +230,17 @@ def _async_engine(url: str) -> AsyncEngine:
 def _revision(url: str) -> str | None:
     with create_engine(url).connect() as conn:
         return MigrationContext.configure(conn).get_current_revision()
+
+
+def test_0_9_0_database_gets_the_rate_limit_locks_table(
+    alembic_db_url: str, alembic_cfg: Config
+) -> None:
+    command.upgrade(alembic_cfg, "0_9_oauth_schema")
+    with create_engine(alembic_db_url).begin() as conn:
+        conn.exec_driver_sql("DROP TABLE rate_limit_locks")  # as in 0.9.0
+
+    command.upgrade(alembic_cfg, "head")
+
+    assert (
+        "rate_limit_locks" in inspect(create_engine(alembic_db_url)).get_table_names()
+    )

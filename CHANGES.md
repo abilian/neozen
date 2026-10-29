@@ -6,7 +6,9 @@ Versions 0.1.0 to 0.8.0 were never tagged or published. They are reconstructed f
 
 ## [Unreleased]
 
-Maintenance release: fixes, hardening, performance and cleanup.
+Maintenance release: fixes, hardening, performance and cleanup. It also breaks a few behaviors, each for a security or correctness fix (see "Changed" and "Removed").
+
+**Upgrading from 0.9.0**: run `alembic upgrade head` (in the container: `docker compose exec neozen alembic upgrade head`). It adds one table, and `neozen serve` refuses to start on a database that hasn't run it.
 
 ### Fixed
 
@@ -30,6 +32,7 @@ Maintenance release: fixes, hardening, performance and cleanup.
 - With several `neozen serve` workers, admin sign-ins were lost when a request reached another worker (sessions are now kept in `NEOZEN_SESSION_DIR`)
 - `neozen serve` created tables without recording their Alembic revision, so a later `alembic upgrade head` clashed with them
 - The admin dashboard showed the number of users as the number of role assignments
+- The SQL rate-limit store kept no lock, so a locked-out key was free again when its window ended, whatever `lockout_duration` said; it also failed on SQLite. Locks are kept in a new `rate_limit_locks` table (an additive Alembic revision)
 - **An authorization code from `AuthorizationEndpoint` could never be redeemed**: the endpoint stores the code's HMAC, but the token service looked up the code itself. `AuthorizationEndpoint`'s `code_hash_key` must be the token service's `token_hash_key` (`NeoZenFactory` already uses one key for both)
 - Magic links, password reset, account recovery, WebAuthn challenges, group invitations, social login state and `SessionService.list_sessions` failed with SQL storage on SQLite, which returns datetimes without a time zone
 - SCIM filters on a multi-valued attribute (`emails.value ew "example.com"`, or `emails` alone) matched nothing; one matching value is now enough (RFC 7644 §3.4.2.2)

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from neozen.core.audit.types import AuditLogEntry
 from neozen.core.security.rate_limit_store import RateLimitEntry
+from neozen.core.utils import ensure_utc
 from neozen.storage.sqlalchemy.repositories import NeoZenRepository
 from neozen.storage.sqlalchemy.security_models import (
     AccountLockout,
@@ -20,6 +21,7 @@ from neozen.storage.sqlalchemy.security_models import (
     LoginAttempt,
     MagicLinkToken,
     PasswordResetToken,
+    RateLimitLock,
 )
 
 
@@ -84,25 +86,13 @@ class SQLAlchemyRateLimitStore:
             if row is None or row.attempts == 0:
                 return None
 
-            # Check for lockout state
-            lockout_stmt = select(AccountLockout).where(
-                AccountLockout.subject_id == key
-            )
-            lockout_result = await session.execute(lockout_stmt)
-            lockout = lockout_result.scalar_one_or_none()
-
-            locked_until = None
-            if (
-                lockout
-                and lockout.locked_until
-                and lockout.locked_until > datetime.now(UTC)
-            ):
-                locked_until = lockout.locked_until
+            lock = await session.get(RateLimitLock, key)
+            locked_until = ensure_utc(lock.locked_until) if lock else None
 
             return RateLimitEntry(
                 attempts=row.attempts,
-                first_attempt_at=row.first_attempt,
-                last_attempt_at=row.last_attempt,
+                first_attempt_at=ensure_utc(row.first_attempt),
+                last_attempt_at=ensure_utc(row.last_attempt),
                 locked_until=locked_until,
             )
 
@@ -112,8 +102,20 @@ class SQLAlchemyRateLimitStore:
         entry: RateLimitEntry,
         ttl: timedelta | None = None,
     ) -> None:
-        """Set rate limit entry."""
-        # This is handled by increment and the lockout mechanism
+        """Record the entry's lock; attempts are rows kept by `increment`.
+
+        ``ttl`` is not needed: the lock ends at ``entry.locked_until``.
+        """
+        async with self._session_factory() as session:
+            if entry.locked_until is None:
+                await session.execute(
+                    delete(RateLimitLock).where(RateLimitLock.key == key)
+                )
+            else:
+                await session.merge(
+                    RateLimitLock(key=key, locked_until=entry.locked_until)
+                )
+            await session.commit()
 
     async def increment(self, key: str) -> RateLimitEntry:
         """Increment attempt count."""
@@ -139,15 +141,15 @@ class SQLAlchemyRateLimitStore:
 
             return RateLimitEntry(
                 attempts=row.attempts,
-                first_attempt_at=row.first_attempt,
-                last_attempt_at=row.last_attempt,
+                first_attempt_at=ensure_utc(row.first_attempt),
+                last_attempt_at=ensure_utc(row.last_attempt),
             )
 
     async def delete(self, key: str) -> None:
         """Delete rate limit entry."""
         async with self._session_factory() as session:
-            stmt = delete(LoginAttempt).where(LoginAttempt.key == key)
-            await session.execute(stmt)
+            await session.execute(delete(LoginAttempt).where(LoginAttempt.key == key))
+            await session.execute(delete(RateLimitLock).where(RateLimitLock.key == key))
             await session.commit()
 
 

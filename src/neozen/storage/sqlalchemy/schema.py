@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 # The Alembic revision the models describe. A test keeps it equal to the
 # head of `migrations/versions/`.
-SCHEMA_REVISION = "0_9_oauth_schema"
+SCHEMA_REVISION = "0_9_1_rate_limit_locks"
 
 # Alembic's own bookkeeping table, as `alembic stamp` creates it.
 _VERSION_TABLE = Table(

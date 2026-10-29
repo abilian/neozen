@@ -51,6 +51,20 @@ class LoginAttempt(Base):
         return f"<LoginAttempt key={self.key} success={self.success}>"
 
 
+class RateLimitLock(Base):
+    """A rate-limit key locked out until a given time.
+
+    The key is the limiter's (``login:ip:...``, say), not a subject ID.
+    """
+
+    __tablename__ = "rate_limit_locks"
+
+    key: Mapped[str] = mapped_column(String(256), primary_key=True)
+    locked_until: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class AccountLockout(Base):
     """Track account lockout state.
 
@@ -221,4 +235,5 @@ __all__ = [
     "LoginAttempt",
     "MagicLinkToken",
     "PasswordResetToken",
+    "RateLimitLock",
 ]

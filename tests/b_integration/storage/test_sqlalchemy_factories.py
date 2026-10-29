@@ -10,10 +10,12 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from neozen.core.authz.models import ScopeType
+from neozen.core.security import RateLimitConfig, RateLimiter
 from neozen.core.session.service import SessionService
 from neozen.core.verification.email import (
     EmailVerificationService,
@@ -33,6 +35,8 @@ from neozen.storage.sqlalchemy.repositories import (
     SessionRepository,
     SubjectRepository,
 )
+from neozen.storage.sqlalchemy.security_models import LoginAttempt
+from neozen.storage.sqlalchemy.security_repositories import SQLAlchemyRateLimitStore
 
 
 @pytest.fixture
@@ -564,3 +568,30 @@ async def test_email_verification_with_several_tokens_on_sqlite(
         )
         with pytest.raises(VerificationCooldownError):
             await cooling.create_token("a@example.com", "user1")
+
+
+@pytest.mark.anyio
+async def test_sql_lockout_outlasts_the_counting_window(session_factory) -> None:
+    """The lock is kept: it ends after lockout_duration, not with the window."""
+    limiter = RateLimiter(
+        RateLimitConfig(
+            max_attempts=2,
+            window=timedelta(minutes=1),
+            lockout_duration=timedelta(hours=1),
+        ),
+        SQLAlchemyRateLimitStore(session_factory),
+    )
+    for _ in range(3):
+        await limiter.check("k", increment=True)
+
+    # The attempts fall out of the window...
+    async with session_factory() as session:
+        await session.execute(
+            update(LoginAttempt).values(
+                timestamp=datetime.now(UTC) - timedelta(hours=1)
+            )
+        )
+        await session.commit()
+
+    # ...but the key stays locked.
+    assert not (await limiter.check("k", increment=True)).allowed
