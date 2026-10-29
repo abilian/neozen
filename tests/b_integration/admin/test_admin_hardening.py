@@ -115,3 +115,30 @@ def test_expired_session_sends_htmx_polls_to_login(tmp_path: Path) -> None:
             "/dashboard/stats", headers={"HX-Request": "true"}, follow_redirects=False
         )
     assert response.headers["HX-Redirect"] == "/login"
+
+
+def test_admin_actions_and_exports_are_audited(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+
+    async def create_user() -> str:
+        async with app.state.session_factory() as session:
+            subject = await AdminService(session).create_subject(email="=cmd@x.org")
+            await session.commit()
+            return subject.id
+
+    async def actions() -> list[tuple[str, str | None]]:
+        async with app.state.session_factory() as session:
+            logs = await AdminService(session).list_audit_logs(event_type="admin")
+            return sorted((e.action, e.subject_id) for e in logs)
+
+    admin = superadmin_client(app)
+    with admin as client, client.portal() as portal:
+        user = portal.call(create_user)
+        client.post(f"/users/{user}/deactivate")
+        export = client.get("/users/export")
+        logged = portal.call(actions)
+
+    assert ("admin_deactivate_user", user) in logged
+    assert ("admin_export_users", None) in logged
+    assert export.headers["Cache-Control"] == "no-store"
+    assert "'=cmd@x.org" in export.text

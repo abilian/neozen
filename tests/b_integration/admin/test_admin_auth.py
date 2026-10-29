@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 from pathlib import Path
 
+import anyio
 import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 from pwdlib import PasswordHash
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from neozen.admin.app import ROUTE_HANDLERS, create_admin_app
+from neozen.admin.app import LOGIN_LIMITS, ROUTE_HANDLERS, create_admin_app
 from neozen.admin.auth import AdminRole, admin_role_for
 from neozen.admin.config import AdminConfig
 from neozen.admin.services import AdminService
@@ -39,7 +39,7 @@ def _create_subject(db_url: str, email: str, password: str, role: str) -> None:
             await session.commit()
         await engine.dispose()
 
-    asyncio.run(run())
+    anyio.run(run)
 
 
 def _login(client: TestClient, email: str, password: str) -> None:
@@ -202,7 +202,7 @@ def _deactivate(db_url: str, email: str) -> None:
             await session.commit()
         await engine.dispose()
 
-    asyncio.run(run())
+    anyio.run(run)
 
 
 class TestSessionLifecycle:
@@ -229,6 +229,26 @@ class TestSessionLifecycle:
             assert client.get("/users", follow_redirects=False).status_code == 200
 
             _deactivate(_db_url(tmp_path), "a@example.com")
+            response = client.get("/users", follow_redirects=False)
+        assert response.status_code == 303
+
+
+class TestLoginLimits:
+    def test_repeated_failures_pause_sign_in(self, tmp_path: Path) -> None:
+        app = create_admin_app(AdminConfig(db_url=_db_url(tmp_path), secret_key="k"))
+        with TestClient(app=app, base_url=BASE_URL) as client:
+            _create_subject(_db_url(tmp_path), "a@example.com", "secret", "admin")
+            for _ in range(LOGIN_LIMITS.max_attempts):
+                _login(client, "a@example.com", "wrong")
+
+            _login(client, "a@example.com", "secret")  # right, but too late
+            response = client.get("/users", follow_redirects=False)
+        assert response.status_code == 303
+
+    def test_unknown_email_is_refused(self, tmp_path: Path) -> None:
+        app = create_admin_app(AdminConfig(db_url=_db_url(tmp_path), secret_key="k"))
+        with TestClient(app=app, base_url=BASE_URL) as client:
+            _login(client, "nobody@example.com", "secret")
             response = client.get("/users", follow_redirects=False)
         assert response.status_code == 303
 
@@ -315,3 +335,24 @@ def test_detail_pages_render() -> None:
     with admin as client:
         for path in (f"/users/{admin.subject_id}", "/roles/superuser"):
             assert client.get(path, follow_redirects=False).status_code == 200, path
+
+
+def test_workers_share_sign_ins_through_the_session_dir(tmp_path: Path) -> None:
+    """Two app instances stand for two workers of `neozen serve`."""
+
+    def worker() -> Litestar:
+        return create_admin_app(
+            AdminConfig(
+                db_url=_db_url(tmp_path),
+                secret_key="k",
+                session_dir=tmp_path / "sessions",
+            )
+        )
+
+    with TestClient(app=worker(), base_url=BASE_URL) as first:
+        _create_subject(_db_url(tmp_path), "a@example.com", "secret", "admin")
+        _login(first, "a@example.com", "secret")
+        cookies = dict(first.cookies)
+
+    with TestClient(app=worker(), base_url=BASE_URL, cookies=cookies) as second:
+        assert second.get("/users", follow_redirects=False).status_code == 200

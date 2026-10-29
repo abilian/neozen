@@ -5,9 +5,11 @@ from __future__ import annotations
 from litestar import Request, Response, get, post
 from litestar.params import FromPath
 
+from neozen.admin.auth import superadmin_only
 from neozen.admin.services import AdminService
 from neozen.admin.web import (
     ADMIN_ERRORS,
+    commit_audited,
     describe_error,
     flash,
     redirect,
@@ -32,7 +34,7 @@ def create_role_form(request: Request) -> Response:
     return render_template(request, "roles/create.html", {})
 
 
-@post("/roles/create")
+@post("/roles/create", guards=[superadmin_only])
 async def create_role(request: Request, service: AdminService) -> Response:
     """Create a new role."""
     form_data = await request.form()
@@ -51,7 +53,7 @@ async def create_role(request: Request, service: AdminService) -> Response:
 
     try:
         await service.create_role(name, permissions, description)
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, f"Role '{name}' created successfully.", "success")
         return redirect("/roles")
     except ADMIN_ERRORS as e:
@@ -81,14 +83,14 @@ async def role_detail(
     )
 
 
-@post("/roles/{role_name:str}/delete")
+@post("/roles/{role_name:str}/delete", guards=[superadmin_only])
 async def delete_role(
     request: Request, service: AdminService, role_name: FromPath[str]
 ) -> Response:
     """Delete a role."""
     try:
         await service.delete_role(role_name)
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, f"Role '{role_name}' deleted successfully.", "success")
     except ADMIN_ERRORS as e:
         flash(request, f"Error deleting role: {describe_error(e)}", "error")

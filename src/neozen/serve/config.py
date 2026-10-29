@@ -13,6 +13,7 @@ a file path — for Docker / Kubernetes secret mounts.
 from __future__ import annotations
 
 import os
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,6 +24,7 @@ DEFAULT_WORKERS = 1
 DEFAULT_LOG_LEVEL = "INFO"
 DEFAULT_DB_URL = "sqlite+aiosqlite:///data/neozen.db"
 DEFAULT_SECRET_KEY = "change-me-in-production"
+DEFAULT_SESSION_DIR = str(Path(tempfile.gettempdir()) / "neozen-sessions")
 
 
 @dataclass
@@ -42,6 +44,8 @@ class ServeConfig:
         - `bootstrap_admin_email` (default admin@localhost)
         - `cookie_secure` (default True): set the Secure flag on the admin
           session cookie. Turn it off only to serve over plain HTTP.
+        - `session_dir` (default `<tmp>/neozen-sessions`): where admin
+          sign-in sessions are kept, shared by the workers.
     """
 
     db_url: str = DEFAULT_DB_URL
@@ -54,6 +58,7 @@ class ServeConfig:
     bootstrap_admin: bool = True
     bootstrap_admin_email: str = "admin@localhost"
     cookie_secure: bool = True
+    session_dir: str = DEFAULT_SESSION_DIR
 
     # Populated by validate(); empty list means OK.
     warnings: list[str] = field(default_factory=list)
@@ -79,6 +84,7 @@ class ServeConfig:
                 e, "NEOZEN_BOOTSTRAP_ADMIN_EMAIL", "admin@localhost"
             ),
             cookie_secure=_bool_env(e, "NEOZEN_COOKIE_SECURE", default=True),
+            session_dir=_str_env(e, "NEOZEN_SESSION_DIR", DEFAULT_SESSION_DIR),
         )
 
     def validate(self) -> list[str]:

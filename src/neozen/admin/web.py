@@ -22,6 +22,7 @@ from neozen.admin.auth import (
 from neozen.admin.config import AdminConfig
 from neozen.admin.services import AdminService
 from neozen.core.exceptions import NeoZenException
+from neozen.ext.litestar.rate_limit import get_client_ip
 from neozen.storage import DoesNotExist
 
 # Template directory
@@ -95,3 +96,22 @@ def describe_error(error: Exception) -> str:
 # Pagination query parameters: Litestar answers 400 to anything else.
 Page = Annotated[int, Parameter(ge=1)]
 PerPage = Annotated[int, Parameter(ge=1, le=200)]
+
+
+async def commit_audited(request: Request, service: AdminService) -> None:
+    """Commit an admin action, with an audit entry naming it and its target.
+
+    The action is the route's name (``admin_delete_user``, say); the
+    details are the route's path parameters.
+    """
+    admin = get_current_admin(request)
+    if admin is not None:
+        params = {k: str(v) for k, v in request.path_params.items()}
+        await service.record_admin_action(
+            action=f"admin_{request.route_handler.handler_name}",
+            actor_id=admin.id,
+            subject_id=params.get("user_id") or params.get("subject_id"),
+            ip_address=get_client_ip(request.scope),
+            details=params,
+        )
+    await service.commit()

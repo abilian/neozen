@@ -7,6 +7,8 @@ The routes live in `neozen.admin.routes`.
 from __future__ import annotations
 
 import os
+from collections.abc import Awaitable, Callable, Sequence
+from datetime import timedelta
 from typing import Any
 
 from litestar import Litestar, Response
@@ -15,7 +17,8 @@ from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.exceptions import NotAuthorizedException
 from litestar.middleware import DefineMiddleware
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from litestar.stores.file import FileStore
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from neozen.admin.auth import (
     AdminAuthMiddleware,
@@ -110,7 +113,8 @@ from neozen.admin.routes.users import (
 )
 from neozen.admin.services import AdminService
 from neozen.admin.web import get_admin_service, get_templates
-from neozen.storage.sqlalchemy.base import Base
+from neozen.core.security import InMemoryRateLimitStore, RateLimitConfig, RateLimiter
+from neozen.storage.sqlalchemy.schema import prepare_schema
 
 # -----------------------------------------------------------------------------
 # App Factory
@@ -240,11 +244,26 @@ def session_config(config: AdminConfig) -> RotatingSessionConfig:
     )
 
 
-def create_admin_app(config: AdminConfig | None = None) -> Litestar:
+# Sign-in attempts per address and email before a pause (see LOGIN_LIMITS).
+LOGIN_LIMITS = RateLimitConfig(
+    max_attempts=5, window=timedelta(minutes=15), lockout_duration=timedelta(minutes=15)
+)
+
+type StartupHook = Callable[[async_sessionmaker[AsyncSession]], Awaitable[None]]
+
+
+def create_admin_app(
+    config: AdminConfig | None = None,
+    *,
+    extra_handlers: Sequence[Any] = (),
+    on_ready: Sequence[StartupHook] = (),
+) -> Litestar:
     """Create the admin Litestar application.
 
     Args:
         config: Admin configuration. If not provided, uses environment variables.
+        extra_handlers: More routes, mounted beside the console's.
+        on_ready: Run at startup, once the schema and built-in roles exist.
 
     Returns:
         Configured Litestar application
@@ -259,29 +278,21 @@ def create_admin_app(config: AdminConfig | None = None) -> Litestar:
             ),
         )
 
-    # Create async engine
     engine = create_async_engine(config.db_url, echo=False)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async def on_startup() -> None:
-        """Initialize database on startup."""
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-        # Ensure built-in roles exist
+        await prepare_schema(engine)
         async with session_factory() as session:
-            service = AdminService(session)
-            await service.ensure_builtin_roles()
+            await AdminService(session).ensure_builtin_roles()
             await session.commit()
-
-    def on_app_init(app_config: Any) -> Any:
-        """Initialize app state."""
-        return app_config
+        for hook in on_ready:
+            await hook(session_factory)
 
     sessions = session_config(config)
 
-    app = Litestar(
-        route_handlers=ROUTE_HANDLERS,
+    return Litestar(
+        route_handlers=[*ROUTE_HANDLERS, *extra_handlers],
         middleware=[sessions.middleware, AUTH_MIDDLEWARE],
         exception_handlers=EXCEPTION_HANDLERS,
         dependencies=DEPENDENCIES,
@@ -289,14 +300,17 @@ def create_admin_app(config: AdminConfig | None = None) -> Litestar:
         csrf_config=csrf_config(config),
         on_startup=[on_startup],
         on_shutdown=[engine.dispose],
+        stores={"sessions": FileStore(config.session_dir)}
+        if config.session_dir
+        else {},
         state=State({
             "config": config,
             "session_factory": session_factory,
             "templates": get_templates(config),
+            # ponytail: per process; a shared store when running several workers
+            "login_limiter": RateLimiter(LOGIN_LIMITS, InMemoryRateLimitStore()),
         }),
     )
-
-    return app
 
 
 __all__ = [

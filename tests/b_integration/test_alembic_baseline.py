@@ -16,14 +16,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import anyio
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 # Ensure all model modules are imported so Base.metadata sees every table
 import neozen.storage.sqlalchemy  # noqa: F401  side-effect: registers every table
 from neozen.storage.sqlalchemy.base import Base
+from neozen.storage.sqlalchemy.schema import (
+    SCHEMA_REVISION,
+    SchemaOutOfDateError,
+    prepare_schema,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ALEMBIC_INI = REPO_ROOT / "alembic.ini"
@@ -186,3 +195,38 @@ class TestOAuthSchemaRevision:
         assert "nonce" in columns
         assert columns["code_challenge"]["nullable"]
         assert columns["code_challenge_method"]["nullable"]
+
+
+class TestPrepareSchema:
+    """What an app does to the database when it starts."""
+
+    def test_revision_is_the_migrations_head(self, alembic_cfg: Config) -> None:
+        assert ScriptDirectory.from_config(alembic_cfg).get_current_head() == (
+            SCHEMA_REVISION
+        )
+
+    def test_new_database_is_stamped_and_stays_upgradable(
+        self, alembic_db_url: str, alembic_cfg: Config
+    ) -> None:
+        anyio.run(prepare_schema, _async_engine(alembic_db_url))
+
+        command.upgrade(alembic_cfg, "head")  # a no-op, not a clash
+
+        assert _revision(alembic_db_url) == SCHEMA_REVISION
+
+    def test_database_at_an_older_revision_is_refused(
+        self, alembic_db_url: str, alembic_cfg: Config
+    ) -> None:
+        command.upgrade(alembic_cfg, "1_0_baseline")
+
+        with pytest.raises(SchemaOutOfDateError, match="alembic upgrade head"):
+            anyio.run(prepare_schema, _async_engine(alembic_db_url))
+
+
+def _async_engine(url: str) -> AsyncEngine:
+    return create_async_engine(url.replace("sqlite://", "sqlite+aiosqlite://"))
+
+
+def _revision(url: str) -> str | None:
+    with create_engine(url).connect() as conn:
+        return MigrationContext.configure(conn).get_current_revision()

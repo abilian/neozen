@@ -20,14 +20,17 @@ def send_csrf_token(client: TestClient) -> None:
 
 
 class SuperadminClient:
-    """A test client logged in as a superuser subject created at app startup.
+    """A test client logged in as a subject created at app startup.
+
+    The subject has the ``superuser`` role, or ``role`` when given.
 
     Use it as a context manager, like `TestClient`. Credential checks are
     covered separately by the login tests; this keeps route tests focused
     on the route.
     """
 
-    def __init__(self, app: Litestar) -> None:
+    def __init__(self, app: Litestar, role: str = SUPERUSER_ROLE) -> None:
+        self.role = role
         self.subject_id = ""
         app.on_startup.append(self._create_superadmin)
         self.client = TestClient(
@@ -44,7 +47,7 @@ class SuperadminClient:
                 return
             await service.ensure_builtin_roles()
             subject = await service.create_subject(email="admin@example.com")
-            await service.assign_role_to_subject(subject.id, SUPERUSER_ROLE)
+            await service.assign_role_to_subject(subject.id, self.role)
             await session.commit()
         self.subject_id = subject.id
 
@@ -61,3 +64,8 @@ class SuperadminClient:
 def superadmin_client(app: Litestar) -> SuperadminClient:
     """Return a client logged in as a superadmin (see `SuperadminClient`)."""
     return SuperadminClient(app)
+
+
+def admin_client(app: Litestar) -> SuperadminClient:
+    """Return a client logged in as a plain admin (the ``admin`` role)."""
+    return SuperadminClient(app, role="admin")

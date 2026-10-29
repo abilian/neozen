@@ -203,3 +203,21 @@ async def test_login_activity_counts_per_day(service: AdminService) -> None:
     assert (activity[-1]["success"], activity[-1]["failed"]) == (2, 1)
     assert (activity[-2]["success"], activity[-2]["failed"]) == (1, 0)
     assert sum(day["success"] for day in activity) == 3
+
+
+async def test_audit_search_covers_every_page(service: AdminService) -> None:
+    now = datetime.now(UTC)
+    for i in range(60):
+        await service.audit_log_repo.create(
+            id=f"log-{i}",
+            timestamp=now - timedelta(minutes=i),
+            event_type="auth",
+            action="login",
+            outcome="success",
+            ip_address="10.0.0.99" if i == 59 else "10.0.0.1",
+        )
+
+    found = await service.list_audit_logs(search="10.0.0.99", limit=50)
+
+    assert [e.id for e in found] == ["log-59"]
+    assert await service.count_audit_logs(search="10.0.0.99") == 1

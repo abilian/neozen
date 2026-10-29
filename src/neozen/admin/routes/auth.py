@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import anyio.to_thread
 from litestar import Request, Response, get, post
 from pwdlib import PasswordHash
 
@@ -19,6 +20,8 @@ from neozen.admin.web import (
     redirect,
     render_template,
 )
+from neozen.core.security import RateLimiter
+from neozen.ext.litestar.rate_limit import get_client_ip
 from neozen.storage import DoesNotExist
 
 # -----------------------------------------------------------------------------
@@ -27,6 +30,17 @@ from neozen.storage import DoesNotExist
 
 
 _password_hash = PasswordHash.recommended()
+# Checked when the email is unknown, so every failed login costs one hash
+# and its timing doesn't reveal which accounts exist.
+_DUMMY_HASH = _password_hash.hash("not a real password")
+
+
+async def _password_matches(password: str, hashed: str | None) -> bool:
+    """Argon2 check, off the event loop: it takes tens of milliseconds."""
+    matches = await anyio.to_thread.run_sync(
+        _password_hash.verify, password, hashed or _DUMMY_HASH
+    )
+    return matches and hashed is not None
 
 
 async def _authenticate_admin(
@@ -40,10 +54,9 @@ async def _authenticate_admin(
     try:
         subject = await service.subject_repo.get_one_by(email=email)
     except DoesNotExist:
-        return None
-    if not subject.hashed_password:
-        return None
-    if not _password_hash.verify(password, subject.hashed_password):
+        subject = None
+    hashed = subject.hashed_password if subject else None
+    if not await _password_matches(password, hashed) or subject is None:
         return None
     return await admin_for_subject(service, subject, require_role)
 
@@ -64,8 +77,18 @@ async def login(request: Request, service: AdminService) -> Response:
     email = form_data.get("email", "").strip()
     password = form_data.get("password", "")
     config: AdminConfig = request.app.state.config
+    limiter: RateLimiter = request.app.state.login_limiter
+    key = limiter.make_key(
+        ip_address=get_client_ip(request.scope),
+        subject_id=email.lower(),
+        action="admin_login",
+    )
+    if not (await limiter.check(key)).allowed:
+        flash(request, "Too many failed sign-ins. Try again later.", "error")
+        return redirect("/login")
 
     admin = await _authenticate_admin(service, email, password, config.require_role)
+    await limiter.record_attempt(key, success=admin is not None)
 
     if admin is None:
         flash(request, "Invalid email or password.", "error")

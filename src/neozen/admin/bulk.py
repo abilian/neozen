@@ -177,6 +177,11 @@ def validate_row(row: dict[str, str]) -> tuple[str, dict[str, typing.Any]]:
 # =============================================================================
 
 
+def _cell(value: str) -> str:
+    """A value a spreadsheet won't run as a formula (CSV injection)."""
+    return f"'{value}" if value.startswith(("=", "+", "-", "@", "\t", "\r")) else value
+
+
 async def export_subjects_to_csv(
     service: AdminService,
     output: io.TextIOBase | None = None,
@@ -199,8 +204,8 @@ async def export_subjects_to_csv(
     for subject in subjects:
         writer.writerow({
             "id": subject.id,
-            "email": subject.email,
-            "username": subject.username or "",
+            "email": _cell(subject.email),
+            "username": _cell(subject.username or ""),
             "is_active": "true" if subject.is_active else "false",
             "is_verified": "true" if subject.is_verified else "false",
             "created_at": (
@@ -276,116 +281,68 @@ async def _process_row(
     *,
     update_existing: bool,
 ) -> None:
-    """Validate and apply a single import row."""
+    """Validate and apply a single import row, recording its outcome."""
+    result.add(
+        await _row_outcome(
+            service,
+            row,
+            row_index,
+            update_existing=update_existing,
+            dry_run=result.dry_run,
+        )
+    )
+
+
+async def _row_outcome(
+    service: AdminService,
+    row: dict[str, str],
+    row_index: int,
+    *,
+    update_existing: bool,
+    dry_run: bool,
+) -> BulkRowResult:
     try:
         email, fields = validate_row(row)
     except ValueError as e:
-        result.add(
-            BulkRowResult(
-                row_number=row_index,
-                status=BulkRowStatus.FAILED,
-                email=row.get("email"),
-                error=str(e),
-            )
+        return BulkRowResult(
+            row_number=row_index,
+            status=BulkRowStatus.FAILED,
+            email=row.get("email"),
+            error=str(e),
         )
-        return
+
+    def outcome(
+        status: BulkRowStatus, subject_id: str | None = None, error: str | None = None
+    ) -> BulkRowResult:
+        return BulkRowResult(
+            row_number=row_index,
+            status=status,
+            email=email,
+            subject_id=subject_id,
+            error=error,
+        )
 
     existing = None
     with contextlib.suppress(DoesNotExist):
         existing = await service.subject_repo.get_one_by(email=email)
 
-    if existing is not None:
-        if not update_existing:
-            result.add(
-                BulkRowResult(
-                    row_number=row_index,
-                    status=BulkRowStatus.SKIPPED,
-                    email=email,
-                    subject_id=existing.id,
-                    error="subject already exists",
-                )
-            )
-            return
-
-        if result.dry_run:
-            result.add(
-                BulkRowResult(
-                    row_number=row_index,
-                    status=BulkRowStatus.UPDATED,
-                    email=email,
-                    subject_id=existing.id,
-                )
-            )
-            return
-
-        try:
-            # A savepoint per row: a failed one leaves the session usable.
-            async with service.session.begin_nested():
-                updated = await service.update_subject(
-                    existing.id,
-                    email=email,
-                    username=fields["username"],
-                    is_active=fields["is_active"],
-                    is_verified=fields["is_verified"],
-                )
-        except (RepositoryError, SQLAlchemyError) as e:
-            result.add(
-                BulkRowResult(
-                    row_number=row_index,
-                    status=BulkRowStatus.FAILED,
-                    email=email,
-                    error=f"update failed: {e}",
-                )
-            )
-            return
-        result.add(
-            BulkRowResult(
-                row_number=row_index,
-                status=BulkRowStatus.UPDATED,
-                email=email,
-                subject_id=updated.id,
-            )
-        )
-        return
-
-    # Create new
-    if result.dry_run:
-        result.add(
-            BulkRowResult(
-                row_number=row_index,
-                status=BulkRowStatus.CREATED,
-                email=email,
-            )
-        )
-        return
+    if existing is not None and not update_existing:
+        return outcome(BulkRowStatus.SKIPPED, existing.id, "subject already exists")
+    status = BulkRowStatus.UPDATED if existing else BulkRowStatus.CREATED
+    if dry_run:
+        return outcome(status, existing.id if existing else None)
 
     try:
+        # A savepoint per row: a failed one leaves the session usable.
         async with service.session.begin_nested():
-            created = await service.create_subject(
-                email=email,
-                username=fields["username"],
-                is_active=fields["is_active"],
-                is_verified=fields["is_verified"],
-            )
+            if existing is not None:
+                subject = await service.update_subject(existing.id, **fields)
+            else:
+                subject = await service.create_subject(**fields)
     except (RepositoryError, SQLAlchemyError) as e:
-        result.add(
-            BulkRowResult(
-                row_number=row_index,
-                status=BulkRowStatus.FAILED,
-                email=email,
-                error=f"create failed: {e}",
-            )
-        )
-        return
-
-    result.add(
-        BulkRowResult(
-            row_number=row_index,
-            status=BulkRowStatus.CREATED,
-            email=email,
-            subject_id=created.id,
-        )
-    )
+        verb = "update" if existing else "create"
+        return outcome(BulkRowStatus.FAILED, error=f"{verb} failed: {e}")
+    return outcome(status, subject.id)
 
 
 __all__ = [

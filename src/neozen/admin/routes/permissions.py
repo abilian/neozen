@@ -7,14 +7,17 @@ import json
 from litestar import Request, Response, get, post
 from markupsafe import escape
 
+from neozen.admin.auth import superadmin_only
 from neozen.admin.services import AdminService
 from neozen.admin.web import (
     ADMIN_ERRORS,
+    commit_audited,
     describe_error,
     flash,
     redirect,
     render_template,
 )
+from neozen.core.authz.models import Permission
 from neozen.storage import DoesNotExist
 
 # -----------------------------------------------------------------------------
@@ -44,7 +47,7 @@ async def permission_matrix(request: Request, service: AdminService) -> Response
     )
 
 
-@post("/permissions/toggle")
+@post("/permissions/toggle", guards=[superadmin_only])
 async def toggle_permission(request: Request, service: AdminService) -> Response:
     """Toggle a permission for a role (HTMX endpoint)."""
     form_data = await request.form()
@@ -58,9 +61,13 @@ async def toggle_permission(request: Request, service: AdminService) -> Response
         return _permission_cell_error("Role not found")
     if role.is_system:
         return _permission_cell_error("System role")
+    try:
+        Permission.parse(permission)
+    except ValueError:
+        return _permission_cell_error("Invalid permission")
 
     await service.toggle_role_permission(role_name, permission, enabled=enabled)
-    await service.session.commit()
+    await commit_audited(request, service)
 
     # Return the updated checkbox. Every interpolated value is escaped: role
     # and permission names come from the client.
@@ -99,7 +106,7 @@ def role_builder_form(request: Request) -> Response:
     return render_template(request, "permissions/role_builder.html", {})
 
 
-@post("/permissions/role-builder")
+@post("/permissions/role-builder", guards=[superadmin_only])
 async def create_custom_role(request: Request, service: AdminService) -> Response:
     """Create a custom role from the role builder."""
     form_data = await request.form()
@@ -124,7 +131,7 @@ async def create_custom_role(request: Request, service: AdminService) -> Respons
 
     try:
         await service.create_role(name, permissions, description)
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, f"Role '{name}' created successfully.", "success")
         return redirect("/roles")
     except ADMIN_ERRORS as e:

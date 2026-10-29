@@ -8,6 +8,7 @@ from litestar.params import FromPath
 from neozen.admin.services import AdminService
 from neozen.admin.web import (
     ADMIN_ERRORS,
+    commit_audited,
     describe_error,
     flash,
     redirect,
@@ -54,7 +55,7 @@ async def create_organization(request: Request, service: AdminService) -> Respon
         org = await service.create_organization(
             name=name, slug=slug, domain=domain, plan=plan
         )
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, f"Organization '{name}' created successfully.", "success")
         return redirect(f"/organizations/{org.id}")
     except ADMIN_ERRORS as e:
@@ -101,7 +102,7 @@ async def update_organization(
         await service.update_organization(
             org_id, name=name, domain=domain, plan=plan, is_active=is_active
         )
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, "Organization updated successfully.", "success")
     except ADMIN_ERRORS as e:
         flash(request, f"Error updating organization: {describe_error(e)}", "error")
@@ -115,7 +116,7 @@ async def delete_organization(
     """Delete an organization."""
     try:
         await service.delete_organization(org_id)
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, "Organization deleted successfully.", "success")
     except ADMIN_ERRORS as e:
         flash(request, f"Error deleting organization: {describe_error(e)}", "error")

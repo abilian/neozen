@@ -42,13 +42,9 @@ async def list_audit_logs(
         limit=per_page,
     )
     total = await service.count_audit_logs(
-        event_type=event_type, action=action, outcome=outcome
+        search=search, event_type=event_type, action=action, outcome=outcome
     )
-
-    # Get unique values for filters
-    all_logs = await service.list_audit_logs(limit=500)
-    event_types = sorted({log.event_type for log in all_logs if log.event_type})
-    actions = sorted({log.action for log in all_logs if log.action})
+    event_types, actions = await service.audit_filter_choices()
 
     # Live tail enabled only when viewing page 1 with no filters.
     # This avoids the polling endpoint clobbering filtered views.

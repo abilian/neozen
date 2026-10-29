@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast, overload
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from neozen.core.audit.types import AuditLogEntry, AuditOutcome
@@ -82,6 +82,46 @@ def _subject_conditions(filters: UserListFilters) -> list[Any]:
     return conditions
 
 
+def _audit_conditions(
+    *,
+    search: str | None,
+    event_type: str | None,
+    action: str | None,
+    outcome: str | None,
+    subject_id: str | None,
+    start_date: datetime | None,
+    end_date: datetime | None,
+) -> list[Any]:
+    """SQL conditions for the audit log filters."""
+    equal = {
+        AuditLog.event_type: event_type,
+        AuditLog.action: action,
+        AuditLog.outcome: outcome,
+        AuditLog.subject_id: subject_id,
+    }
+    conditions: list[Any] = [col == value for col, value in equal.items() if value]
+    if start_date:
+        conditions.append(AuditLog.timestamp >= start_date)
+    if end_date:
+        conditions.append(AuditLog.timestamp <= end_date)
+    if search:
+        term = search.lower()
+        conditions.append(
+            or_(
+                *(
+                    func.lower(col).contains(term, autoescape=True)
+                    for col in (
+                        AuditLog.action,
+                        AuditLog.ip_address,
+                        AuditLog.user_agent,
+                        AuditLog.subject_id,
+                    )
+                )
+            )
+        )
+    return conditions
+
+
 def _subject_order(sort_by: str, sort_order: str) -> Any:
     """SQL ordering for the user list: by email or by creation date."""
     column = func.lower(Subject.email) if sort_by == "email" else Subject.created_at
@@ -114,6 +154,7 @@ class DashboardStats:
     system_roles: int
     active_sessions: int
     recent_registrations: int  # Last 7 days
+    role_assignments: int = 0
 
 
 @dataclass
@@ -142,7 +183,7 @@ class SecurityCounts:
     active_session_count: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class PaginatedResult:
     """Paginated query result."""
 
@@ -150,11 +191,10 @@ class PaginatedResult:
     total: int = 0
     page: int = 1
     per_page: int = 50
-    total_pages: int = 0
 
-    def __post_init__(self) -> None:
-        if self.per_page > 0:
-            self.total_pages = (self.total + self.per_page - 1) // self.per_page
+    @property
+    def total_pages(self) -> int:
+        return -(-self.total // self.per_page) if self.per_page > 0 else 0
 
 
 class AdminService:
@@ -203,6 +243,7 @@ class AdminService:
             recent_registrations=await self._count(
                 Subject, Subject.created_at > now - timedelta(days=7)
             ),
+            role_assignments=await self._count(RoleAssignment),
         )
 
     async def get_security_counts(self) -> SecurityCounts:
@@ -827,16 +868,27 @@ class AdminService:
         return list((await self.session.scalars(stmt)).all())
 
     async def list_sessions_with_subjects(
-        self,
-    ) -> list[tuple[Session, Subject | None]]:
-        """Active sessions, each with its subject (None if it is gone)."""
+        self, *, page: int = 1, per_page: int = 50
+    ) -> PaginatedResult:
+        """A page of active sessions, most recently used first.
+
+        Each item is ``(session, subject)``; the subject is None if it is gone.
+        """
         stmt = (
             select(Session, Subject)
             .outerjoin(Subject, Subject.id == Session.subject_id)
             .where(*self._active_session(active_only=True))
             .order_by(Session.last_activity_at.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
         )
-        return [(sess, subject) for sess, subject in await self.session.execute(stmt)]
+        rows = [(sess, subject) for sess, subject in await self.session.execute(stmt)]
+        return PaginatedResult(
+            items=rows,
+            total=await self.count_active_sessions(),
+            page=page,
+            per_page=per_page,
+        )
 
     @staticmethod
     def _active_session(*, active_only: bool) -> list[Any]:
@@ -1231,10 +1283,10 @@ class AdminService:
         offset: int = 0,
         limit: int = 50,
     ) -> list[AuditLogEntry]:
-        """List audit log entries with filters.
+        """List audit log entries with filters, most recent first.
 
         Args:
-            search: Search term (matches action, IP, user agent)
+            search: Search term (matches action, IP, user agent, subject)
             event_type: Filter by event type
             action: Filter by action
             outcome: Filter by outcome
@@ -1243,74 +1295,61 @@ class AdminService:
             end_date: Filter by end date
             offset: Pagination offset
             limit: Maximum entries to return
-
-        Returns:
-            List of audit log entries
         """
-        # Build query with filters
-        stmt = select(AuditLog).order_by(AuditLog.timestamp.desc())
-
-        if event_type:
-            stmt = stmt.where(AuditLog.event_type == event_type)
-        if action:
-            stmt = stmt.where(AuditLog.action == action)
-        if outcome:
-            stmt = stmt.where(AuditLog.outcome == outcome)
-        if subject_id:
-            stmt = stmt.where(AuditLog.subject_id == subject_id)
-        if start_date:
-            stmt = stmt.where(AuditLog.timestamp >= start_date)
-        if end_date:
-            stmt = stmt.where(AuditLog.timestamp <= end_date)
-
-        stmt = stmt.offset(offset).limit(limit)
-
-        result = await self.session.execute(stmt)
-        logs = result.scalars().all()
-
-        entries = []
-        for log in logs:
-            entries.append(self._audit_log_to_entry(log))
-
-        # Apply search filter in memory (for IP, user_agent, action)
-        if search:
-            search_lower = search.lower()
-            entries = [
-                e
-                for e in entries
-                if (e.action and search_lower in e.action.lower())
-                or (e.ip_address and search_lower in e.ip_address.lower())
-                or (e.user_agent and search_lower in e.user_agent.lower())
-                or (e.subject_id and search_lower in e.subject_id.lower())
-            ]
-
-        return entries
+        stmt = (
+            select(AuditLog)
+            .where(
+                *_audit_conditions(
+                    search=search,
+                    event_type=event_type,
+                    action=action,
+                    outcome=outcome,
+                    subject_id=subject_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            )
+            .order_by(AuditLog.timestamp.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        logs = (await self.session.scalars(stmt)).all()
+        return [self._audit_log_to_entry(log) for log in logs]
 
     async def count_audit_logs(
         self,
         *,
+        search: str | None = None,
         event_type: str | None = None,
         action: str | None = None,
         outcome: str | None = None,
+        subject_id: str | None = None,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
     ) -> int:
-        """Count audit log entries with filters."""
-        stmt = select(func.count(AuditLog.id))
+        """Count audit log entries with the same filters as `list_audit_logs`."""
+        return await self._count(
+            AuditLog,
+            *_audit_conditions(
+                search=search,
+                event_type=event_type,
+                action=action,
+                outcome=outcome,
+                subject_id=subject_id,
+                start_date=start_date,
+                end_date=end_date,
+            ),
+        )
 
-        if event_type:
-            stmt = stmt.where(AuditLog.event_type == event_type)
-        if action:
-            stmt = stmt.where(AuditLog.action == action)
-        if outcome:
-            stmt = stmt.where(AuditLog.outcome == outcome)
-        if start_date:
-            stmt = stmt.where(AuditLog.timestamp >= start_date)
-        if end_date:
-            stmt = stmt.where(AuditLog.timestamp <= end_date)
-
-        result = await self.session.execute(stmt)
-        return result.scalar() or 0
+    async def audit_filter_choices(self) -> tuple[list[str], list[str]]:
+        """The event types and actions found in the audit log, sorted."""
+        event_types = await self.session.scalars(
+            select(AuditLog.event_type).distinct().order_by(AuditLog.event_type)
+        )
+        actions = await self.session.scalars(
+            select(AuditLog.action).distinct().order_by(AuditLog.action)
+        )
+        return list(event_types), list(actions)
 
     async def get_audit_log(self, entry_id: str) -> AuditLogEntry | None:
         """Get a specific audit log entry."""
@@ -1448,10 +1487,11 @@ class AdminService:
         *,
         action: str,
         actor_id: str,
-        subject_id: str,
+        subject_id: str | None = None,
         ip_address: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
-        """Write an audit entry for an admin acting on a subject."""
+        """Write an audit entry for an admin action (on a subject, if any)."""
         await self.audit_log_repo.create(
             id=generate_id(),
             timestamp=datetime.now(UTC),
@@ -1461,7 +1501,12 @@ class AdminService:
             subject_id=subject_id,
             actor_id=actor_id,
             ip_address=ip_address,
+            details=json.dumps(details) if details else None,
         )
+
+    async def commit(self) -> None:
+        """Commit the request's changes."""
+        await self.session.commit()
 
     def _audit_log_to_entry(self, log: AuditLog) -> AuditLogEntry:
         """Convert AuditLog model to AuditLogEntry."""

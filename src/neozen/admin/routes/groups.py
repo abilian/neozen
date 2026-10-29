@@ -11,6 +11,7 @@ from neozen.admin.auth import (
 from neozen.admin.services import AdminService
 from neozen.admin.web import (
     ADMIN_ERRORS,
+    commit_audited,
     describe_error,
     flash,
     redirect,
@@ -51,7 +52,7 @@ async def create_group(request: Request, service: AdminService) -> Response:
 
     try:
         group = await service.create_group(name=name, description=description)
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, f"Group '{name}' created successfully.", "success")
         return redirect(f"/groups/{group.id}")
     except ADMIN_ERRORS as e:
@@ -107,7 +108,7 @@ async def add_group_member(
         await service.add_group_member(
             group_id, subject_id, role=role, added_by=admin.id if admin else None
         )
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, "Member added successfully.", "success")
     except ADMIN_ERRORS as e:
         flash(request, f"Error adding member: {describe_error(e)}", "error")
@@ -124,7 +125,7 @@ async def remove_group_member(
     """Remove a member from a group."""
     try:
         await service.remove_group_member(group_id, subject_id)
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, "Member removed successfully.", "success")
     except ADMIN_ERRORS as e:
         flash(request, f"Error removing member: {describe_error(e)}", "error")
@@ -148,7 +149,7 @@ async def add_group_role(
         await service.assign_role_to_group(
             group_id, role_name, granted_by=admin.id if admin else None
         )
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, f"Role '{role_name}' assigned to group.", "success")
     except ADMIN_ERRORS as e:
         flash(request, f"Error assigning role: {describe_error(e)}", "error")
@@ -165,7 +166,7 @@ async def remove_group_role(
     """Remove a role from a group."""
     try:
         await service.remove_role_from_group(group_id, role_name)
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, f"Role '{role_name}' removed from group.", "success")
     except ADMIN_ERRORS as e:
         flash(request, f"Error removing role: {describe_error(e)}", "error")
@@ -179,7 +180,7 @@ async def delete_group(
     """Delete a group."""
     try:
         await service.delete_group(group_id)
-        await service.session.commit()
+        await commit_audited(request, service)
         flash(request, "Group deleted successfully.", "success")
     except ADMIN_ERRORS as e:
         flash(request, f"Error deleting group: {describe_error(e)}", "error")

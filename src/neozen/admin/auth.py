@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import functools
-from collections.abc import Callable, Collection, Coroutine
+from collections.abc import Collection
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from litestar import Request, Response
 from litestar.connection import ASGIConnection
 from litestar.exceptions import NotAuthorizedException, PermissionDeniedException
+from litestar.handlers import BaseRouteHandler
 from litestar.middleware import AbstractAuthenticationMiddleware, AuthenticationResult
 from litestar.middleware.session.server_side import (
     ServerSideSessionBackend,
@@ -28,12 +28,15 @@ if TYPE_CHECKING:
 
 
 class AdminRole(Enum):
-    """Admin role types."""
+    """Admin console roles.
 
-    SUPERADMIN = "superadmin"  # Full access to everything
-    ADMIN = "admin"  # User/role management
-    SUPPORT = "support"  # Read + limited actions
-    AUDITOR = "auditor"  # Read-only + audit logs
+    SUPERADMIN (the ``superuser`` role) can do everything. ADMIN (the
+    configured ``require_role``) manages users, sessions and groups, but
+    can't define roles or touch superadmins and the ``superuser`` role.
+    """
+
+    SUPERADMIN = "superadmin"
+    ADMIN = "admin"
 
 
 @dataclass(frozen=True)
@@ -50,55 +53,6 @@ class AdminUser:
     def is_superadmin(self) -> bool:
         """Check if user is superadmin."""
         return self.role == AdminRole.SUPERADMIN
-
-    @property
-    def can_manage_users(self) -> bool:
-        """Check if user can manage users."""
-        return self.role in (AdminRole.SUPERADMIN, AdminRole.ADMIN)
-
-    @property
-    def can_manage_roles(self) -> bool:
-        """Check if user can manage roles."""
-        return self.role in (AdminRole.SUPERADMIN, AdminRole.ADMIN)
-
-    @property
-    def can_view_audit(self) -> bool:
-        """Check if user can view audit logs."""
-        return self.role in (AdminRole.SUPERADMIN, AdminRole.ADMIN, AdminRole.AUDITOR)
-
-    @property
-    def can_modify(self) -> bool:
-        """Check if user can make modifications."""
-        return self.role != AdminRole.AUDITOR
-
-    def has_permission(self, permission: str) -> bool:
-        """Check if user has a specific permission."""
-        permissions_map = {
-            AdminRole.SUPERADMIN: {"*"},  # All permissions
-            AdminRole.ADMIN: {
-                "users:read",
-                "users:write",
-                "users:delete",
-                "roles:read",
-                "roles:write",
-                "sessions:read",
-                "sessions:revoke",
-                "audit:read",
-            },
-            AdminRole.SUPPORT: {
-                "users:read",
-                "sessions:read",
-                "sessions:revoke",
-            },
-            AdminRole.AUDITOR: {
-                "users:read",
-                "roles:read",
-                "sessions:read",
-                "audit:read",
-            },
-        }
-        allowed = permissions_map.get(self.role, set())
-        return "*" in allowed or permission in allowed
 
 
 # NeoZen role that grants full admin console access (see BUILTIN_ROLES).
@@ -312,56 +266,34 @@ def redirect_to_login_handler(
     return redirect_to_login()
 
 
-def require_permission(
-    permission: str,
-) -> Callable[
-    [Callable[..., Coroutine[Any, Any, Response]]],
-    Callable[..., Coroutine[Any, Any, Response]],
-]:
-    """Decorator to require a specific permission.
-
-    Args:
-        permission: The permission string (e.g., "users:write")
-
-    Returns:
-        Decorator function
-    """
-
-    def decorator(
-        func: Callable[..., Coroutine[Any, Any, Response]],
-    ) -> Callable[..., Coroutine[Any, Any, Response]]:
-        @functools.wraps(func)
-        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Response:
-            admin = get_current_admin(request)
-            if not admin:
-                return redirect_to_login()
-            if not admin.has_permission(permission):
-                raise PermissionDeniedException(
-                    detail=f"Permission denied: {permission}"
-                )
-            return await func(request, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
+SUPERADMIN_ONLY = "Only a superadmin can do this."
 
 
-def require_admin(
-    func: Callable[..., Coroutine[Any, Any, Response]],
-) -> Callable[..., Coroutine[Any, Any, Response]]:
-    """Decorator to require admin authentication.
+def require_superadmin(admin: AdminUser | None) -> None:
+    """Refuse anyone but a superadmin."""
+    if not (admin and admin.is_superadmin):
+        raise PermissionDeniedException(SUPERADMIN_ONLY)
 
-    Redirects to login if not authenticated.
-    """
 
-    @functools.wraps(func)
-    async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Response:
-        admin = get_current_admin(request)
-        if not admin:
-            return redirect_to_login()
-        return await func(request, *args, **kwargs)
+def superadmin_only(connection: ASGIConnection, _: BaseRouteHandler) -> None:
+    """Route guard: superadmins only (defining roles and permissions)."""
+    admin = connection.scope.get("user")
+    require_superadmin(admin if isinstance(admin, AdminUser) else None)
 
-    return wrapper
+
+async def require_power_over(
+    service: AdminService, admin: AdminUser | None, subject_id: str
+) -> None:
+    """Refuse a plain admin's action on a superadmin's account."""
+    roles = await service.get_subject_roles(subject_id)
+    if SUPERUSER_ROLE in {r.name for r in roles}:
+        require_superadmin(admin)
+
+
+def require_superadmin_for_role(admin: AdminUser | None, role_name: str) -> None:
+    """Only a superadmin grants or removes the ``superuser`` role."""
+    if role_name == SUPERUSER_ROLE:
+        require_superadmin(admin)
 
 
 __all__ = [
@@ -379,9 +311,11 @@ __all__ = [
     "get_impersonation",
     "redirect_to_login",
     "redirect_to_login_handler",
-    "require_admin",
-    "require_permission",
+    "require_power_over",
+    "require_superadmin",
+    "require_superadmin_for_role",
     "set_current_admin",
     "start_impersonation",
     "stop_impersonation",
+    "superadmin_only",
 ]

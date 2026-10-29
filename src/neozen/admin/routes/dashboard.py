@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from jinja2 import Environment
 from litestar import Request, Response, get
 
-from neozen.admin.services import AdminService
+from neozen.admin.services import AdminService, UserListFilters
 from neozen.admin.web import (
     render_template,
 )
@@ -21,18 +19,17 @@ from neozen.admin.web import (
 async def dashboard(request: Request, service: AdminService) -> Response:
     """Admin dashboard with statistics."""
     stats = await service.get_dashboard_stats()
-    recent_users = await service.list_subjects(limit=5)
-
-    # Prepare stats dict for new template
+    newest = await service.list_subjects_paginated(
+        UserListFilters(sort_by="created_at", sort_order="desc", per_page=5)
+    )
+    recent_users = newest.items
     stats_dict = {
         "total_users": stats.total_subjects,
         "active_sessions": stats.active_sessions,
         "total_roles": stats.total_roles,
-        "total_assignments": stats.total_subjects,  # Placeholder
+        "total_assignments": stats.role_assignments,
     }
-
-    # Recent activity placeholder (would come from audit log)
-    recent_activity: list[dict[str, Any]] = []
+    recent_activity = await service.list_audit_logs(limit=5)
 
     return render_template(
         request,

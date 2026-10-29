@@ -16,6 +16,9 @@ class AdminConfig:
         require_role: Role required to access admin (default: "admin")
         cookie_name: Session cookie name
         cookie_secure: Whether to set Secure flag on cookies
+        session_dir: Where sign-in sessions are kept. None keeps them in
+            memory, which suits one process; give a directory when several
+            workers serve the console, or to keep sessions across restarts.
     """
 
     db_url: str
@@ -23,6 +26,7 @@ class AdminConfig:
     require_role: str = "admin"
     cookie_name: str = "neozen_admin_session"
     cookie_secure: bool = False
+    session_dir: Path | None = None
     templates_dir: Path = field(
         default_factory=lambda: Path(__file__).parent / "templates"
     )

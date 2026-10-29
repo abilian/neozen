@@ -10,26 +10,23 @@ endpoints (`/.well-known/openid-configuration`, `/.well-known/jwks.json`,
 `/oauth/*`, `/userinfo`) and the SCIM endpoints (`/scim/v2/*`) will mount
 under the same Litestar instance once the framework adapter glue exists.
 
-The serve app shares a single `async_sessionmaker` across all routes
-via `app.state.session_factory`. The admin route handlers already
-read from there, so they work unchanged when imported here.
+It is the admin console's app (`create_admin_app`), with the health
+routes added and the first-run admin bootstrap at startup.
 """
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from litestar import Litestar
-from litestar.datastructures import State
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from neozen.admin import app as admin_app_module
+from neozen.admin.app import create_admin_app
 from neozen.admin.config import AdminConfig
-from neozen.admin.services import AdminService
 from neozen.serve.bootstrap import bootstrap_admin_if_needed, format_bootstrap_notice
 from neozen.serve.config import ServeConfig
 from neozen.serve.healthcheck import healthz, readyz
-from neozen.storage.sqlalchemy.base import Base
 
 logger = logging.getLogger(__name__)
 
@@ -51,56 +48,25 @@ def build_serve_app(config: ServeConfig | None = None) -> Litestar:
     for warning in config.validate():
         logger.warning(warning)
 
-    engine = create_async_engine(config.db_url, echo=False)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-
-    # Reuse the admin templates environment unchanged.
     admin_config = AdminConfig(
         db_url=config.db_url,
         secret_key=config.secret_key,
         cookie_secure=config.cookie_secure,
+        session_dir=Path(config.session_dir),
     )
-    templates = admin_app_module.get_templates(admin_config)
 
-    async def on_startup() -> None:
-        """Initialize schema, ensure built-in roles, optionally bootstrap."""
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+    async def bootstrap(session_factory: async_sessionmaker[AsyncSession]) -> None:
+        """Create the first admin, if asked to and there is none yet."""
+        result = await bootstrap_admin_if_needed(
+            session_factory, admin_email=config.bootstrap_admin_email
+        )
+        notice = format_bootstrap_notice(result)
+        if notice:
+            # Printed, not logged: operators grep container logs for it.
+            print(notice)
 
-        async with session_factory() as session:
-            service = AdminService(session)
-            await service.ensure_builtin_roles()
-            await session.commit()
-
-        if config.bootstrap_admin:
-            result = await bootstrap_admin_if_needed(
-                session_factory,
-                admin_email=config.bootstrap_admin_email,
-            )
-            notice = format_bootstrap_notice(result)
-            if notice:
-                # Print directly to stdout so the marker is grep-able
-                # in container logs.
-                print(notice)
-
-    sessions = admin_app_module.session_config(admin_config)
-
-    return Litestar(
-        route_handlers=[
-            *admin_app_module.ROUTE_HANDLERS,
-            healthz,
-            readyz,
-        ],
-        middleware=[sessions.middleware, admin_app_module.AUTH_MIDDLEWARE],
-        exception_handlers=admin_app_module.EXCEPTION_HANDLERS,
-        dependencies=admin_app_module.DEPENDENCIES,
-        after_request=admin_app_module.add_security_headers,
-        csrf_config=admin_app_module.csrf_config(admin_config),
-        on_startup=[on_startup],
-        on_shutdown=[engine.dispose],
-        state=State({
-            "config": admin_config,
-            "session_factory": session_factory,
-            "templates": templates,
-        }),
+    return create_admin_app(
+        admin_config,
+        extra_handlers=[healthz, readyz],
+        on_ready=[bootstrap] if config.bootstrap_admin else [],
     )

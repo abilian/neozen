@@ -1,4 +1,5 @@
 {% extends "admin_base.html" %}
+{% from "components/table.html" import pagination %}
 
 {% block title %}Sessions - NeoZen Admin{% endblock %}
 
@@ -46,4 +47,5 @@
         {% endfor %}
     </tbody>
 </table>
+{{ pagination(page=page, total_pages=total_pages, total_items=total_items, per_page=per_page) }}
 {% endblock %}
