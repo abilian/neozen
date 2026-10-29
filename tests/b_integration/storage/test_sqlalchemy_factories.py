@@ -7,20 +7,30 @@ and get_subject_roles from neozen.storage.sqlalchemy.factories.
 from __future__ import annotations
 
 import secrets
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from neozen.core.authz.models import ScopeType
+from neozen.core.session.service import SessionService
+from neozen.core.verification.email import (
+    EmailVerificationService,
+    VerificationCooldownError,
+)
 from neozen.storage.sqlalchemy import (
     RoleServiceFactory,
     SessionServiceFactory,
     create_subject_loader,
     get_subject_roles,
+    role_service,
 )
 from neozen.storage.sqlalchemy.base import Base
 from neozen.storage.sqlalchemy.repositories import (
+    EmailVerificationTokenRepository,
     RoleRepository,
+    SessionRepository,
     SubjectRepository,
 )
 
@@ -230,6 +240,28 @@ class TestRoleServiceFactory:
 
         assert assignment is not None
         assert assignment.subject_id == subject_id
+
+    @pytest.mark.parametrize(
+        "assignment",
+        [
+            {"expires_at": datetime.now(UTC) - timedelta(days=1)},
+            {"scope_type": ScopeType.TEAM, "scope_id": "team-1"},
+        ],
+    )
+    async def test_has_role_counts_only_global_live_assignments(
+        self,
+        session_factory: async_sessionmaker,
+        subject_id: str,
+        roles_created: list[str],  # noqa: ARG002
+        assignment: dict[str, object],
+    ) -> None:
+        async with session_factory() as session:
+            await role_service(session).assign_role(subject_id, "admin", **assignment)
+            await session.commit()
+
+        assert not await RoleServiceFactory(session_factory).has_role(
+            subject_id, "admin"
+        )
 
     async def test_assign_role_with_granted_by(
         self,
@@ -494,3 +526,41 @@ class TestFactoriesIntegration:
         # Logout
         await session_service.revoke_session_by_token(token)
         assert await session_service.validate_session(token) is None
+
+
+@pytest.mark.anyio
+async def test_revoke_all_sessions_with_several_on_sqlite(session_factory) -> None:
+    """get_one_by would raise here: several rows match."""
+    async with session_factory() as session:
+        service = SessionService(
+            storage=SessionRepository(session=session), hash_key="k"
+        )
+        for _ in range(3):
+            await service.create_session("user1")
+
+        assert await service.revoke_all_sessions("user1") == 3
+        assert await service.list_sessions("user1") == []
+
+
+@pytest.mark.anyio
+async def test_email_verification_with_several_tokens_on_sqlite(
+    session_factory,
+) -> None:
+    """A third send, then verifying, used to hit several matching rows."""
+    async with session_factory() as session:
+        service = EmailVerificationService(
+            storage=EmailVerificationTokenRepository(session=session),
+            hash_key="k",
+            cooldown_seconds=0,
+        )
+        for _ in range(3):
+            token = await service.create_token("a@example.com", "user1")
+
+        await service.verify_token(token)
+        await service.invalidate_tokens_for_email("a@example.com")
+
+        cooling = EmailVerificationService(
+            storage=service.storage, hash_key="k", cooldown_seconds=60
+        )
+        with pytest.raises(VerificationCooldownError):
+            await cooling.create_token("a@example.com", "user1")

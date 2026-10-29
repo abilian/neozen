@@ -7,12 +7,16 @@ out-of-band.
 
 from __future__ import annotations
 
+import typing
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, ValidationError
+
+from neozen.web.oauth.http import HttpReply
+from neozen.web.oauth.utils import NO_STORE_HEADERS
 
 if TYPE_CHECKING:
     from neozen.core.oauth.client_service import OAuthClientService
@@ -115,14 +119,8 @@ class RegistrationEndpoint:
     Example:
         endpoint = RegistrationEndpoint(client_service)
 
-        try:
-            response = await endpoint(payload)
-            return JSONResponse(response.to_dict(), status_code=201)
-        except RegistrationError as e:
-            return JSONResponse(
-                {"error": e.error, "error_description": e.description},
-                status_code=400,
-            )
+        reply = await registration_reply(endpoint, payload)
+        return JSONResponse(reply.body, reply.status, headers=reply.headers)
 
     Production deployments should restrict access to this endpoint
     (e.g., require an initial bearer token) to prevent abuse.
@@ -200,15 +198,24 @@ class RegistrationEndpoint:
                 msg = f"grant_type '{gt}' is not allowed"
                 raise InvalidClientMetadataError(msg)
 
-        # Response types: derive from grant types if not provided
         response_types = request.response_types or self._default_response_types(
             grant_types
         )
+        if unsupported := set(response_types) - {"code"}:
+            msg = f"response_types not supported: {' '.join(sorted(unsupported))}"
+            raise InvalidClientMetadataError(msg)
 
-        # Token endpoint auth method
-        auth_method = request.token_endpoint_auth_method or "client_secret_basic"
-        if client_type == "public":
-            auth_method = "none"
+        # A public client has no secret; a confidential one must use it.
+        default_method = "none" if client_type == "public" else "client_secret_basic"
+        auth_method = request.token_endpoint_auth_method or default_method
+        allowed_methods = (
+            {"none"}
+            if client_type == "public"
+            else {"client_secret_basic", "client_secret_post"}
+        )
+        if auth_method not in allowed_methods:
+            msg = f"token_endpoint_auth_method not supported: {auth_method}"
+            raise InvalidClientMetadataError(msg)
 
         # Create the client
         _client, credentials = await self.client_service.create_client(
@@ -258,6 +265,25 @@ class RegistrationEndpoint:
         return []
 
 
+async def registration_reply(
+    endpoint: RegistrationEndpoint, payload: object
+) -> HttpReply:
+    """The HTTP answer to a registration request (RFC 7591 §3.2).
+
+    201 with the credentials, never cached; 400 with the error otherwise.
+    """
+    body = typing.cast("dict[str, Any]", payload) if isinstance(payload, dict) else {}
+    try:
+        response = await endpoint(body)
+    except RegistrationError as e:
+        return HttpReply(
+            400,
+            {"error": e.error, "error_description": e.description},
+            NO_STORE_HEADERS,
+        )
+    return HttpReply(201, response.to_dict(), NO_STORE_HEADERS)
+
+
 __all__ = [
     "InvalidClientMetadataError",
     "InvalidRedirectUriError",
@@ -265,4 +291,5 @@ __all__ = [
     "RegistrationError",
     "RegistrationRequest",
     "RegistrationResponse",
+    "registration_reply",
 ]

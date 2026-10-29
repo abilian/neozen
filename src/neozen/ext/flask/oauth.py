@@ -48,7 +48,12 @@ from neozen.web.oauth import (
     parse_basic_auth,
 )
 from neozen.web.oauth.http import (
+    NOT_SIGNED_IN,
+    ConsentNeeded,
     HttpReply,
+    LoginNeeded,
+    authorize_outcome,
+    current_subject,
     introspection_reply,
     revocation_reply,
     token_reply,
@@ -115,32 +120,19 @@ def _create_authorize_handler(
 
     async def authorize() -> ResponseValue:
         """OAuth 2.1 Authorization Endpoint."""
-        subject = get_current_subject() if get_current_subject else None
         payload = dict(request.args)
         response = await authorization_endpoint.handle_authorization_request(
-            payload, subject
+            payload, await current_subject(get_current_subject)
         )
-
-        if response.requires_login:
+        outcome = authorize_outcome(response)
+        if isinstance(outcome, LoginNeeded):
             session["oauth_params"] = payload
             return redirect(login_url)
-
-        if response.requires_consent:
-            return render_template(consent_template, consent_data=response.consent_data)
-
-        if response.error:
-            redirect_url = response.get_redirect_url()
-            if redirect_url:
-                return redirect(redirect_url)
-            return jsonify({
-                "error": response.error,
-                "error_description": response.error_description,
-            }), 400
-
-        redirect_url = response.get_redirect_url()
-        if redirect_url:
-            return redirect(redirect_url)
-        return jsonify({"error": "invalid_request"}), 400
+        if isinstance(outcome, ConsentNeeded):
+            return render_template(consent_template, consent_data=outcome.data)
+        if isinstance(outcome, str):
+            return redirect(outcome)
+        return _response(outcome)
 
     return authorize
 
@@ -152,22 +144,20 @@ def _create_authorize_consent_handler(
     """Create the authorization consent POST handler."""
 
     async def authorize_consent() -> ResponseValue:
-        """Handle consent form submission."""
-        subject = get_current_subject() if get_current_subject else None
+        """Handle consent form submission (CSRF-checked by its consent_token)."""
+        subject = await current_subject(get_current_subject)
         if not subject:
-            return jsonify({"error": "Not authenticated"}), 401
-
-        payload = dict(request.form)
-        response = await authorization_endpoint.handle_consent(payload, subject)
-
-        redirect_url = response.get_redirect_url()
-        if redirect_url:
-            return redirect(redirect_url)
-
-        return jsonify({
-            "error": response.error or "unknown_error",
-            "error_description": response.error_description,
-        }), 400
+            return _response(NOT_SIGNED_IN)
+        response = await authorization_endpoint.handle_consent(
+            dict(request.form), subject
+        )
+        match authorize_outcome(response):
+            case str(url):
+                return redirect(url)
+            case HttpReply() as reply:
+                return _response(reply)
+            case _:  # handle_consent neither asks to sign in nor for consent
+                return _response(NOT_SIGNED_IN)
 
     return authorize_consent
 

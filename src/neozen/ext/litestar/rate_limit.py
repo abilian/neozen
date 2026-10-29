@@ -11,6 +11,7 @@ import typing
 
 from litestar.connection import ASGIConnection
 from litestar.enums import ScopeType
+from litestar.exceptions import ImproperlyConfiguredException
 from litestar.handlers import BaseRouteHandler
 from litestar.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -77,13 +78,20 @@ class RateLimitMiddleware:
         self.action = action
         self.exclude_paths = set(exclude_paths or [])
 
-    def _get_limiter(self, scope: Scope) -> RateLimiter | None:
-        """Get rate limiter from scope state or instance."""
+    def _get_limiter(self, scope: Scope) -> RateLimiter:
+        """The limiter given to the middleware, or else `app.state.rate_limiter`.
+
+        Raises:
+            ImproperlyConfiguredException: There is neither: no request
+                should pass unlimited because of a setup mistake.
+        """
         if self._limiter:
             return self._limiter
-
-        state = scope.get("state", {})
-        return state.get("rate_limiter")
+        limiter = scope["app"].state.get("rate_limiter")
+        if limiter is None:
+            msg = "RateLimitMiddleware needs a limiter, or app.state.rate_limiter"
+            raise ImproperlyConfiguredException(msg)
+        return limiter
 
     def _should_rate_limit(self, path: str) -> bool:
         """Check if path should be rate limited."""
@@ -106,13 +114,7 @@ class RateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Get rate limiter
         limiter = self._get_limiter(scope)
-        if not limiter:
-            await self.app(scope, receive, send)
-            return
-
-        # Store config reference for type checker (limiter is guaranteed non-None here)
         config = limiter.config
 
         # Get client IP

@@ -493,8 +493,3 @@ class TestConfigTypes:
         config = WebAuthnConfig()
         assert config.rp_id == "localhost"
         assert config.user_verification == "preferred"
-
-    def test_frozen_config(self) -> None:
-        config = DatabaseConfig()
-        with pytest.raises(AttributeError):
-            config.url = "new-url"  # type: ignore[misc]

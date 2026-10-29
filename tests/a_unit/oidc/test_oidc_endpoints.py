@@ -251,8 +251,9 @@ class TestUserInfoEndpoint:
         with pytest.raises(UserInfoError) as exc_info:
             await userinfo_endpoint(None)
 
-        assert exc_info.value.status_code == 401
-        assert exc_info.value.error == "invalid_token"
+        _, status, headers = exc_info.value.to_response()
+        assert status == 401
+        assert headers == {"WWW-Authenticate": "Bearer"}  # RFC 6750 §3.1
 
     async def test_wrong_auth_scheme(
         self,

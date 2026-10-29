@@ -487,8 +487,8 @@ class TestExchangeAuthorizationCode:
         assert token_pair.access_token.startswith("nz_at_")
         assert token_pair.refresh_token.startswith("nz_rt_")
         assert token_pair.scope == "read write"
-        assert len(access_token_storage._data) == 1
-        assert len(refresh_token_storage._data) == 1
+        assert await access_token_storage.count() == 1
+        assert await refresh_token_storage.count() == 1
 
     async def test_deletes_authorization_code_after_exchange(
         self,
@@ -514,9 +514,9 @@ class TestExchangeAuthorizationCode:
             code_challenge_method="plain",
         )
 
-        assert len(auth_code_storage._data) == 1
+        assert await auth_code_storage.count() == 1
         await token_service.exchange_authorization_code(auth_code, client)
-        assert len(auth_code_storage._data) == 0
+        assert await auth_code_storage.count() == 0
 
 
 # =============================================================================
@@ -551,7 +551,7 @@ class TestRefreshAccessToken:
 
         assert result.access_token.startswith("nz_at_")
         assert result.scope == "read write"
-        assert len(access_token_storage._data) == 1
+        assert await access_token_storage.count() == 1
 
     async def test_rotates_refresh_token_by_default(
         self,
@@ -582,7 +582,7 @@ class TestRefreshAccessToken:
         assert result.new_refresh_token is not None
         assert result.new_refresh_token.startswith("nz_rt_")
         # Should have 2 refresh tokens now (old revoked + new)
-        assert len(refresh_token_storage._data) == 2
+        assert await refresh_token_storage.count() == 2
 
     async def test_no_rotation_when_disabled(
         self,
@@ -619,4 +619,4 @@ class TestRefreshAccessToken:
         # No new refresh token
         assert result.new_refresh_token is None
         # Only 1 refresh token
-        assert len(refresh_token_storage._data) == 1
+        assert await refresh_token_storage.count() == 1

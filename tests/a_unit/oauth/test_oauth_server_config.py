@@ -155,7 +155,7 @@ class TestValidation:
             f'[security]\nsecret_key = "{SECRET}"\n'
             '[oauth_server]\nenabled = true\njwt_algorithm = "HS256"\n'
         )
-        with pytest.raises(ConfigValidationError, match="RS256 or ES256"):
+        with pytest.raises(ConfigValidationError, match="jwt_algorithm must be one of"):
             validate_config(load_config(path))
 
 

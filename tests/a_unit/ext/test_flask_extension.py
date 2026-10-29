@@ -6,7 +6,9 @@ import asyncio
 import dataclasses
 import gc
 import threading
+from datetime import UTC, datetime, timedelta
 
+import pytest
 from flask import Flask, jsonify
 
 from neozen.core.session.service import SessionNotFoundError
@@ -15,9 +17,11 @@ from neozen.ext.flask import (
     NeoZen,
     UserMixin,
     current_user,
+    fresh_login_required,
     login_required,
 )
 from neozen.ext.flask.extension import run_sync
+from neozen.web.auth.responses import unauthorized_body
 
 
 class TestAnonymousUser:
@@ -165,15 +169,19 @@ class _User:
 @dataclasses.dataclass(frozen=True)
 class _Session:
     subject_id: str
+    created_at: datetime
 
 
 class _OneSession:
     """A session service that knows one token, for subject "123"."""
 
+    def __init__(self, created_at: datetime | None = None) -> None:
+        self.created_at = created_at or datetime.now(UTC)
+
     async def validate_session(self, token: str) -> _Session:
         if token != "the-token":
             raise SessionNotFoundError
-        return _Session("123")
+        return _Session("123", self.created_at)
 
 
 def _app() -> Flask:
@@ -228,7 +236,7 @@ class TestLoginRequired:
             response = client.get("/api/protected")
             assert response.status_code == 401
             data = response.get_json()
-            assert data["error"] == "Unauthorized"
+            assert data == unauthorized_body()
 
 
 class TestCurrentUserProxy:
@@ -289,3 +297,42 @@ def test_run_sync_is_safe_across_threads() -> None:
     del threads, t
     gc.collect()
     assert all(loop.is_closed() for loop in loops)
+
+
+class TestAsyncViewsAndFreshness:
+    def test_decorators_wrap_async_views(self):
+        app = _app()
+        neozen = NeoZen(app, session_service=_OneSession())
+
+        @neozen.subject_loader
+        def load_user(user_id: str):
+            return _User(user_id)
+
+        @app.route("/async")
+        @login_required(redirect=False)
+        async def async_view():
+            return current_user.id
+
+        client = app.test_client()
+        assert client.get("/async").status_code == 401
+        client.set_cookie(neozen.cookie_name, "the-token")
+        assert client.get("/async").text == "123"
+
+    @pytest.mark.parametrize(("age", "status"), [(1, 200), (60, 401)])
+    def test_fresh_login_depends_on_the_session_age(self, age: int, status: int):
+        app = _app()
+        started = datetime.now(UTC) - timedelta(minutes=age)
+        neozen = NeoZen(app, session_service=_OneSession(created_at=started))
+
+        @neozen.subject_loader
+        def load_user(user_id: str):
+            return _User(user_id)
+
+        @app.route("/sensitive")
+        @fresh_login_required(redirect=False)
+        def sensitive():
+            return "ok"
+
+        client = app.test_client()
+        client.set_cookie(neozen.cookie_name, "the-token")
+        assert client.get("/sensitive").status_code == status

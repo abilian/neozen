@@ -1,15 +1,26 @@
 """Configuration validation for NeoZen.
 
-Validates configuration values and provides clear error messages.
+Validates configuration values and provides clear error messages, each
+naming the setting and the value it got.
 """
 
 from __future__ import annotations
 
+import dataclasses
+import typing
+
 from .exceptions import ConfigValidationError
 from .types import NeoZenConfig
 
+# Below these, a setting is a mistake rather than a choice.
+MIN_SECRET_KEY_LENGTH = 32
+MIN_TOTP_INTERVAL_SECONDS = 10
+MIN_BACKUP_CODE_LENGTH = 4
+MIN_SESSION_LIFETIME_SECONDS = 60
+TOTP_DIGITS = (6, 8)
 
-def validate_config(config: NeoZenConfig, *, require_secret_key: bool = True) -> None:  # noqa: C901
+
+def validate_config(config: NeoZenConfig, *, require_secret_key: bool = True) -> None:
     """Validate configuration values.
 
     Args:
@@ -21,109 +32,148 @@ def validate_config(config: NeoZenConfig, *, require_secret_key: bool = True) ->
         ConfigValidationError: If any values are invalid.
 
     """
-    errors: list[str] = []
+    errors = [
+        *_choice_errors(config),
+        *_minimum_errors(config),
+        *_secret_key_errors(config, required=require_secret_key),
+        *_other_errors(config),
+    ]
+    if errors:
+        raise ConfigValidationError(errors)
 
-    # Security: secret_key is required for production
-    if require_secret_key:
-        if not config.security.secret_key:
-            errors.append("security.secret_key is required")
-        elif len(config.security.secret_key) < 32:
-            errors.append("security.secret_key must be at least 32 characters")
 
-    # Password policy
-    if config.password.min_length < 1:
-        errors.append("password.min_length must be at least 1")
-    if config.password.max_length < config.password.min_length:
-        errors.append("password.max_length must be >= min_length")
-    if config.password.hibp_threshold < 1:
-        errors.append("password.hibp_threshold must be at least 1")
-    if config.password.history_count < 0:
-        errors.append("password.history_count must be non-negative")
+def _choice_errors(config: NeoZenConfig) -> list[str]:
+    """Every ``Literal``-typed setting must hold one of its values."""
+    errors = []
+    for section in dataclasses.fields(config):
+        value = getattr(config, section.name)
+        hints = typing.get_type_hints(type(value))
+        for f in dataclasses.fields(value):
+            allowed = _literal_values(hints[f.name])
+            setting = getattr(value, f.name)
+            if allowed and setting not in allowed:
+                choices = ", ".join(repr(a) for a in allowed if a is not None)
+                errors.append(
+                    f"{section.name}.{f.name} must be one of {choices}, got {setting!r}"
+                )
+    return errors
 
-    # TOTP
-    if config.totp.digits not in (6, 8):
-        errors.append("totp.digits must be 6 or 8")
-    if config.totp.interval < 10:
-        errors.append("totp.interval must be at least 10 seconds")
-    if config.totp.algorithm not in ("SHA1", "SHA256", "SHA512"):
-        errors.append("totp.algorithm must be SHA1, SHA256, or SHA512")
-    if config.totp.backup_code_count < 0:
-        errors.append("totp.backup_code_count must be non-negative")
-    if config.totp.backup_code_length < 4:
-        errors.append("totp.backup_code_length must be at least 4")
 
-    # WebAuthn
-    if not config.webauthn.rp_id:
+def _literal_values(hint: object) -> tuple[object, ...]:
+    """The values of a ``Literal`` (optional or not), or () for other types."""
+    if typing.get_origin(hint) is typing.Literal:
+        return typing.get_args(hint)
+    literals = [
+        a for a in typing.get_args(hint) if typing.get_origin(a) is typing.Literal
+    ]
+    if not literals:
+        return ()
+    allowed = tuple(v for lit in literals for v in typing.get_args(lit))
+    return (*allowed, None) if type(None) in typing.get_args(hint) else allowed
+
+
+def _minimum_errors(config: NeoZenConfig) -> list[str]:
+    rate_limit = config.security.rate_limit
+    minimums: list[tuple[str, float, float, bool]] = [
+        # (setting, value, minimum, checked)
+        ("password.min_length", config.password.min_length, 1, True),
+        ("password.hibp_threshold", config.password.hibp_threshold, 1, True),
+        ("password.history_count", config.password.history_count, 0, True),
+        ("totp.interval", config.totp.interval, MIN_TOTP_INTERVAL_SECONDS, True),
+        ("totp.backup_code_count", config.totp.backup_code_count, 0, True),
+        (
+            "totp.backup_code_length",
+            config.totp.backup_code_length,
+            MIN_BACKUP_CODE_LENGTH,
+            True,
+        ),
+        (
+            "session.lifetime (seconds)",
+            config.session.lifetime.total_seconds(),
+            MIN_SESSION_LIFETIME_SECONDS,
+            True,
+        ),
+        (
+            "security.rate_limit.login_attempts",
+            rate_limit.login_attempts,
+            1,
+            rate_limit.enabled,
+        ),
+        (
+            "security.rate_limit.registration_attempts",
+            rate_limit.registration_attempts,
+            1,
+            rate_limit.enabled,
+        ),
+        (
+            "security.lockout.threshold",
+            config.security.lockout.threshold,
+            1,
+            config.security.lockout.enabled,
+        ),
+    ]
+    return [
+        f"{name} must be at least {minimum}, got {value}"
+        for name, value, minimum, checked in minimums
+        if checked and value < minimum
+    ]
+
+
+def _secret_key_errors(config: NeoZenConfig, *, required: bool) -> list[str]:
+    key = config.security.secret_key
+    if not required:
+        return []
+    if not key:
+        return ["security.secret_key is required"]
+    if len(key) < MIN_SECRET_KEY_LENGTH:
+        message = (
+            f"security.secret_key must be at least {MIN_SECRET_KEY_LENGTH} "
+            f"characters, got {len(key)}"
+        )
+        return [message]
+    return []
+
+
+def _other_errors(config: NeoZenConfig) -> list[str]:
+    errors = []
+    password, totp, webauthn = config.password, config.totp, config.webauthn
+    if password.max_length < password.min_length:
+        errors.append(
+            f"password.max_length must be >= min_length ({password.min_length}), "
+            f"got {password.max_length}"
+        )
+    if totp.digits not in TOTP_DIGITS:
+        errors.append(f"totp.digits must be 6 or 8, got {totp.digits}")
+    if config.admin.enabled and not config.admin.path_prefix.startswith("/"):
+        errors.append(
+            f"admin.path_prefix must start with /, got {config.admin.path_prefix!r}"
+        )
+    if not webauthn.rp_id:
         errors.append("webauthn.rp_id is required")
-    if not config.webauthn.origin:
-        errors.append("webauthn.origin is required")
-    if not config.webauthn.origin.startswith(("http://", "https://")):
-        errors.append("webauthn.origin must start with http:// or https://")
-    if config.webauthn.user_verification not in (
-        "required",
-        "preferred",
-        "discouraged",
-    ):
+    if not webauthn.origin.startswith(("http://", "https://")):
         errors.append(
-            "webauthn.user_verification must be required, preferred, or discouraged"
+            f"webauthn.origin must start with http:// or https://, "
+            f"got {webauthn.origin!r}"
         )
-    if config.webauthn.resident_key not in ("required", "preferred", "discouraged"):
-        errors.append(
-            "webauthn.resident_key must be required, preferred, or discouraged"
-        )
+    return [*errors, *_oauth_errors(config)]
 
-    # OAuth providers
+
+def _oauth_errors(config: NeoZenConfig) -> list[str]:
+    errors = []
     for name, provider in config.oauth.providers.items():
-        if provider.enabled:
-            if not provider.client_id:
-                errors.append(
-                    f"oauth.providers.{name}.client_id is required when enabled"
-                )
-            if not provider.client_secret:
-                errors.append(
-                    f"oauth.providers.{name}.client_secret is required when enabled"
-                )
-
-    # OAuth Server
+        if provider.enabled and not provider.client_id:
+            errors.append(f"oauth.providers.{name}.client_id is required when enabled")
+        if provider.enabled and not provider.client_secret:
+            errors.append(
+                f"oauth.providers.{name}.client_secret is required when enabled"
+            )
     oauth_server = config.oauth_server
-    # Tokens are verified with the public JWKS, so no shared-secret HS256.
-    if oauth_server.enabled and oauth_server.jwt_algorithm not in ("RS256", "ES256"):
-        errors.append("oauth_server.jwt_algorithm must be RS256 or ES256")
     if oauth_server.enabled and oauth_server.jwt_access_tokens:
         if not oauth_server.issuer:
             errors.append("oauth_server.issuer is required for JWT access tokens")
         if not oauth_server.jwt_audience:
             errors.append("oauth_server.jwt_audience is required for JWT access tokens")
-
-    # Session
-    if config.session.lifetime.total_seconds() < 60:
-        errors.append("session.lifetime must be at least 60 seconds")
-    if config.session.cookie_samesite not in ("strict", "lax", "none"):
-        errors.append("session.cookie_samesite must be strict, lax, or none")
-
-    # Rate limiting
-    if config.security.rate_limit.enabled:
-        if config.security.rate_limit.login_attempts < 1:
-            errors.append("security.rate_limit.login_attempts must be at least 1")
-        if config.security.rate_limit.registration_attempts < 1:
-            errors.append(
-                "security.rate_limit.registration_attempts must be at least 1"
-            )
-
-    # Lockout
-    if config.security.lockout.enabled and config.security.lockout.threshold < 1:
-        errors.append("security.lockout.threshold must be at least 1")
-
-    # Logging
-    if config.logging.level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
-        errors.append("logging.level must be DEBUG, INFO, WARNING, or ERROR")
-
-    # Admin
-    if config.admin.enabled and not config.admin.path_prefix.startswith("/"):
-        errors.append("admin.path_prefix must start with /")
-
-    if errors:
-        raise ConfigValidationError(errors)
+    return errors
 
 
 __all__ = ["validate_config"]

@@ -8,7 +8,7 @@ from neozen.core.scim.errors import (
     SCIMNotFoundError,
     SCIMValidationError,
 )
-from neozen.core.scim.models import Group, User
+from neozen.core.scim.models import Group, User, parse_resource
 from neozen.core.scim.service import (
     SCIMGroupService,
     SCIMUserService,
@@ -429,3 +429,23 @@ class TestSCIMErrors:
         body = err.to_response()
         assert body["status"] == "400"
         assert body["scimType"] == "invalidFilter"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"userName": "a", "name": "not an object"},
+        {"userName": "a", "emails": ["a@example.com"]},
+        {"userName": "a", "active": "maybe"},
+    ],
+)
+def test_malformed_user_is_a_400(payload: dict[str, object]) -> None:
+    with pytest.raises(SCIMValidationError):
+        parse_resource(User.from_dict, payload)
+
+
+@pytest.mark.parametrize(
+    ("value", "active"), [("False", False), ("true", True), (False, False)]
+)
+def test_active_accepts_boolean_strings(value: object, active: bool) -> None:
+    assert User.from_dict({"userName": "a", "active": value}).active is active

@@ -178,7 +178,7 @@ filterwarnings = [
 
 [tool.mypy]
 warn_redundant_casts = true
-warn_unused_ignores = false
+warn_unused_ignores = true
 check_untyped_defs = true
 strict_equality = true
 

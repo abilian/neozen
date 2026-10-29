@@ -233,20 +233,13 @@ class EmailVerificationService[T: EmailVerificationTokenModel]:
             VerificationCooldownError: If cooldown hasn't elapsed.
 
         """
-        try:
-            # Find most recent token for this email
-            # Note: This is a simplified implementation. In production,
-            # you might want a more efficient query method.
-            recent = await self.storage.get_one_by(email=email)
-
-            # Check cooldown
-            cooldown_end = recent.created_at + timedelta(seconds=self.cooldown_seconds)
-            if now < cooldown_end:
-                remaining = int((cooldown_end - now).total_seconds())
-                raise VerificationCooldownError(remaining)
-        except DoesNotExist:
-            # No previous token, cooldown doesn't apply
-            pass
+        tokens = await self.storage.get_many_by(email=email)
+        if not tokens:
+            return
+        latest = max(ensure_utc(t.created_at) for t in tokens)
+        cooldown_end = latest + timedelta(seconds=self.cooldown_seconds)
+        if now < cooldown_end:
+            raise VerificationCooldownError(int((cooldown_end - now).total_seconds()))
 
     async def invalidate_tokens_for_email(self, email: str) -> None:
         """Invalidate all pending tokens for an email address.
@@ -254,20 +247,13 @@ class EmailVerificationService[T: EmailVerificationTokenModel]:
         This should be called after successful verification to prevent
         token reuse.
 
-        Note: This is a simplified implementation. In production,
-        you would want a bulk update method on the storage.
-
         Args:
             email: The email address whose tokens to invalidate.
 
         """
         now = datetime.now(UTC)
-        try:
-            while True:
-                token = await self.storage.get_one_by(email=email, used_at=None)
-                await self.storage.update_obj(token, used_at=now)
-        except DoesNotExist:
-            pass  # No more unused tokens
+        for token in await self.storage.get_many_by(email=email, used_at=None):
+            await self.storage.update_obj(token, used_at=now)
 
 
 __all__ = [

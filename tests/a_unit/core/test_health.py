@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from neozen.monitoring.health import (
     CheckResult,
     HealthChecker,
     HealthStatus,
+    create_database_check,
     create_ping_check,
 )
 
@@ -300,3 +302,25 @@ class TestPingCheck:
 
         assert status.healthy is True
         assert "ping" in status.checks
+
+
+@pytest.mark.anyio
+async def test_database_check_against_sqlite() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    checker = HealthChecker()
+    checker.register("database", create_database_check(async_sessionmaker(engine)))
+
+    result = await checker.check("database")
+
+    assert result.healthy, result.message
+    await engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_database_check_reports_an_unreachable_database(tmp_path) -> None:
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/missing/x.db")
+    checker = HealthChecker()
+    checker.register("database", create_database_check(async_sessionmaker(engine)))
+
+    assert not (await checker.check("database")).healthy
+    await engine.dispose()

@@ -10,6 +10,12 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import text
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
 @dataclass(frozen=True)
@@ -184,34 +190,23 @@ class HealthChecker:
 
 
 def create_database_check(
-    session_factory: Callable[[], object],
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> HealthCheckFn:
-    """Create a database health check.
+    """Create a database health check: ``SELECT 1`` in a new session.
 
     Args:
-        session_factory: SQLAlchemy session factory.
+        session_factory: SQLAlchemy async session factory.
 
     Returns:
-        Health check function.
+        Health check function. The checker reports an exception as unhealthy.
     """
 
     async def check() -> CheckResult:
-        try:
-            session = session_factory()
-            # Try to execute a simple query
-            if hasattr(session, "execute"):
-                await session.execute("SELECT 1")  # type: ignore[attr-defined]  # ty: ignore[call-non-callable]
-            return CheckResult(
-                name="database",
-                healthy=True,
-                message="Database connection successful",
-            )
-        except Exception as e:
-            return CheckResult(
-                name="database",
-                healthy=False,
-                message=f"Database connection failed: {e!s}",
-            )
+        async with session_factory() as session:
+            await session.execute(text("SELECT 1"))
+        return CheckResult(
+            name="database", healthy=True, message="Database connection successful"
+        )
 
     return check
 

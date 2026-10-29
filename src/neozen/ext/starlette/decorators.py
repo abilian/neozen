@@ -10,6 +10,8 @@ from urllib.parse import urlencode
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
+from neozen.web.auth.responses import forbidden_body, unauthorized_body
+
 from .helpers import is_authenticated
 
 if typing.TYPE_CHECKING:
@@ -75,10 +77,7 @@ def login_required(
                     )
 
                 # Default: return 401 JSON response
-                return JSONResponse(
-                    {"error": "Unauthorized", "detail": "Authentication required"},
-                    status_code=401,
-                )
+                return JSONResponse(unauthorized_body(), status_code=401)
 
             return await f(request, *args, **kwargs)
 
@@ -123,10 +122,7 @@ def roles_required(
             user = getattr(request.state, "user", None)
             if user is None:
                 # User should be authenticated first
-                return JSONResponse(
-                    {"error": "Forbidden", "detail": "Authentication required"},
-                    status_code=403,
-                )
+                return JSONResponse(unauthorized_body(), status_code=401)
 
             # Check roles
             user_roles = getattr(user, "roles", [])
@@ -134,8 +130,7 @@ def roles_required(
                 if on_forbidden is not None:
                     return await on_forbidden(request)
                 return JSONResponse(
-                    {"error": "Forbidden", "detail": "Insufficient permissions"},
-                    status_code=403,
+                    forbidden_body("Insufficient permissions"), status_code=403
                 )
 
             return await f(request, *args, **kwargs)
@@ -187,10 +182,7 @@ def permissions_required(
             # Get user from request state
             user = getattr(request.state, "user", None)
             if user is None:
-                return JSONResponse(
-                    {"error": "Forbidden", "detail": "Authentication required"},
-                    status_code=403,
-                )
+                return JSONResponse(unauthorized_body(), status_code=401)
 
             # Check permissions
             missing = check_user_permissions(user, permissions)
@@ -198,8 +190,7 @@ def permissions_required(
                 if on_forbidden is not None:
                     return await on_forbidden(request)
                 return JSONResponse(
-                    {"error": "Forbidden", "detail": f"Missing permission: {missing}"},
-                    status_code=403,
+                    forbidden_body(f"Missing permission: {missing}"), status_code=403
                 )
 
             return await f(request, *args, **kwargs)

@@ -15,6 +15,7 @@ from neozen.core.oauth.exceptions import ClientInactiveError, ClientNotFoundErro
 if TYPE_CHECKING:
     from neozen.core.oauth.client_service import OAuthClientService
     from neozen.core.oauth.models import OAuthClientModel
+    from neozen.core.oidc.id_token import IDTokenVerifier
 
 
 class EndSessionError(Exception):
@@ -97,16 +98,21 @@ class EndSessionEndpoint:
         client_service: OAuthClientService[OAuthClientModel],
         *,
         require_confirmation: bool = False,
+        id_token_verifier: IDTokenVerifier | None = None,
     ) -> None:
         """Initialize the end-session endpoint.
 
         Args:
             client_service: For looking up the client.
-            require_confirmation: If True, the result will indicate
-                that a confirmation page should be shown before logout.
+            require_confirmation: Always ask the user to confirm. They are
+                asked anyway unless the request carries an ``id_token_hint``
+                that ``id_token_verifier`` accepts: otherwise any site could
+                log them out with a link (logout CSRF).
+            id_token_verifier: Checks ``id_token_hint`` against NeoZen's keys.
         """
         self.client_service = client_service
         self.require_confirmation = require_confirmation
+        self.id_token_verifier = id_token_verifier
 
     async def __call__(self, params: dict[str, Any]) -> EndSessionResult:
         """Process an end-session request.
@@ -122,8 +128,15 @@ class EndSessionEndpoint:
                 is not registered for the client.
         """
         request = self._parse_request(params)
+        hint_client_id = await self._verified_hint_client(request.id_token_hint)
+        if (
+            hint_client_id is not None
+            and request.client_id is not None
+            and request.client_id != hint_client_id
+        ):
+            msg = "client_id does not match the id_token_hint audience"
+            raise EndSessionError(msg)
 
-        # Look up client
         client = await self._resolve_client(request)
 
         # Validate post_logout_redirect_uri if provided
@@ -142,7 +155,7 @@ class EndSessionEndpoint:
             client=client,
             post_logout_redirect_uri=post_logout_uri,
             state=request.state,
-            require_confirmation=self.require_confirmation,
+            require_confirmation=self.require_confirmation or hint_client_id is None,
         )
 
     def _parse_request(self, params: dict[str, Any]) -> EndSessionRequest:
@@ -155,6 +168,21 @@ class EndSessionEndpoint:
             state=params.get("state"),
             ui_locales=params.get("ui_locales"),
         )
+
+    async def _verified_hint_client(self, id_token_hint: str | None) -> str | None:
+        """The client an ``id_token_hint`` was issued to, if it verifies."""
+        if not id_token_hint or self.id_token_verifier is None:
+            return None
+        audience = self._client_id_from_id_token(id_token_hint)
+        if audience is None:
+            return None
+        try:
+            await self.id_token_verifier.verify(
+                id_token_hint, audience=audience, verify_exp=False
+            )
+        except jwt.PyJWTError:
+            return None
+        return audience
 
     async def _resolve_client(self, request: EndSessionRequest) -> Any | None:
         """Look up the client from client_id or id_token_hint."""

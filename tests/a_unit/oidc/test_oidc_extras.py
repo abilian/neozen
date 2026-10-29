@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -14,8 +14,11 @@ from neozen.core.oidc.consent import (
     ConsentRecord,
     ConsentService,
 )
+from neozen.core.oidc.id_token import IDTokenGenerator, IDTokenVerifier
+from neozen.core.oidc.keys import InMemoryKeyManager
 from neozen.web.oidc import (
     EndSessionEndpoint,
+    EndSessionError,
     InvalidClientMetadataError,
     InvalidPostLogoutRedirectError,
     InvalidRedirectUriError,
@@ -24,6 +27,7 @@ from neozen.web.oidc import (
     is_origin_allowed,
     origin_from_url,
 )
+from neozen.web.oidc.registration_endpoint import registration_reply
 from tests.conftest import MockStorage
 
 # =============================================================================
@@ -456,6 +460,39 @@ class TestRegistrationEndpoint:
         client = await client_service.get_client(response.client_id)
         assert client.allowed_scopes == "openid"
 
+    @pytest.mark.parametrize(
+        "metadata",
+        [
+            {"response_types": ["token"]},
+            {"token_endpoint_auth_method": "private_key_jwt"},
+            {"token_endpoint_auth_method": "none"},  # for a confidential client
+        ],
+    )
+    async def test_unsupported_metadata_is_refused(
+        self,
+        client_service: OAuthClientService[MockClient],
+        metadata: dict[str, object],
+    ) -> None:
+        reply = await registration_reply(
+            RegistrationEndpoint(client_service),
+            {"redirect_uris": ["https://app.example.com/cb"], **metadata},
+        )
+        assert reply.status == 400
+        assert reply.body == {
+            "error": "invalid_client_metadata",
+            "error_description": reply.body["error_description"],
+        }
+
+    async def test_credentials_are_never_cached(
+        self, client_service: OAuthClientService[MockClient]
+    ) -> None:
+        reply = await registration_reply(
+            RegistrationEndpoint(client_service),
+            {"redirect_uris": ["https://app.example.com/cb"]},
+        )
+        assert reply.status == 201
+        assert reply.headers["Cache-Control"] == "no-store"
+
     async def test_disallowed_grant_type(
         self,
         client_service: OAuthClientService[MockClient],
@@ -596,3 +633,56 @@ class TestCollectAllowedOrigins:
         origins = await collect_allowed_origins(client_service)
         assert "https://active.example.com" in origins
         assert "https://inactive.example.com" not in origins
+
+
+@pytest.mark.anyio
+class TestLogoutConfirmation:
+    """A logout without a hint NeoZen signed needs the user's say-so."""
+
+    ISSUER = "https://auth.example.com"
+
+    @pytest.fixture
+    def keys(self) -> InMemoryKeyManager:
+        return InMemoryKeyManager()
+
+    def _endpoint(
+        self, client_service: OAuthClientService[MockClient], keys: InMemoryKeyManager
+    ) -> EndSessionEndpoint:
+        return EndSessionEndpoint(
+            client_service, id_token_verifier=IDTokenVerifier(keys, self.ISSUER)
+        )
+
+    async def _hint(self, keys: InMemoryKeyManager, client_id: str) -> str:
+        return await IDTokenGenerator(keys, self.ISSUER).generate(
+            "alice", client_id, ["openid"], lifetime=timedelta(seconds=-60)
+        )
+
+    async def test_no_hint_needs_confirmation(
+        self, client_service: OAuthClientService[MockClient], keys: InMemoryKeyManager
+    ) -> None:
+        result = await self._endpoint(client_service, keys)({})
+        assert result.require_confirmation
+
+    async def test_verified_hint_even_expired_skips_it(
+        self, client_service: OAuthClientService[MockClient], keys: InMemoryKeyManager
+    ) -> None:
+        hint = await self._hint(keys, "client-1")
+        result = await self._endpoint(client_service, keys)({"id_token_hint": hint})
+        assert not result.require_confirmation
+
+    async def test_forged_hint_needs_confirmation(
+        self, client_service: OAuthClientService[MockClient], keys: InMemoryKeyManager
+    ) -> None:
+        hint = await self._hint(InMemoryKeyManager(), "client-1")  # other keys
+        result = await self._endpoint(client_service, keys)({"id_token_hint": hint})
+        assert result.require_confirmation
+
+    async def test_client_id_must_match_the_hint(
+        self, client_service: OAuthClientService[MockClient], keys: InMemoryKeyManager
+    ) -> None:
+        hint = await self._hint(keys, "client-1")
+        with pytest.raises(EndSessionError):
+            await self._endpoint(client_service, keys)({
+                "id_token_hint": hint,
+                "client_id": "client-2",
+            })

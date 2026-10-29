@@ -20,7 +20,6 @@ Example:
 
 from __future__ import annotations
 
-import dataclasses
 import typing
 
 from starlette.requests import Request
@@ -44,12 +43,21 @@ from neozen.web.oauth import (
     parse_basic_auth,
 )
 from neozen.web.oauth.http import (
+    NOT_SIGNED_IN,
+    ConsentNeeded,
     HttpReply,
+    LoginNeeded,
+    authorize_outcome,
+    consent_page_missing,
+    current_subject,
     introspection_reply,
     revocation_reply,
     token_reply,
 )
 from neozen.web.oidc import DiscoveryEndpoint, JWKSEndpoint
+
+# The app's signed-in subject, from the request; sync or async.
+type SubjectGetter = typing.Callable[[Request], typing.Any]
 
 
 def _error_response(
@@ -107,7 +115,7 @@ def _create_revoke_handler(revocation_ep: RevocationEndpoint) -> typing.Callable
 
 def _create_authorize_handler(
     authorization_endpoint: AuthorizationEndpoint,
-    get_current_subject: typing.Callable[[Request], typing.Any] | None,
+    get_current_subject: SubjectGetter | None,
     login_url: str,
     consent_template_func: typing.Callable[[Request, typing.Any], Response] | None,
 ) -> typing.Callable:
@@ -115,63 +123,45 @@ def _create_authorize_handler(
 
     async def authorize_handler(request: Request) -> Response:
         """OAuth 2.1 Authorization Endpoint."""
-        subject = get_current_subject(request) if get_current_subject else None
         payload = dict(request.query_params)
         response = await authorization_endpoint.handle_authorization_request(
-            payload, subject
+            payload, await current_subject(get_current_subject, request)
         )
-
-        if response.requires_login:
+        outcome = authorize_outcome(response)
+        if isinstance(outcome, LoginNeeded):
             request.session["oauth_params"] = payload
             return RedirectResponse(login_url, status_code=302)
-
-        if response.requires_consent and response.consent_data:
+        if isinstance(outcome, ConsentNeeded):
             if consent_template_func:
-                return consent_template_func(request, response.consent_data)
-            return JSONResponse(
-                {
-                    "error": "consent_required",
-                    "consent_data": dataclasses.asdict(response.consent_data),
-                },
-                status_code=403,
-            )
-
-        if response.error:
-            redirect_url = response.get_redirect_url()
-            if redirect_url:
-                return RedirectResponse(redirect_url, status_code=302)
-            return _error_response(response.error, response.error_description, 400)
-
-        redirect_url = response.get_redirect_url()
-        if redirect_url:
-            return RedirectResponse(redirect_url, status_code=302)
-        return JSONResponse({"error": "invalid_request"}, status_code=400)
+                return consent_template_func(request, outcome.data)
+            return _response(consent_page_missing(outcome.data))
+        if isinstance(outcome, str):
+            return RedirectResponse(outcome, status_code=302)
+        return _response(outcome)
 
     return authorize_handler
 
 
 def _create_authorize_consent_handler(
     authorization_endpoint: AuthorizationEndpoint,
-    get_current_subject: typing.Callable[[Request], typing.Any] | None,
+    get_current_subject: SubjectGetter | None,
 ) -> typing.Callable:
     """Create the authorization consent POST handler."""
 
     async def authorize_consent_handler(request: Request) -> Response:
-        """Handle consent form submission."""
-        subject = get_current_subject(request) if get_current_subject else None
+        """Handle consent form submission (CSRF-checked by its consent_token)."""
+        subject = await current_subject(get_current_subject, request)
         if not subject:
-            return JSONResponse({"error": "Not authenticated"}, status_code=401)
-
+            return _response(NOT_SIGNED_IN)
         form = await request.form()
         response = await authorization_endpoint.handle_consent(dict(form), subject)
-
-        redirect_url = response.get_redirect_url()
-        if redirect_url:
-            return RedirectResponse(redirect_url, status_code=302)
-
-        return _error_response(
-            response.error or "unknown_error", response.error_description, 400
-        )
+        match authorize_outcome(response):
+            case str(url):
+                return RedirectResponse(url, status_code=302)
+            case HttpReply() as reply:
+                return _response(reply)
+            case _:  # handle_consent neither asks to sign in nor for consent
+                return _response(NOT_SIGNED_IN)
 
     return authorize_consent_handler
 
@@ -187,7 +177,7 @@ def create_oauth_routes[
     token_service: OAuthTokenService[OC, OAC, OAT, ORT],
     authorization_endpoint: AuthorizationEndpoint[OC, OG, OAC] | None = None,
     *,
-    get_current_subject: typing.Callable[[Request], typing.Any] | None = None,
+    get_current_subject: SubjectGetter | None = None,
     login_url: str = "/login",
     consent_template_func: typing.Callable[[Request, typing.Any], Response]
     | None = None,

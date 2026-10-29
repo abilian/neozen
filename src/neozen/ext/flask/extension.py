@@ -115,7 +115,7 @@ class NeoZen:
         # Event loop for async operations
 
         # Callbacks (stored on extension, not app state, so they can be set before init_app)
-        self._subject_loader: SubjectLoader | AsyncSubjectLoader | None = None
+        self._subject_loader: SubjectLoader | None = None
         self._unauthorized_callback: Callable[[], Response] | None = None
 
         if app is not None:
@@ -199,7 +199,10 @@ class NeoZen:
                 async with db.session() as session:
                     return await session.get(User, subject_id)
         """
-        self._subject_loader = callback
+        if inspect.iscoroutinefunction(callback):
+            self._subject_loader = lambda subject_id: run_sync(callback(subject_id))
+        else:
+            self._subject_loader = typing.cast("SubjectLoader", callback)
         return callback
 
     def unauthorized_handler(
@@ -256,15 +259,10 @@ class NeoZen:
 
         subject_id = g._neozen_session.subject_id
 
-        # Call subject loader (handle both sync and async)
-        loader = self._subject_loader
-        if inspect.iscoroutinefunction(loader):
-            subject = run_sync(loader(subject_id))
-        else:
-            subject = loader(subject_id)
+        subject = self._subject_loader(subject_id)
 
         g._neozen_user = subject
-        return subject or AnonymousUser()  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
+        return subject if subject is not None else AnonymousUser()
 
     def _handle_session_cookie(self, response: Response) -> Response:
         """After request hook to set/clear session cookie.

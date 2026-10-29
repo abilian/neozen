@@ -18,6 +18,7 @@ from neozen.storage.sqlalchemy.factories import (
     SessionServiceFactory,
     create_subject_loader,
     get_subject_roles,
+    role_service,
 )
 from neozen.storage.sqlalchemy.models import (
     EmailVerificationToken,
@@ -41,6 +42,7 @@ __all__ = [
     "EmailVerificationTokenRepository",
     "NeoZenRepository",
     "RoleServiceFactory",
+    "role_service",
     "SQLAlchemyProvider",
     "Session",
     "SessionRepository",

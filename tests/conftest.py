@@ -128,6 +128,10 @@ class MockStorage[Model](RepositoryProtocol[Model]):
         results = self._filter(**filters)
         if not results:
             raise DoesNotExist
+        if len(results) > 1:
+            # The SQL repositories raise too: use get_many_by.
+            msg = f"get_one_by({filters}) matched {len(results)} rows"
+            raise LookupError(msg)
         return results[0]
 
     async def get_many_by(

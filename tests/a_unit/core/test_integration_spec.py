@@ -211,6 +211,25 @@ async def test_session_limit_revokes_the_oldest() -> None:
         await service.validate_session(first)
 
 
+@pytest.mark.anyio
+async def test_revoke_all_sessions_keeps_only_the_current_one() -> None:
+    from neozen.core.crypto import get_token_hash
+    from neozen.core.session.service import SessionService
+
+    service = SessionService(storage=MockSessionStorage(), hash_key="test")
+    current = await service.create_session("user1")
+    for _ in range(2):
+        await service.create_session("user1")
+
+    count = await service.revoke_all_sessions(
+        "user1", except_token_hash=get_token_hash(current, key="test")
+    )
+
+    assert count == 2
+    assert len(await service.list_sessions("user1")) == 1
+    await service.validate_session(current)
+
+
 class TestListSessions:
     """Tests for SessionService.list_sessions()."""
 
@@ -437,7 +456,6 @@ class TestOAuthTokenRefresh:
 
     @pytest.mark.anyio
     async def test_refresh_fails_without_http_client(self) -> None:
-        from neozen.core.oauth_client.exceptions import OAuthTokenError
         from neozen.core.oauth_client.models import OAuthProviderConfig
         from neozen.core.oauth_client.providers.base import OAuthProvider
 
@@ -452,7 +470,8 @@ class TestOAuthTokenRefresh:
             ),
         )
 
-        with pytest.raises(OAuthTokenError, match="HTTP client is required"):
+        # A setup mistake, not a failed exchange.
+        with pytest.raises(RuntimeError, match="has no HTTP client"):
             await provider.refresh_access_token("token")
 
 

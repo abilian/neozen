@@ -6,7 +6,6 @@ Provides JSON-based data export/import and test data generation.
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import secrets
 import sys
@@ -17,7 +16,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from neozen.cli.database import DatabaseContext, get_database_url
+from neozen.cli.database import in_session
 
 
 def _to_iso(dt: datetime | None) -> str | None:
@@ -96,12 +95,10 @@ def dump(args: argparse.Namespace) -> int:
     """Export all subjects, roles, and role assignments to JSON."""
     output_path = Path(args.output) if args.output else None
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            subjects = await _dump_subjects(session)
-            roles = await _dump_roles(session)
-            assignments = await _dump_role_assignments(session)
+    async def run(session: AsyncSession) -> int:
+        subjects = await _dump_subjects(session)
+        roles = await _dump_roles(session)
+        assignments = await _dump_role_assignments(session)
 
         data: dict[str, Any] = {
             "version": 1,
@@ -124,7 +121,7 @@ def dump(args: argparse.Namespace) -> int:
             print(text)
         return 0
 
-    return asyncio.run(run())
+    return in_session(run)
 
 
 # =============================================================================
@@ -135,17 +132,13 @@ def dump(args: argparse.Namespace) -> int:
 async def _restore_subjects(
     session: AsyncSession, subjects: list[dict[str, Any]]
 ) -> int:
-    from neozen.storage import DoesNotExist  # noqa: PLC0415
     from neozen.storage.sqlalchemy import SubjectRepository  # noqa: PLC0415
 
     repo = SubjectRepository(session=session)
     count = 0
     for s in subjects:
-        try:
-            await repo.get_one_by(id=s["id"])
-            continue  # Already exists, skip
-        except DoesNotExist:
-            pass
+        if await repo.exists(id=s["id"]):
+            continue  # already there
 
         await repo.create(
             id=s["id"],
@@ -160,17 +153,13 @@ async def _restore_subjects(
 
 
 async def _restore_roles(session: AsyncSession, roles: list[dict[str, Any]]) -> int:
-    from neozen.storage import DoesNotExist  # noqa: PLC0415
     from neozen.storage.sqlalchemy.repositories import RoleRepository  # noqa: PLC0415
 
     repo = RoleRepository(session=session)
     count = 0
     for r in roles:
-        try:
-            await repo.get_one_by(id=r["id"])
-            continue
-        except DoesNotExist:
-            pass
+        if await repo.exists(id=r["id"]):
+            continue  # already there
 
         await repo.create(
             id=r["id"],
@@ -186,7 +175,6 @@ async def _restore_roles(session: AsyncSession, roles: list[dict[str, Any]]) -> 
 async def _restore_role_assignments(
     session: AsyncSession, assignments: list[dict[str, Any]]
 ) -> int:
-    from neozen.storage import DoesNotExist  # noqa: PLC0415
     from neozen.storage.sqlalchemy.repositories import (  # noqa: PLC0415
         RoleAssignmentRepository,
     )
@@ -194,11 +182,8 @@ async def _restore_role_assignments(
     repo = RoleAssignmentRepository(session=session)
     count = 0
     for a in assignments:
-        try:
-            await repo.get_one_by(id=a["id"])
-            continue
-        except DoesNotExist:
-            pass
+        if await repo.exists(id=a["id"]):
+            continue  # already there
 
         await repo.create(
             id=a["id"],
@@ -233,15 +218,13 @@ def restore(args: argparse.Namespace) -> int:
         )
         return 1
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            subjects_added = await _restore_subjects(session, data.get("subjects", []))
-            roles_added = await _restore_roles(session, data.get("roles", []))
-            assignments_added = await _restore_role_assignments(
-                session, data.get("role_assignments", [])
-            )
-            await session.commit()
+    async def run(session: AsyncSession) -> int:
+        subjects_added = await _restore_subjects(session, data.get("subjects", []))
+        roles_added = await _restore_roles(session, data.get("roles", []))
+        assignments_added = await _restore_role_assignments(
+            session, data.get("role_assignments", [])
+        )
+        await session.commit()
 
         print(
             f"Restored {subjects_added} new subjects, "
@@ -251,7 +234,7 @@ def restore(args: argparse.Namespace) -> int:
         )
         return 0
 
-    return asyncio.run(run())
+    return in_session(run)
 
 
 # =============================================================================
@@ -333,11 +316,9 @@ def populate(args: argparse.Namespace) -> int:
     """Generate test data (fake users)."""
     count = args.count
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            created = await _populate_users(session, count)
+    async def run(session: AsyncSession) -> int:
+        created = await _populate_users(session, count)
         print(f"Created {created} test users with password 'password123'")
         return 0
 
-    return asyncio.run(run())
+    return in_session(run)

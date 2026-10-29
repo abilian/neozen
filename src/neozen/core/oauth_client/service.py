@@ -364,20 +364,5 @@ class OAuthClientService:
         provider = self.get_provider(provider_id)
         return await provider.refresh_access_token(refresh_token)
 
-    async def cleanup_expired_states(self) -> int:
-        """Clean up expired OAuth states.
-
-        Returns:
-            Number of states cleaned up.
-
-        Note:
-            This is a maintenance operation that should be run periodically.
-            Currently not implemented as it requires a custom query.
-
-        """
-        # This would require a custom query to delete expired states
-        # For now, states are cleaned up on callback or on failed validation
-        return 0
-
 
 __all__ = ["OAuthClientService"]

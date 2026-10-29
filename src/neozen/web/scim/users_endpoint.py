@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from neozen.core.scim.errors import SCIMValidationError
-from neozen.core.scim.models import User
+from neozen.core.scim.models import User, parse_resource
 
 if TYPE_CHECKING:
     from neozen.core.scim.service import SCIMUserService
@@ -64,27 +63,13 @@ class UsersEndpoint:
 
     async def create(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Handle POST /Users."""
-        if not isinstance(payload, dict):
-            msg = "Request body must be a JSON object"
-            raise SCIMValidationError(msg)
-        try:
-            user = User.from_dict(payload)
-        except KeyError as e:
-            msg = f"Missing required field: {e}"
-            raise SCIMValidationError(msg) from e
+        user = parse_resource(User.from_dict, payload)
         created = await self.service.create_user(user)
         return created.to_dict()
 
     async def replace(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Handle PUT /Users/{id}."""
-        if not isinstance(payload, dict):
-            msg = "Request body must be a JSON object"
-            raise SCIMValidationError(msg)
-        try:
-            user = User.from_dict(payload)
-        except KeyError as e:
-            msg = f"Missing required field: {e}"
-            raise SCIMValidationError(msg) from e
+        user = parse_resource(User.from_dict, payload)
         updated = await self.service.update_user(user_id, user)
         return updated.to_dict()
 

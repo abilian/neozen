@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     from neozen.core.oidc.claims import ClaimsProvider
 
 
+# Not an RFC 6750 error code: marks a request that carried no token.
+NO_TOKEN = "no_token"
+
+
 class UserInfoError(Exception):
     """Raised when the UserInfo endpoint cannot serve a request.
 
@@ -41,11 +45,18 @@ class UserInfoError(Exception):
         super().__init__(description)
 
     def to_response(self) -> tuple[dict[str, Any], int, dict[str, str]]:
-        """Build the response body, status code, and WWW-Authenticate header."""
+        """Build the response body, status code, and WWW-Authenticate header.
+
+        A request that sent no token gets a bare ``Bearer`` challenge, with
+        no error code (RFC 6750 §3.1).
+        """
+        if self.error == NO_TOKEN:
+            return {"error": "invalid_request"}, 401, {"WWW-Authenticate": "Bearer"}
         body = {"error": self.error, "error_description": self.description}
+        description = self.description.replace("\\", "\\\\").replace('"', '\\"')
         header = {
             "WWW-Authenticate": (
-                f'Bearer error="{self.error}", error_description="{self.description}"'
+                f'Bearer error="{self.error}", error_description="{description}"'
             )
         }
         return body, self.status_code, header
@@ -145,7 +156,7 @@ class UserInfoEndpoint:
         """Extract the bearer token from the Authorization header."""
         if not authorization:
             raise UserInfoError(
-                error="invalid_token",
+                error=NO_TOKEN,
                 description="Missing Authorization header.",
                 status_code=401,
             )

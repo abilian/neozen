@@ -10,12 +10,13 @@ from __future__ import annotations
 import dataclasses
 import hmac
 import json
+import re
 import typing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
-from pydantic import AnyUrl, BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, ValidationError, model_validator
 
 from neozen.core.crypto import generate_token_hash_pair
 from neozen.core.oauth.client_service import OAuthClientService
@@ -45,14 +46,19 @@ class AuthorizationRequest(BaseModel):
 
     response_type: str
     client_id: str
-    redirect_uri: AnyUrl | None = None
+    # Compared as is with the registered URIs (RFC 6749 §3.1.2.3): never
+    # normalized, so no URL type.
+    redirect_uri: str | None = None
     scope: str | None = None
     state: str | None = None
-    code_challenge: (
-        typing.Annotated[str, Field(pattern=r"^[A-Za-z0-9\-\._~]{43,128}$")] | None
-    ) = None
-    code_challenge_method: CodeChallengeMethod = "S256"
+    # Checked once the client is known, so a bad value is sent back to it
+    # (RFC 6749 §4.1.2.1) instead of ending on an error page.
+    code_challenge: str | None = None
+    code_challenge_method: str = "S256"
     nonce: str | None = None  # OIDC Core §3.1.2.1
+    # OIDC Core §3.1.2.1. Only "none" is acted on; "login" and max_age
+    # would need the time the subject signed in.
+    prompt: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -151,9 +157,20 @@ _DEFAULT_CODE_PREFIX = "nz_ac_"
 CONSENT_TOKEN_LIFETIME = timedelta(minutes=10)
 
 
+# RFC 7636 §4.2: 43 to 128 unreserved characters.
+_CODE_CHALLENGE = re.compile(r"[A-Za-z0-9\-._~]{43,128}")
+
+
 def _challenge_method(request: AuthorizationRequest) -> CodeChallengeMethod | None:
-    """The PKCE method, or None when the request carries no challenge."""
-    return request.code_challenge_method if request.code_challenge else None
+    """The PKCE method (checked by then), or None without a challenge."""
+    if not request.code_challenge:
+        return None
+    return typing.cast("CodeChallengeMethod", request.code_challenge_method)
+
+
+def _direct_error(description: str) -> AuthorizationResponse:
+    """An error shown to the user, not redirected to the client."""
+    return AuthorizationResponse(error="invalid_request", error_description=description)
 
 
 def _scopes(scope: str | None) -> set[str]:
@@ -250,16 +267,11 @@ class AuthorizationEndpoint[
                 error_description=self._format_validation_error(e),
             )
 
-        # Validate client and get redirect URI
-        client, redirect_uri, error = await self._validate_client_and_redirect(request)
-        if error:
-            return error
+        resolved = await self._validate_client_and_redirect(request)
+        if isinstance(resolved, AuthorizationResponse):
+            return resolved
+        client, redirect_uri = resolved
 
-        # At this point, client and redirect_uri are guaranteed to be set
-        assert client is not None
-        assert redirect_uri is not None
-
-        # Validate request parameters against client
         error = self._validate_request_params(client, request, redirect_uri)
         if error:
             return error
@@ -276,75 +288,49 @@ class AuthorizationEndpoint[
             nonce=request.nonce,
         )
 
-        # Check if subject is authenticated
+        silent = "none" in (request.prompt or "").split()
         if subject is None:
+            if silent:
+                return self._error_response(
+                    redirect_uri, request.state, "login_required", "Not signed in."
+                )
             return AuthorizationResponse(requires_login=True, consent_data=consent_data)
 
-        # Check for existing grant and handle accordingly
-        return await self._handle_grant_check(
+        response = await self._handle_grant_check(
             client, subject, redirect_uri, request, consent_data
         )
+        if silent and response.requires_consent:
+            return self._error_response(
+                redirect_uri, request.state, "consent_required", "Consent needed."
+            )
+        return response
 
     async def _validate_client_and_redirect(
         self, request: AuthorizationRequest
-    ) -> tuple[OC | None, str | None, AuthorizationResponse | None]:
-        """Validate client and resolve redirect URI.
+    ) -> tuple[OC, str] | AuthorizationResponse:
+        """The client and the redirect URI to answer on, or the error.
 
-        Returns:
-            Tuple of (client, redirect_uri, error_response).
-            If error_response is not None, return it immediately.
+        Errors here are never redirected: the redirect URI isn't trusted yet.
         """
-        # Get and validate client
         try:
             client = await self.client_service.get_active_client(request.client_id)
         except ClientNotFoundError:
-            return (
-                None,
-                None,
-                AuthorizationResponse(
-                    error="invalid_request",
-                    error_description="Unknown client_id.",
-                ),
-            )
+            return _direct_error("Unknown client_id.")
         except ClientInactiveError:
-            return (
-                None,
-                None,
-                AuthorizationResponse(
-                    error="invalid_request",
-                    error_description="Client is inactive.",
-                ),
-            )
+            return _direct_error("Client is inactive.")
 
-        # Validate redirect_uri
-        redirect_uri = str(request.redirect_uri) if request.redirect_uri else None
-        if redirect_uri:
+        if request.redirect_uri is not None:
             try:
-                self.client_service.validate_redirect_uri(client, redirect_uri)
+                self.client_service.validate_redirect_uri(client, request.redirect_uri)
             except InvalidRedirectUriError:
-                return (
-                    None,
-                    None,
-                    AuthorizationResponse(
-                        error="invalid_request",
-                        error_description="Invalid redirect_uri.",
-                    ),
-                )
-        else:
-            # Optional only when exactly one URI is registered (RFC 6749 §3.1.2.3)
-            uris = client.get_redirect_uris()
-            if len(uris) != 1:
-                return (
-                    None,
-                    None,
-                    AuthorizationResponse(
-                        error="invalid_request",
-                        error_description="redirect_uri is required.",
-                    ),
-                )
-            [redirect_uri] = uris
+                return _direct_error("Invalid redirect_uri.")
+            return client, request.redirect_uri
 
-        return client, redirect_uri, None
+        # Optional only when exactly one URI is registered (RFC 6749 §3.1.2.3)
+        uris = client.get_redirect_uris()
+        if len(uris) != 1:
+            return _direct_error("redirect_uri is required.")
+        return client, uris[0]
 
     def _validate_request_params(
         self,
@@ -388,6 +374,19 @@ class AuthorizationEndpoint[
 
         # PKCE: always for public clients (S256 only), optional for
         # confidential clients when require_pkce is off.
+        if request.code_challenge is not None and not _CODE_CHALLENGE.fullmatch(
+            request.code_challenge
+        ):
+            return self._error_response(
+                redirect_uri, request.state, "invalid_request", "Bad code_challenge."
+            )
+        if request.code_challenge_method not in ("S256", "plain"):
+            return self._error_response(
+                redirect_uri,
+                request.state,
+                "invalid_request",
+                "Unsupported code_challenge_method.",
+            )
         if request.code_challenge is None:
             if self.require_pkce or client.is_public_client():
                 return self._error_response(
@@ -489,11 +488,10 @@ class AuthorizationEndpoint[
                 error_description=self._format_validation_error(e),
             )
 
-        client, redirect_uri, error = await self._validate_client_and_redirect(request)
-        if error:
-            return error
-        assert client is not None
-        assert redirect_uri is not None
+        resolved = await self._validate_client_and_redirect(request)
+        if isinstance(resolved, AuthorizationResponse):
+            return resolved
+        client, redirect_uri = resolved
 
         error = self._validate_request_params(client, request, redirect_uri)
         if error:
@@ -561,7 +559,7 @@ class AuthorizationEndpoint[
             subject_id=subject_id,
             expires_at=datetime.now(UTC) + self.code_lifetime,
             response_type="code",
-            redirect_uri=str(request.redirect_uri) if request.redirect_uri else None,
+            redirect_uri=request.redirect_uri,
             scope=request.scope or "",
             code_challenge=request.code_challenge,
             code_challenge_method=_challenge_method(request),

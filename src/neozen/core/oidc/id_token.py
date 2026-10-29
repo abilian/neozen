@@ -186,12 +186,15 @@ class IDTokenVerifier:
         token: str,
         *,
         audience: str,
+        verify_exp: bool = True,
     ) -> dict[str, Any]:
         """Verify an ID token and return its claims.
 
         Args:
             token: The JWT to verify.
             audience: Expected audience (client_id).
+            verify_exp: Refuse an expired token. A logout hint may be
+                expired (OIDC RP-Initiated Logout §2).
 
         Returns:
             The decoded claims dictionary.
@@ -232,6 +235,7 @@ class IDTokenVerifier:
             algorithms=[signing_key.alg],
             audience=audience,
             issuer=self.issuer,
+            options={"verify_exp": verify_exp},
         )
 
 

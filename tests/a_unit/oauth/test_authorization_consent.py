@@ -350,3 +350,48 @@ class TestConsentToken:
         payload = {**_consent(), "consent_token": token}
         response = await endpoint.handle_consent(payload, User())
         assert response.error == "invalid_request"
+
+
+@pytest.mark.anyio
+class TestAuthorizationRequestEdges:
+    async def _authorize(
+        self, endpoint: AuthorizationEndpoint, subject: User | None, **params: str
+    ) -> AuthorizationResponse:
+        query = {k: v for k, v in _consent(**params).items() if k != "approved"}
+        return await endpoint.handle_authorization_request(
+            {"response_type": "code", **query}, subject
+        )
+
+    async def test_redirect_uri_is_compared_as_registered(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        """An origin-only URI must not become "https://app.example.com/"."""
+        client = Client("app", redirect_uris=json.dumps(["https://app.example.com"]))
+        endpoint = _endpoint(client, codes)
+        response = await self._authorize(
+            endpoint, User(), redirect_uri="https://app.example.com"
+        )
+        assert response.requires_consent
+
+    async def test_bad_code_challenge_goes_back_to_the_client(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        endpoint = _endpoint(Client("app"), codes)
+        response = await self._authorize(endpoint, User(), code_challenge="short")
+        assert response.error == "invalid_request"
+        assert response.redirect_uri == REGISTERED_URI
+
+    async def test_prompt_none_without_a_session(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        endpoint = _endpoint(Client("app"), codes)
+        response = await self._authorize(endpoint, None, prompt="none")
+        assert response.error == "login_required"
+        assert response.redirect_uri == REGISTERED_URI
+
+    async def test_prompt_none_without_consent(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        endpoint = _endpoint(Client("app"), codes)
+        response = await self._authorize(endpoint, User(), prompt="none")
+        assert response.error == "consent_required"

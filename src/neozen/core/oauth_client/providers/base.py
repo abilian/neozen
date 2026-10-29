@@ -17,6 +17,13 @@ from neozen.core.oauth_client.models import (
 )
 
 
+def _transport_errors() -> tuple[type[Exception], ...]:
+    """What the HTTP client raises when the provider can't be reached."""
+    import httpx  # noqa: PLC0415  # ken: optional dependency (oauth-client extra)
+
+    return (httpx.HTTPError,)
+
+
 @dataclass
 class OAuthProvider:
     """Base class for OAuth providers.
@@ -74,6 +81,13 @@ class OAuthProvider:
         query_string = urllib.parse.urlencode(params)
         return f"{self.config.authorization_endpoint}?{query_string}"
 
+    def _http(self) -> typing.Any:
+        """The HTTP client (an ``httpx.AsyncClient``), set by the registry."""
+        if self.http_client is None:
+            msg = f"OAuth provider {self.config.provider_id!r} has no HTTP client"
+            raise RuntimeError(msg)
+        return self.http_client
+
     async def exchange_code(
         self,
         code: str,
@@ -87,17 +101,9 @@ class OAuthProvider:
             redirect_uri: The redirect URI used in authorization.
             code_verifier: The PKCE code verifier (if using PKCE).
 
-        Returns:
-            The OAuth tokens.
-
         Raises:
             OAuthTokenError: If token exchange fails.
-
         """
-        if self.http_client is None:
-            msg = "HTTP client is required for token exchange"
-            raise OAuthTokenError(msg)
-
         data: dict[str, str] = {
             "grant_type": "authorization_code",
             "code": code,
@@ -105,77 +111,9 @@ class OAuthProvider:
             "client_id": self.config.client_id,
             "client_secret": self.config.client_secret,
         }
-
         if self.config.use_pkce and code_verifier:
             data["code_verifier"] = code_verifier
-
-        try:
-            response = await self.http_client.post(
-                self.config.token_endpoint,
-                data=data,
-                headers={"Accept": "application/json"},
-            )
-
-            if response.status_code != 200:
-                msg = f"Token exchange failed: {response.status_code}"
-                raise OAuthTokenError(msg)
-
-            token_data = response.json()
-            return OAuthTokens(
-                access_token=token_data["access_token"],
-                token_type=token_data.get("token_type", "Bearer"),
-                refresh_token=token_data.get("refresh_token"),
-                expires_in=token_data.get("expires_in"),
-                scope=token_data.get("scope"),
-                id_token=token_data.get("id_token"),
-            )
-        except OAuthTokenError:
-            raise
-        except Exception as e:
-            msg = f"Token exchange failed: {e}"
-            raise OAuthTokenError(msg) from e
-
-    async def get_user_info(self, access_token: str) -> OAuthUserInfo:
-        """Fetch user information from the provider.
-
-        Args:
-            access_token: The OAuth access token.
-
-        Returns:
-            The user information.
-
-        Raises:
-            OAuthUserInfoError: If fetching user info fails.
-
-        """
-        if self.http_client is None:
-            msg = "HTTP client is required for user info"
-            raise OAuthUserInfoError(msg)
-
-        if not self.config.userinfo_endpoint:
-            msg = "User info endpoint not configured"
-            raise OAuthUserInfoError(msg)
-
-        try:
-            response = await self.http_client.get(
-                self.config.userinfo_endpoint,
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/json",
-                },
-            )
-
-            if response.status_code != 200:
-                msg = f"User info request failed: {response.status_code}"
-                raise OAuthUserInfoError(msg)
-
-            data = response.json()
-            return self._parse_user_info(data)
-        except OAuthUserInfoError:
-            raise
-        except Exception as e:
-            msg = f"User info request failed: {e}"
-            raise OAuthUserInfoError(msg) from e
+        return await self._token_request(data, "Token exchange failed")
 
     async def refresh_access_token(self, refresh_token: str) -> OAuthTokens:
         """Refresh an access token using a refresh token.
@@ -184,33 +122,38 @@ class OAuthProvider:
             refresh_token: The refresh token from the original grant.
 
         Returns:
-            New OAuth tokens (access_token, possibly new refresh_token).
+            New OAuth tokens; the refresh token is kept unless rotated.
 
         Raises:
             OAuthTokenError: If the refresh fails.
         """
-        if self.http_client is None:
-            msg = "HTTP client is required for token refresh"
-            raise OAuthTokenError(msg)
-
         data: dict[str, str] = {
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
             "client_id": self.config.client_id,
             "client_secret": self.config.client_secret,
         }
+        return await self._token_request(
+            data, "Token refresh failed", refresh_token=refresh_token
+        )
 
+    async def _token_request(
+        self, data: dict[str, str], failure: str, *, refresh_token: str | None = None
+    ) -> OAuthTokens:
+        """POST to the token endpoint; ``refresh_token`` is the fallback."""
         try:
-            response = await self.http_client.post(
+            response = await self._http().post(
                 self.config.token_endpoint,
                 data=data,
                 headers={"Accept": "application/json"},
             )
-
-            if response.status_code != 200:
-                msg = f"Token refresh failed: {response.status_code}"
-                raise OAuthTokenError(msg)
-
+        except _transport_errors() as e:
+            msg = f"{failure}: {e}"
+            raise OAuthTokenError(msg) from e
+        if response.status_code != 200:
+            msg = f"{failure}: {response.status_code}"
+            raise OAuthTokenError(msg)
+        try:
             token_data = response.json()
             return OAuthTokens(
                 access_token=token_data["access_token"],
@@ -220,11 +163,46 @@ class OAuthProvider:
                 scope=token_data.get("scope"),
                 id_token=token_data.get("id_token"),
             )
-        except OAuthTokenError:
-            raise
-        except Exception as e:
-            msg = f"Token refresh failed: {e}"
+        except (KeyError, ValueError) as e:  # missing field, not JSON
+            msg = f"{failure}: bad response ({e})"
             raise OAuthTokenError(msg) from e
+
+    async def get_user_info(self, access_token: str) -> OAuthUserInfo:
+        """Fetch user information from the provider.
+
+        Raises:
+            OAuthUserInfoError: If fetching user info fails.
+        """
+        if not self.config.userinfo_endpoint:
+            msg = "User info endpoint not configured"
+            raise OAuthUserInfoError(msg)
+        data = await self._get_json(self.config.userinfo_endpoint, access_token)
+        return self._parse_user_info(data)
+
+    async def _get_json(
+        self, url: str, access_token: str, headers: dict[str, str] | None = None
+    ) -> typing.Any:
+        """GET a provider API with the access token; OAuthUserInfoError if not 200."""
+        try:
+            response = await self._http().get(
+                url,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/json",
+                    **(headers or {}),
+                },
+            )
+        except _transport_errors() as e:
+            msg = f"User info request failed: {e}"
+            raise OAuthUserInfoError(msg) from e
+        if response.status_code != 200:
+            msg = f"User info request failed: {response.status_code}"
+            raise OAuthUserInfoError(msg)
+        try:
+            return response.json()
+        except ValueError as e:
+            msg = f"User info request failed: bad response ({e})"
+            raise OAuthUserInfoError(msg) from e
 
     def _parse_user_info(self, data: dict[str, typing.Any]) -> OAuthUserInfo:
         """Parse user info from the provider's response.

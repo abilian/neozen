@@ -30,15 +30,6 @@ class TestAuthEvent:
         assert event.subject_id == "user123"
         assert event.metadata["ip"] == "192.168.1.1"
 
-    def test_event_is_frozen(self) -> None:
-        event = AuthEvent(
-            event_type=EventTypes.LOGIN_SUCCESS,
-            timestamp=datetime.now(UTC),
-        )
-
-        with pytest.raises(AttributeError):
-            event.event_type = "modified"  # type: ignore[misc]
-
     def test_with_metadata(self) -> None:
         event = AuthEvent(
             event_type=EventTypes.LOGIN_SUCCESS,

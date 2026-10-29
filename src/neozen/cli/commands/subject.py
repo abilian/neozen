@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import getpass
 import json
 import secrets
@@ -11,7 +10,7 @@ import secrets
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from neozen.cli.database import DatabaseContext, get_database_url
+from neozen.cli.database import in_session
 
 
 async def _create_subject(
@@ -23,27 +22,19 @@ async def _create_subject(
     """Create a new subject in the database."""
     from pwdlib import PasswordHash  # noqa: PLC0415
 
-    from neozen.storage import DoesNotExist  # noqa: PLC0415
     from neozen.storage.sqlalchemy import SubjectRepository  # noqa: PLC0415
 
     storage = SubjectRepository(session=session)
 
     # Check if email already exists
-    try:
-        await storage.get_one_by(email=email.lower())
+    if await storage.exists(email=email.lower()):
         msg = f"Email '{email}' is already registered"
         raise ValueError(msg)
-    except DoesNotExist:
-        pass
 
     # Check if username already exists (if provided)
-    if username:
-        try:
-            await storage.get_one_by(username=username.lower())
-            msg = f"Username '{username}' is already taken"
-            raise ValueError(msg)
-        except DoesNotExist:
-            pass
+    if username and await storage.exists(username=username.lower()):
+        msg = f"Username '{username}' is already taken"
+        raise ValueError(msg)
 
     # Hash password
     hasher = PasswordHash.recommended()
@@ -114,54 +105,48 @@ def create(args: argparse.Namespace) -> int:
         print("Error: Invalid email format.")
         return 1
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            try:
-                result = await _create_subject(session, email, password, username)
-            except ValueError as e:
-                print(f"Error: {e}")
-                return 1
-            print("Subject created successfully!")
-            print(f"  ID:       {result['id']}")
-            print(f"  Email:    {result['email']}")
-            if result["username"]:
-                print(f"  Username: {result['username']}")
-            print(f"  Active:   {result['is_active']}")
-            print(f"  Verified: {result['is_verified']}")
-            return 0
+    async def run(session: AsyncSession) -> int:
+        try:
+            result = await _create_subject(session, email, password, username)
+        except ValueError as e:
+            print(f"Error: {e}")
+            return 1
+        print("Subject created successfully!")
+        print(f"  ID:       {result['id']}")
+        print(f"  Email:    {result['email']}")
+        if result["username"]:
+            print(f"  Username: {result['username']}")
+        print(f"  Active:   {result['is_active']}")
+        print(f"  Verified: {result['is_verified']}")
+        return 0
 
-    return asyncio.run(run())
+    return in_session(run)
 
 
 def list_subjects(args: argparse.Namespace) -> int:
     """List all subjects."""
     output_format = args.format
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            subjects = await _list_subjects(session, output_format)
+    async def run(session: AsyncSession) -> int:
+        subjects = await _list_subjects(session, output_format)
 
-            if output_format == "json":
-                print(json.dumps({"subjects": subjects}, indent=2, default=str))
+        if output_format == "json":
+            print(json.dumps({"subjects": subjects}, indent=2, default=str))
+        else:
+            print("Subjects")
+            print("-" * 80)
+            if not subjects:
+                print("(No subjects found)")
             else:
-                print("Subjects")
+                print(f"{'ID':<30} {'Email':<30} {'Username':<15} {'Active':<8}")
                 print("-" * 80)
-                if not subjects:
-                    print("(No subjects found)")
-                else:
-                    print(f"{'ID':<30} {'Email':<30} {'Username':<15} {'Active':<8}")
-                    print("-" * 80)
-                    for s in subjects:
-                        username = s["username"] or "-"
-                        active = "Yes" if s["is_active"] else "No"
-                        print(
-                            f"{s['id']:<30} {s['email']:<30} {username:<15} {active:<8}"
-                        )
-                print()
-                print(f"Total: {len(subjects)} subject(s)")
+                for s in subjects:
+                    username = s["username"] or "-"
+                    active = "Yes" if s["is_active"] else "No"
+                    print(f"{s['id']:<30} {s['email']:<30} {username:<15} {active:<8}")
+            print()
+            print(f"Total: {len(subjects)} subject(s)")
 
-            return 0
+        return 0
 
-    return asyncio.run(run())
+    return in_session(run)

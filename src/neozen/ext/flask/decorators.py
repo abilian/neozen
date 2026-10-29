@@ -1,213 +1,192 @@
-"""Decorators for NeoZen Flask extension."""
+"""Decorators for NeoZen Flask extension.
+
+Each works on sync and ``async def`` views alike.
+"""
 
 from __future__ import annotations
 
+import inspect
 import typing
+from datetime import UTC, datetime, timedelta
 from functools import wraps
 
-from flask import jsonify
+from flask import abort, g, jsonify
 
+from neozen.core.utils import ensure_utc
 from neozen.web.auth.permissions import check_user_permissions
+from neozen.web.auth.responses import unauthorized_body
 
 from .helpers import current_user
 
 if typing.TYPE_CHECKING:
     from collections.abc import Callable
 
-    F = typing.TypeVar("F", bound=Callable[..., typing.Any])
+    from flask.typing import ResponseReturnValue
+
+    type Refusal = Callable[[], ResponseReturnValue | None]
+
+# How recent a sign-in `fresh_login_required` accepts by default.
+FRESH_LOGIN_MAX_AGE = timedelta(minutes=15)
 
 
-def login_required[F: Callable[..., typing.Any]](
-    func: F | None = None,
+def _guard[V: Callable[..., typing.Any]](view: V, refusal: Refusal) -> V:
+    """Wrap ``view``: answer with ``refusal()`` when it returns a response."""
+    if inspect.iscoroutinefunction(view):
+
+        @wraps(view)
+        async def async_view(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
+            if (response := refusal()) is not None:
+                return response
+            return await view(*args, **kwargs)
+
+        return typing.cast("V", async_view)
+
+    @wraps(view)
+    def sync_view(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
+        if (response := refusal()) is not None:
+            return response
+        return view(*args, **kwargs)
+
+    return typing.cast("V", sync_view)
+
+
+def _signed_in() -> bool:
+    return bool(getattr(current_user, "is_authenticated", False))
+
+
+def _turn_away(*, redirect: bool) -> ResponseReturnValue:
+    """The answer to a visitor who isn't (or no longer) signed in."""
+    if redirect:
+        from .extension import _get_neozen  # noqa: PLC0415  # ken: import cycle
+
+        return _get_neozen().handle_unauthorized()
+    return jsonify(unauthorized_body()), 401
+
+
+def login_required[V: Callable[..., typing.Any]](
+    func: V | None = None,
     *,
     redirect: bool = True,
-) -> F | Callable[[F], F]:
+) -> V | Callable[[V], V]:
     """Decorator to require authentication for a view.
-
-    When applied to a view function, it checks if the current user is
-    authenticated. If not, it either redirects to the login page or
-    returns a 401 response.
 
     Args:
         func: The view function (when used without arguments)
         redirect: If True (default), redirect to login_view.
-                  If False, return 401 JSON response (for APIs).
-
-    Returns:
-        Decorated function or decorator
+                  If False, return a 401 JSON response (for APIs).
 
     Examples:
-        # Basic usage - redirects to login
         @app.route("/dashboard")
         @login_required
         def dashboard():
             return render_template("dashboard.html")
 
-        # For API endpoints - returns 401
         @app.route("/api/me")
         @login_required(redirect=False)
-        def api_me():
+        async def api_me():
             return jsonify({"id": current_user.id})
-
-        # Can also be used with parentheses
-        @app.route("/profile")
-        @login_required()
-        def profile():
-            return render_template("profile.html")
     """
 
-    def decorator(f: F) -> F:
-        @wraps(f)
-        def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
-            if not getattr(current_user, "is_authenticated", False):
-                if redirect:
-                    from .extension import _get_neozen  # noqa: PLC0415
+    def refusal() -> ResponseReturnValue | None:
+        return None if _signed_in() else _turn_away(redirect=redirect)
 
-                    neozen = _get_neozen()
-                    return neozen.handle_unauthorized()
-                return jsonify({"error": "Unauthorized"}), 401
-            return f(*args, **kwargs)
+    def decorator(view: V) -> V:
+        return _guard(view, refusal)
 
-        return decorated_function  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
-
-    if func is not None:
-        # Called without arguments: @login_required
-        return decorator(func)
-
-    # Called with arguments: @login_required() or @login_required(redirect=False)
-    return decorator
+    return decorator(func) if func is not None else decorator
 
 
-def fresh_login_required[F: Callable[..., typing.Any]](
-    func: F | None = None,
+def fresh_login_required[V: Callable[..., typing.Any]](
+    func: V | None = None,
     *,
     redirect: bool = True,
-) -> F | Callable[[F], F]:
-    """Decorator to require a fresh login for sensitive operations.
+    max_age: timedelta = FRESH_LOGIN_MAX_AGE,
+) -> V | Callable[[V], V]:
+    """Decorator to require a recent sign-in, for sensitive operations.
 
-    Similar to login_required, but also checks that the session is "fresh"
-    (i.e., the user recently authenticated, not just resumed a session).
-
-    Note: This is a placeholder for future implementation. Currently
-    behaves the same as login_required.
-
-    Args:
-        func: The view function
-        redirect: If True, redirect to login; if False, return 401
-
-    Returns:
-        Decorated function or decorator
+    Like `login_required`, but the session must have started less than
+    ``max_age`` ago; an older one is sent to sign in again.
 
     Example:
         @app.route("/change-password", methods=["POST"])
         @fresh_login_required
         def change_password():
-            # Only allow if user recently logged in
             ...
     """
-    # TODO: Implement fresh session checking
-    # For now, just use regular login_required
-    return login_required(func, redirect=redirect)  # pyrefly: ignore[bad-return]
+
+    def refusal() -> ResponseReturnValue | None:
+        session = g.get("_neozen_session")
+        fresh = (
+            _signed_in()
+            and session is not None
+            and datetime.now(UTC) - ensure_utc(session.created_at) <= max_age
+        )
+        return None if fresh else _turn_away(redirect=redirect)
+
+    def decorator(view: V) -> V:
+        return _guard(view, refusal)
+
+    return decorator(func) if func is not None else decorator
 
 
-def roles_required(*roles: str) -> Callable[[F], F]:
-    """Decorator to require specific roles.
+def roles_required[V: Callable[..., typing.Any]](*roles: str) -> Callable[[V], V]:
+    """Decorator to require at least one of ``roles``.
 
-    Checks if the current user has at least one of the specified roles.
-    The user object must have a `roles` attribute containing a list of
-    role names.
-
-    Args:
-        *roles: Role names - user must have at least one of these
-
-    Returns:
-        Decorator function
+    The user object must have a `roles` attribute listing role names. A
+    user without them gets the app's 403 (``abort(403)``).
 
     Example:
         @app.route("/admin")
-        @login_required
         @roles_required("admin", "superuser")
         def admin_panel():
             return render_template("admin.html")
     """
 
-    def decorator(f: F) -> F:
-        @wraps(f)
-        def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
-            # Check authentication first
-            if not getattr(current_user, "is_authenticated", False):
-                from .extension import _get_neozen  # noqa: PLC0415
+    def refusal() -> ResponseReturnValue | None:
+        if not _signed_in():
+            return _turn_away(redirect=True)
+        if not any(role in getattr(current_user, "roles", []) for role in roles):
+            abort(403)
+        return None
 
-                neozen = _get_neozen()
-                return neozen.handle_unauthorized()
-
-            # Check roles
-            user_roles = getattr(current_user, "roles", [])
-            if not any(role in user_roles for role in roles):
-                from flask import abort  # noqa: PLC0415
-
-                abort(403)
-
-            return f(*args, **kwargs)
-
-        return decorated_function  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
+    def decorator(view: V) -> V:
+        return _guard(view, refusal)
 
     return decorator
 
 
-def permissions_required(*permissions: str) -> Callable[[F], F]:
-    """Decorator to require specific permissions.
+def permissions_required[V: Callable[..., typing.Any]](
+    *permissions: str,
+) -> Callable[[V], V]:
+    """Decorator to require all of ``permissions``.
 
-    Checks if the current user has all of the specified permissions.
-    The user object must have a `permissions` attribute containing
-    a set/list of permission strings, or a `has_permission` method.
-
-    Permission format: "resource:action" or "resource:action:scope"
-    Examples: "user:read", "post:delete:own", "*:*" (superuser)
-
-    Args:
-        *permissions: Permission strings - user must have ALL of these
-
-    Returns:
-        Decorator function
+    The user object must have a `permissions` attribute or a
+    `has_permission` method. Format: "resource:action" or
+    "resource:action:scope", e.g. "user:read", "*:*". A user without them
+    gets the app's 403 (``abort(403)``).
 
     Example:
-        @app.route("/users")
-        @login_required
-        @permissions_required("user:read")
-        def list_users():
-            return render_template("users.html")
-
         @app.route("/users/<id>", methods=["DELETE"])
-        @login_required
         @permissions_required("user:delete")
         def delete_user(id):
             ...
     """
 
-    def decorator(f: F) -> F:
-        @wraps(f)
-        def decorated_function(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
-            # Check authentication first
-            if not getattr(current_user, "is_authenticated", False):
-                from .extension import _get_neozen  # noqa: PLC0415
+    def refusal() -> ResponseReturnValue | None:
+        if not _signed_in():
+            return _turn_away(redirect=True)
+        if check_user_permissions(current_user, permissions) is not None:
+            abort(403)
+        return None
 
-                neozen = _get_neozen()
-                return neozen.handle_unauthorized()
-
-            if check_user_permissions(current_user, permissions) is not None:
-                from flask import abort  # noqa: PLC0415
-
-                abort(403)
-
-            return f(*args, **kwargs)
-
-        return decorated_function  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
+    def decorator(view: V) -> V:
+        return _guard(view, refusal)
 
     return decorator
 
 
 __all__ = [
+    "FRESH_LOGIN_MAX_AGE",
     "fresh_login_required",
     "login_required",
     "permissions_required",

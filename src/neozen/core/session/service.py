@@ -264,48 +264,15 @@ class SessionService[S: SessionModel]:
         Returns:
             Number of sessions revoked.
 
-        Note:
-            This is a simplified implementation. In production, you would
-            want a bulk update method on the storage backend.
-
         """
         now = datetime.now(UTC)
-        count = 0
-
-        # This is inefficient but works with the simple storage interface;
-        # in production, use a bulk update query.
-        while True:
-            session = await self._next_revokable_session(subject_id, except_token_hash)
-            if session is None:
-                break
+        sessions = await self.storage.get_many_by(
+            subject_id=subject_id, revoked_at=None
+        )
+        revoked = [s for s in sessions if s.token_hash != except_token_hash]
+        for session in revoked:
             await self.storage.update_obj(session, revoked_at=now)
-            count += 1
-
-        return count
-
-    async def _next_revokable_session(
-        self,
-        subject_id: typing.Any,
-        except_token_hash: str | None,
-    ) -> typing.Any:
-        """Return the next active session to revoke, or None if none remain.
-
-        Returns None on ``DoesNotExist`` (no active sessions left) and on
-        the "skip current session" branch (the caller treats both as
-        stop-iteration signals).
-        """
-        try:
-            session = await self.storage.get_one_by(
-                subject_id=subject_id, revoked_at=None
-            )
-        except DoesNotExist:
-            return None
-        if except_token_hash and session.token_hash == except_token_hash:
-            # Skip the current session. The naive storage interface gives
-            # us no way to "get the next" without ordering -- bail to
-            # avoid an infinite loop.
-            return None
-        return session
+        return len(revoked)
 
     async def list_sessions(
         self,

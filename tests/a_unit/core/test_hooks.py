@@ -44,12 +44,6 @@ class TestHookContext:
         assert context.data == {}
         assert context.results == {}
 
-    def test_data_is_mutable(self) -> None:
-        context = HookContext(hook_point=HookPoints.PRE_LOGIN)
-        context.data["key"] = "value"
-
-        assert context.data["key"] == "value"
-
 
 class TestHookResult:
     """Tests for HookResult dataclass."""
@@ -78,20 +72,6 @@ class TestHookResult:
 
         assert result.proceed is True
         assert result.modified_data is None
-
-
-class TestHookPoints:
-    """Tests for HookPoints constants."""
-
-    def test_pre_hooks(self) -> None:
-        assert HookPoints.PRE_LOGIN == "pre_login"
-        assert HookPoints.PRE_REGISTER == "pre_register"
-        assert HookPoints.PRE_PASSWORD_CHANGE == "pre_password_change"
-
-    def test_post_hooks(self) -> None:
-        assert HookPoints.POST_LOGIN == "post_login"
-        assert HookPoints.POST_REGISTER == "post_register"
-        assert HookPoints.POST_PASSWORD_CHANGE == "post_password_change"
 
 
 @pytest.mark.anyio

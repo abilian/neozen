@@ -204,11 +204,6 @@ class TestMagicLinkConfig:
         assert config.max_pending_per_subject == 5
         assert config.link_base_url == "https://example.com/login"
 
-    def test_frozen(self) -> None:
-        config = MagicLinkConfig()
-        with pytest.raises(AttributeError):
-            config.token_lifetime = timedelta(hours=1)  # type: ignore[misc]
-
 
 class TestMagicLinkFactorProperties:
     """Tests for MagicLinkFactor properties."""

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import typing
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, ClassVar
+
+from neozen.core.scim.errors import SCIMValidationError
 
 
 class SchemaUri(StrEnum):
@@ -44,6 +47,36 @@ def _omit_none(d: dict[str, Any]) -> dict[str, Any]:
         else:
             result[k] = v
     return result
+
+
+def _boolean(value: object) -> bool:
+    """A SCIM boolean; some identity providers send "True" or "false"."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.lower() in {"true", "false"}:
+        return value.lower() == "true"
+    msg = f"not a boolean: {value!r}"
+    raise ValueError(msg)
+
+
+def parse_resource[R](from_dict: Callable[[dict[str, Any]], R], payload: object) -> R:
+    """A resource from a request body; anything malformed is a 400.
+
+    Raises:
+        SCIMValidationError: The body isn't an object, misses a required
+            attribute, or has a value of the wrong type.
+    """
+    if not isinstance(payload, dict):
+        msg = "Request body must be a JSON object"
+        raise SCIMValidationError(msg)
+    try:
+        return from_dict(typing.cast("dict[str, Any]", payload))  # a JSON object
+    except KeyError as e:
+        msg = f"Missing required field: {e}"
+        raise SCIMValidationError(msg) from e
+    except (TypeError, AttributeError, ValueError) as e:
+        msg = f"Invalid value: {e}"
+        raise SCIMValidationError(msg) from e
 
 
 @dataclass
@@ -251,7 +284,7 @@ class User(SCIMResource):
             preferred_language=data.get("preferredLanguage"),
             locale=data.get("locale"),
             timezone=data.get("timezone"),
-            active=bool(data.get("active", True)),
+            active=_boolean(data.get("active", True)),
             password=data.get("password"),
             emails=[Email.from_dict(e) for e in data.get("emails", [])],
             phone_numbers=[

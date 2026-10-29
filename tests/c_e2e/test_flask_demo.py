@@ -6,11 +6,12 @@ and protected routes.
 
 from __future__ import annotations
 
-import asyncio
 import sys
+from collections.abc import Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import anyio
 import pytest
 
 # Add project root to path for demos package
@@ -22,9 +23,13 @@ if TYPE_CHECKING:
     from flask.testing import FlaskClient
 
 
-def run_async(coro):
-    """Run async coroutine in sync context."""
-    return asyncio.run(coro)
+def run_async[T](coro: Coroutine[Any, Any, T]) -> T:
+    """Run a coroutine from these synchronous tests."""
+
+    async def wait() -> T:
+        return await coro
+
+    return anyio.run(wait)
 
 
 @pytest.fixture

@@ -121,3 +121,48 @@ def test_revocation_invalid_client_is_401_with_challenge(framework: str) -> None
     response = _post_revoke(framework, StubTokenEndpoint(TokenInvalidClientError()))
     assert response.status_code == 401
     assert response.headers["WWW-Authenticate"].startswith("Basic")
+
+
+def test_litestar_token_endpoint_works_with_csrf_on() -> None:
+    """OAuth clients send no CSRF token."""
+    from litestar.config.csrf import CSRFConfig  # noqa: PLC0415
+
+    token_ep = cast("TokenEndpoint", StubTokenEndpoint())
+    app = Litestar(
+        route_handlers=[litestar_handler(token_ep)],
+        csrf_config=CSRFConfig(secret="0123456789abcdef0123456789abcdef"),
+    )
+    with LitestarClient(app) as client:
+        assert client.post("/token", data={"grant_type": "x"}).status_code == 200
+
+
+class _NeedsLogin:
+    async def handle_authorization_request(self, payload, subject):
+        from neozen.web.oauth import AuthorizationResponse  # noqa: PLC0415
+
+        if subject is None:
+            return AuthorizationResponse(requires_login=True)
+        return AuthorizationResponse(redirect_uri="https://app/cb", code="c")
+
+
+def test_litestar_awaits_an_async_subject_getter() -> None:
+    """A coroutine is truthy: it must not pass for a signed-in subject."""
+    from litestar.middleware.session.server_side import (  # noqa: PLC0415
+        ServerSideSessionConfig,
+    )
+
+    from neozen.ext.litestar.oauth import (  # noqa: PLC0415
+        _create_authorize_handler as litestar_authorize,
+    )
+
+    async def nobody(request: object) -> None:
+        return None
+
+    handler = litestar_authorize(cast("Any", _NeedsLogin()), nobody, "/login", None)
+    app = Litestar(
+        route_handlers=[handler],
+        middleware=[ServerSideSessionConfig().middleware],
+    )
+    with LitestarClient(app) as client:
+        response = client.get("/authorize", follow_redirects=False)
+    assert response.headers["location"] == "/login"

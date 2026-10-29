@@ -13,21 +13,30 @@ from litestar.response import Redirect
 if typing.TYPE_CHECKING:
     from litestar.types import ExceptionHandler
 
+from neozen.web.auth.responses import forbidden_body, unauthorized_body
+
 from .config import NeoZenConfig
-from .guards import AuthenticationRequiredError
+from .guards import AuthenticationRequiredError, PermissionDeniedError
 from .middleware import NeoZenMiddleware
 
 
 def redirect_to_login(
     _: Request, exc: AuthenticationRequiredError
-) -> Response[dict[str, object]] | Redirect:
+) -> Response[dict[str, str]] | Redirect:
     """Send a guard's unauthenticated visitor to the login page.
 
     Guards with ``redirect=False`` (APIs) still get a 401.
     """
     if exc.redirect_to:
         return Redirect(path=exc.redirect_to)
-    return Response({"status_code": 401, "detail": exc.detail}, status_code=401)
+    return Response(unauthorized_body(), status_code=401)
+
+
+def permission_denied(
+    _: Request, exc: PermissionDeniedError
+) -> Response[dict[str, str]]:
+    """A guard's 403, with the body every adapter sends."""
+    return Response(forbidden_body(exc.detail), status_code=403)
 
 
 class NeoZenPlugin(InitPluginProtocol):
@@ -75,11 +84,6 @@ class NeoZenPlugin(InitPluginProtocol):
         # Create middleware factory that includes our config
         middleware_factory = partial(NeoZenMiddleware, config=self.config)
 
-        # Add our middleware to the list
-        if app_config.middleware is None:
-            # pyrefly: ignore [bad-assignment]
-            app_config.middleware = []
-
         app_config.middleware.insert(0, middleware_factory)
 
         # The app's own handler, if it has one, wins.
@@ -87,6 +91,9 @@ class NeoZenPlugin(InitPluginProtocol):
         app_config.exception_handlers.setdefault(
             AuthenticationRequiredError,
             typing.cast("ExceptionHandler", redirect_to_login),
+        )
+        app_config.exception_handlers.setdefault(
+            PermissionDeniedError, typing.cast("ExceptionHandler", permission_denied)
         )
 
         return app_config

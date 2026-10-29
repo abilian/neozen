@@ -54,21 +54,10 @@ class GitHubProvider(OAuthProvider):
 
         GitHub requires a separate API call to get email addresses.
         """
-        if self.http_client is None:
-            msg = "HTTP client is required for user info"
-            raise OAuthUserInfoError(msg)
-
-        try:
-            user_data = await self._fetch_user_data(access_token)
-            primary_email, email_verified = await self._fetch_primary_email(
-                access_token
-            )
-        except OAuthUserInfoError:
-            raise
-        except Exception as e:
-            msg = f"User info request failed: {e}"
-            raise OAuthUserInfoError(msg) from e
-
+        user_data = await self._get_json(
+            "https://api.github.com/user", access_token, self._GH_HEADERS
+        )
+        primary_email, email_verified = await self._fetch_primary_email(access_token)
         return OAuthUserInfo(
             provider_id="github",
             provider_user_id=str(user_data.get("id", "")),
@@ -79,41 +68,24 @@ class GitHubProvider(OAuthProvider):
             raw_data=user_data,
         )
 
-    _GH_HEADERS_TEMPLATE: typing.ClassVar[dict[str, str]] = {
+    _GH_HEADERS: typing.ClassVar[dict[str, str]] = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
-    async def _fetch_user_data(self, access_token: str) -> dict[str, typing.Any]:
-        """GET /user; raises OAuthUserInfoError on non-200."""
-        response = await self.http_client.get(  # type: ignore[union-attr]
-            "https://api.github.com/user",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                **self._GH_HEADERS_TEMPLATE,
-            },
-        )
-        if response.status_code != 200:
-            msg = f"User info request failed: {response.status_code}"
-            raise OAuthUserInfoError(msg)
-        return response.json()
-
     async def _fetch_primary_email(self, access_token: str) -> tuple[str | None, bool]:
-        """GET /user/emails; return (primary_email, email_verified) tuple.
+        """The primary email and whether it is verified, or ``(None, False)``.
 
-        Returns ``(None, False)`` if the call fails or no primary email is
-        flagged -- the caller falls back to ``user_data.get("email")``.
+        The call fails when the token lacks the ``user:email`` scope: the
+        caller then falls back to the profile's public email.
         """
-        email_response = await self.http_client.get(  # type: ignore[union-attr]
-            "https://api.github.com/user/emails",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                **self._GH_HEADERS_TEMPLATE,
-            },
-        )
-        if email_response.status_code != 200:
+        try:
+            emails = await self._get_json(
+                "https://api.github.com/user/emails", access_token, self._GH_HEADERS
+            )
+        except OAuthUserInfoError:
             return None, False
-        for email_data in email_response.json():
+        for email_data in emails:
             if email_data.get("primary"):
                 return email_data.get("email"), email_data.get("verified", False)
         return None, False

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from neozen.core.scim.errors import SCIMValidationError
-from neozen.core.scim.models import Group
+from neozen.core.scim.models import Group, parse_resource
 
 if TYPE_CHECKING:
     from neozen.core.scim.service import SCIMGroupService
@@ -42,26 +41,12 @@ class GroupsEndpoint:
         return group.to_dict()
 
     async def create(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(payload, dict):
-            msg = "Request body must be a JSON object"
-            raise SCIMValidationError(msg)
-        try:
-            group = Group.from_dict(payload)
-        except KeyError as e:
-            msg = f"Missing required field: {e}"
-            raise SCIMValidationError(msg) from e
+        group = parse_resource(Group.from_dict, payload)
         created = await self.service.create_group(group)
         return created.to_dict()
 
     async def replace(self, group_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(payload, dict):
-            msg = "Request body must be a JSON object"
-            raise SCIMValidationError(msg)
-        try:
-            group = Group.from_dict(payload)
-        except KeyError as e:
-            msg = f"Missing required field: {e}"
-            raise SCIMValidationError(msg) from e
+        group = parse_resource(Group.from_dict, payload)
         updated = await self.service.update_group(group_id, group)
         return updated.to_dict()
 

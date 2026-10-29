@@ -7,11 +7,10 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Callable, Coroutine
-from functools import wraps
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Concatenate, ParamSpec, TypeVar
+from typing import Any
 
 from sqlalchemy import Result, select
 from sqlalchemy.ext.asyncio import (
@@ -25,9 +24,6 @@ from neozen.storage.sqlalchemy import Base
 
 # Default database location (relative to current working directory)
 DEFAULT_DB_PATH = Path("data") / "neozen.db"
-
-P = ParamSpec("P")
-R = TypeVar("R")
 
 
 def get_database_url(db_path: Path | str | None = None) -> str:
@@ -129,24 +125,15 @@ class DatabaseContext:
             await self.engine.dispose()
 
 
-def with_database[**P, R](
-    func: Callable[Concatenate[AsyncSession, P], Coroutine[Any, Any, R]],
-) -> Callable[P, R]:
-    """Decorator to run async function with database context.
+def in_session[R](work: Callable[[AsyncSession], Awaitable[R]]) -> R:
+    """Run ``work`` in a database session: commit if it returns, roll back
+    if it raises (the error then reaches `main`, which reports it)."""
 
-    Wraps an async function to run in an event loop with database session.
-    The wrapped function should accept 'session' as its first argument.
-    """
+    async def run() -> R:
+        async with DatabaseContext() as session:
+            return await work(session)
 
-    @wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        async def run() -> R:
-            async with DatabaseContext() as session:
-                return await func(session, *args, **kwargs)
-
-        return asyncio.run(run())
-
-    return wrapper  # type: ignore[return-value]  # @wraps changes inferred type
+    return asyncio.run(run())
 
 
 async def list_all(session: AsyncSession, model: type) -> list:
@@ -168,7 +155,7 @@ __all__ = [
     "DatabaseContext",
     "get_database_url",
     "get_session",
+    "in_session",
     "init_database",
     "list_all",
-    "with_database",
 ]

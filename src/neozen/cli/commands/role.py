@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from neozen.cli.database import DatabaseContext, get_database_url
+from neozen.cli.database import in_session
 
 if TYPE_CHECKING:
     from neozen.core.authz.services import RoleService
@@ -17,17 +16,9 @@ if TYPE_CHECKING:
 
 def _role_service(session: AsyncSession) -> RoleService:
     """A role service on the CLI's database session."""
-    from neozen.core.authz.services import RoleService  # noqa: PLC0415
-    from neozen.storage.sqlalchemy.repositories import (  # noqa: PLC0415
-        RoleAssignmentRepository,
-        RoleRepository,
-    )
+    from neozen.storage.sqlalchemy import role_service  # noqa: PLC0415
 
-    # RoleService isn't generic over its repositories yet (planned for 0.10).
-    return RoleService(
-        role_repository=RoleRepository(session=session),  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-        role_assignment_repository=RoleAssignmentRepository(session=session),  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-    )
+    return role_service(session)
 
 
 async def _create_role(
@@ -168,77 +159,65 @@ def create(args: argparse.Namespace) -> int:
         print("Error: At least one permission is required.")
         return 1
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            try:
-                result = await _create_role(session, name, permissions, description)
-            except ValueError as e:
-                print(f"Error: {e}")
-                return 1
-            print("Role created successfully!")
-            print(f"  ID:          {result['id']}")
-            print(f"  Name:        {result['name']}")
-            print(f"  Description: {result['description'] or '(none)'}")
-            print(f"  Permissions: {', '.join(result['permissions'])}")
-            return 0
+    async def run(session: AsyncSession) -> int:
+        try:
+            result = await _create_role(session, name, permissions, description)
+        except ValueError as e:
+            print(f"Error: {e}")
+            return 1
+        print("Role created successfully!")
+        print(f"  ID:          {result['id']}")
+        print(f"  Name:        {result['name']}")
+        print(f"  Description: {result['description'] or '(none)'}")
+        print(f"  Permissions: {', '.join(result['permissions'])}")
+        return 0
 
-    return asyncio.run(run())
+    return in_session(run)
 
 
 def list_roles(args: argparse.Namespace) -> int:
     """List all roles."""
     output_format = args.format
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            roles = await _list_roles(session)
+    async def run(session: AsyncSession) -> int:
+        roles = await _list_roles(session)
 
-            if output_format == "json":
-                print(json.dumps({"roles": roles}, indent=2, default=str))
+        if output_format == "json":
+            print(json.dumps({"roles": roles}, indent=2, default=str))
+        else:
+            print("Roles")
+            print("-" * 80)
+            if not roles:
+                print("(No roles found)")
             else:
-                print("Roles")
+                print(f"{'Name':<20} {'Description':<30} {'System':<8} {'Permissions'}")
                 print("-" * 80)
-                if not roles:
-                    print("(No roles found)")
-                else:
+                for r in roles:
+                    system = "Yes" if r["is_system"] else "No"
+                    perms = ", ".join(r["permissions"][:3])
+                    if len(r["permissions"]) > 3:
+                        perms += f" (+{len(r['permissions']) - 3} more)"
                     print(
-                        f"{'Name':<20} {'Description':<30} {'System':<8} {'Permissions'}"
+                        f"{r['name']:<20} {(r['description'] or '-')[:30]:<30} {system:<8} {perms}"
                     )
-                    print("-" * 80)
-                    for r in roles:
-                        system = "Yes" if r["is_system"] else "No"
-                        perms = ", ".join(r["permissions"][:3])
-                        if len(r["permissions"]) > 3:
-                            perms += f" (+{len(r['permissions']) - 3} more)"
-                        print(
-                            f"{r['name']:<20} {(r['description'] or '-')[:30]:<30} {system:<8} {perms}"
-                        )
-                print()
-                print(f"Total: {len(roles)} role(s)")
+            print()
+            print(f"Total: {len(roles)} role(s)")
 
-            return 0
+        return 0
 
-    return asyncio.run(run())
+    return in_session(run)
 
 
 def delete(args: argparse.Namespace) -> int:
     """Delete a role."""
     name = args.name
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            try:
-                await _delete_role(session, name)
-                print(f"Role '{name}' deleted successfully.")
-                return 0
-            except Exception as e:
-                print(f"Error: {e}")
-                return 1
+    async def run(session: AsyncSession) -> int:
+        await _delete_role(session, name)
+        print(f"Role '{name}' deleted successfully.")
+        return 0
 
-    return asyncio.run(run())
+    return in_session(run)
 
 
 def assign(args: argparse.Namespace) -> int:
@@ -248,25 +227,19 @@ def assign(args: argparse.Namespace) -> int:
     scope_type = args.scope_type
     scope_id = args.scope_id
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            try:
-                result = await _assign_role(
-                    session, subject_id, role_name, scope_type, scope_id
-                )
-            except Exception as e:
-                print(f"Error: {e}")
-                return 1
-            print("Role assigned successfully!")
-            print(f"  Subject: {result['subject_id']}")
-            print(f"  Role:    {result['role_id']}")
-            print(f"  Scope:   {result['scope_type']}")
-            if result["scope_id"]:
-                print(f"  Scope ID: {result['scope_id']}")
-            return 0
+    async def run(session: AsyncSession) -> int:
+        result = await _assign_role(
+            session, subject_id, role_name, scope_type, scope_id
+        )
+        print("Role assigned successfully!")
+        print(f"  Subject: {result['subject_id']}")
+        print(f"  Role:    {result['role_id']}")
+        print(f"  Scope:   {result['scope_type']}")
+        if result["scope_id"]:
+            print(f"  Scope ID: {result['scope_id']}")
+        return 0
 
-    return asyncio.run(run())
+    return in_session(run)
 
 
 def revoke(args: argparse.Namespace) -> int:
@@ -276,18 +249,12 @@ def revoke(args: argparse.Namespace) -> int:
     scope_type = args.scope_type
     scope_id = args.scope_id
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            try:
-                await _revoke_role(session, subject_id, role_name, scope_type, scope_id)
-                print(f"Role '{role_name}' revoked from subject '{subject_id}'.")
-                return 0
-            except Exception as e:
-                print(f"Error: {e}")
-                return 1
+    async def run(session: AsyncSession) -> int:
+        await _revoke_role(session, subject_id, role_name, scope_type, scope_id)
+        print(f"Role '{role_name}' revoked from subject '{subject_id}'.")
+        return 0
 
-    return asyncio.run(run())
+    return in_session(run)
 
 
 def show_subject(args: argparse.Namespace) -> int:
@@ -295,45 +262,37 @@ def show_subject(args: argparse.Namespace) -> int:
     subject_id = args.subject_id
     output_format = args.format
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            roles = await _list_subject_roles(session, subject_id)
+    async def run(session: AsyncSession) -> int:
+        roles = await _list_subject_roles(session, subject_id)
 
-            if output_format == "json":
-                print(json.dumps({"subject_id": subject_id, "roles": roles}, indent=2))
+        if output_format == "json":
+            print(json.dumps({"subject_id": subject_id, "roles": roles}, indent=2))
+        else:
+            print(f"Roles for subject: {subject_id}")
+            print("-" * 60)
+            if not roles:
+                print("(No roles assigned)")
             else:
-                print(f"Roles for subject: {subject_id}")
-                print("-" * 60)
-                if not roles:
-                    print("(No roles assigned)")
-                else:
-                    for r in roles:
-                        system = " (system)" if r["is_system"] else ""
-                        print(f"  - {r['name']}{system}")
-                        print(f"    Permissions: {', '.join(r['permissions'])}")
-                print()
-                print(f"Total: {len(roles)} role(s)")
+                for r in roles:
+                    system = " (system)" if r["is_system"] else ""
+                    print(f"  - {r['name']}{system}")
+                    print(f"    Permissions: {', '.join(r['permissions'])}")
+            print()
+            print(f"Total: {len(roles)} role(s)")
 
-            return 0
+        return 0
 
-    return asyncio.run(run())
+    return in_session(run)
 
 
 def init(args: argparse.Namespace) -> int:
     """Initialize built-in roles."""
 
-    async def run() -> int:
-        db_url = get_database_url()
-        async with DatabaseContext(db_url) as session:
-            try:
-                roles = await _init_builtin_roles(session)
-                print("Built-in roles initialized successfully!")
-                for name in roles:
-                    print(f"  - {name}")
-                return 0
-            except Exception as e:
-                print(f"Error: {e}")
-                return 1
+    async def run(session: AsyncSession) -> int:
+        roles = await _init_builtin_roles(session)
+        print("Built-in roles initialized successfully!")
+        for name in roles:
+            print(f"  - {name}")
+        return 0
 
-    return asyncio.run(run())
+    return in_session(run)
