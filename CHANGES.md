@@ -4,7 +4,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 Versions 0.1.0 to 0.8.0 were never tagged or published. They are reconstructed from the commit history, one per development milestone.
 
-## [Unreleased]
+## [0.9.1] - 2026-10-29
 
 Maintenance release: fixes, hardening, performance and cleanup. It also breaks a few behaviors, each for a security or correctness fix (see "Changed" and "Removed").
 
