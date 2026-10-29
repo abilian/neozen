@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import gc
 import threading
 
 from flask import Flask, jsonify
 
+from neozen.core.session.service import SessionNotFoundError
 from neozen.ext.flask import (
     AnonymousUser,
     NeoZen,
@@ -113,33 +115,27 @@ class TestNeoZenExtension:
         assert neozen.login_view == "auth.login"
 
     def test_subject_loader_decorator(self):
-        app = Flask(__name__)
-        app.secret_key = "test-secret"
-        neozen = NeoZen(app)
+        app = _app()
+        neozen = NeoZen(app, session_service=_OneSession())
 
         @neozen.subject_loader
         def load_user(user_id: str):
-            return {"id": user_id}
+            return _User(user_id)
 
-        assert neozen._subject_loader is not None
-        assert neozen._subject_loader("123") == {"id": "123"}
+        assert _current_user_id(app, neozen) == "123"
 
     def test_subject_loader_before_init(self):
         """subject_loader can be called before init_app."""
-        neozen = NeoZen()
+        neozen = NeoZen(session_service=_OneSession())
 
         @neozen.subject_loader
         def load_user(user_id: str):
-            return {"id": user_id}
+            return _User(user_id)
 
-        assert neozen._subject_loader is not None
-
-        # Now init the app
-        app = Flask(__name__)
-        app.secret_key = "test-secret"
+        app = _app()
         neozen.init_app(app)
 
-        assert neozen._subject_loader("123") == {"id": "123"}
+        assert _current_user_id(app, neozen) == "123"
 
     def test_unauthorized_handler_decorator(self):
         app = Flask(__name__)
@@ -148,9 +144,52 @@ class TestNeoZenExtension:
 
         @neozen.unauthorized_handler
         def handle_unauth():
-            return jsonify({"error": "Unauthorized"}), 401
+            return jsonify({"error": "Go away"}), 418
 
-        assert neozen._unauthorized_callback is not None
+        @app.route("/protected")
+        @login_required
+        def protected():
+            return "secret"
+
+        response = app.test_client().get("/protected")
+
+        assert response.status_code == 418
+
+
+@dataclasses.dataclass(frozen=True)
+class _User:
+    id: str
+    is_authenticated: bool = True
+
+
+@dataclasses.dataclass(frozen=True)
+class _Session:
+    subject_id: str
+
+
+class _OneSession:
+    """A session service that knows one token, for subject "123"."""
+
+    async def validate_session(self, token: str) -> _Session:
+        if token != "the-token":
+            raise SessionNotFoundError
+        return _Session("123")
+
+
+def _app() -> Flask:
+    app = Flask(__name__)
+    app.secret_key = "test-secret"
+    return app
+
+
+def _current_user_id(app: Flask, neozen: NeoZen) -> str:
+    @app.route("/me")
+    def me():
+        return current_user.id
+
+    client = app.test_client()
+    client.set_cookie(neozen.cookie_name, "the-token")
+    return client.get("/me").text
 
 
 class TestLoginRequired:

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import secrets
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -79,9 +79,11 @@ def social_account_repo(session: AsyncSession) -> SocialAccountRepository:
 
 
 @pytest.fixture
-def mock_http_client():
-    """Create a mock HTTP client."""
-    return AsyncMock()
+def mock_http_client() -> httpx.AsyncClient:
+    """An HTTP client these tests must not use: every request fails."""
+    return httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(500))
+    )
 
 
 @pytest.fixture

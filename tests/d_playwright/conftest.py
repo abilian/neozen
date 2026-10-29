@@ -9,7 +9,6 @@ Provides fixtures for:
 from __future__ import annotations
 
 import os
-import shutil
 import signal
 import socket
 import subprocess  # noqa: S404
@@ -125,46 +124,44 @@ def flask_port() -> int:
     return find_free_port()
 
 
+def demo_server(
+    name: str,
+    args: list[str],
+    port: int,
+    tmp_path_factory: pytest.TempPathFactory,
+    **env: str,
+) -> Generator[str, None, None]:
+    """Run a demo on a fresh database of its own; yield its base URL."""
+    test_dir = tmp_path_factory.mktemp(f"{name.lower()}_data")
+    db_path = test_dir / "neozen.db"
+    init_test_database_sync(db_path)
+    yield from run_server(
+        name,
+        args,
+        port,
+        {
+            **os.environ,
+            "NEOZEN_DEMO_DB": str(db_path),
+            "NEOZEN_DEMO_TEST_API": "1",  # /api/test/* endpoints
+            **env,
+        },
+        test_dir,
+    )
+
+
 @pytest.fixture(scope="session")
 def flask_server(
     flask_port: int,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Generator[str, None, None]:
-    """Start Flask demo server for the test session.
-
-    Yields the base URL of the server.
-    """
-    # Create test database directory
-    test_dir = tmp_path_factory.mktemp("flask_data")
-    db_path = test_dir / "neozen.db"
-
-    # Initialize database
-    init_test_database_sync(db_path)
-
-    # Set environment for Flask to use test database
-    env = os.environ.copy()
-    env["NEOZEN_DEMO_TEST_API"] = "1"  # /api/test/* endpoints
-    env["FLASK_APP"] = "demos.flask.app:app"
-    env["FLASK_DEBUG"] = "0"
-    env["NEOZEN_TEST_DB_PATH"] = str(db_path)
-
-    # Patch the demo app's data directory via environment
-    # The demo app checks for this env var in tests
-    demo_data_dir = Path(PROJECT_ROOT) / "demos" / "flask" / "data"
-
-    # Create a symlink or copy the database to the expected location
-    demo_data_dir.mkdir(exist_ok=True)
-    demo_db_path = demo_data_dir / "neozen.db"
-    if demo_db_path.exists():
-        demo_db_path.unlink()
-    shutil.copy(db_path, demo_db_path)
-
-    yield from run_server(
+    """Start the Flask demo for the test session; yield its base URL."""
+    yield from demo_server(
         "Flask",
         ["flask", "run", "--host=127.0.0.1", f"--port={flask_port}"],
         flask_port,
-        env,
-        test_dir,
+        tmp_path_factory,
+        FLASK_APP="demos.flask.app:app",
+        FLASK_DEBUG="0",
     )
 
 
@@ -184,29 +181,8 @@ def starlette_server(
     starlette_port: int,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Generator[str, None, None]:
-    """Start Starlette demo server for the test session.
-
-    Yields the base URL of the server.
-    """
-    # Create test database directory
-    test_dir = tmp_path_factory.mktemp("starlette_data")
-    db_path = test_dir / "neozen.db"
-
-    # Initialize database
-    init_test_database_sync(db_path)
-
-    # Copy database to demo's data directory
-    demo_data_dir = Path(PROJECT_ROOT) / "demos" / "starlette" / "data"
-    demo_data_dir.mkdir(exist_ok=True)
-    demo_db_path = demo_data_dir / "neozen.db"
-    if demo_db_path.exists():
-        demo_db_path.unlink()
-    shutil.copy(db_path, demo_db_path)
-
-    env = os.environ.copy()
-    env["NEOZEN_DEMO_TEST_API"] = "1"  # /api/test/* endpoints
-
-    yield from run_server(
+    """Start the Starlette demo for the test session; yield its base URL."""
+    yield from demo_server(
         "Starlette",
         [
             "uvicorn",
@@ -215,8 +191,7 @@ def starlette_server(
             f"--port={starlette_port}",
         ],
         starlette_port,
-        env,
-        test_dir,
+        tmp_path_factory,
     )
 
 
@@ -236,29 +211,8 @@ def litestar_server(
     litestar_port: int,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Generator[str, None, None]:
-    """Start Litestar demo server for the test session.
-
-    Yields the base URL of the server.
-    """
-    # Create test database directory
-    test_dir = tmp_path_factory.mktemp("litestar_data")
-    db_path = test_dir / "neozen.db"
-
-    # Initialize database
-    init_test_database_sync(db_path)
-
-    # Copy database to demo's data directory
-    demo_data_dir = Path(PROJECT_ROOT) / "demos" / "litestar" / "data"
-    demo_data_dir.mkdir(exist_ok=True)
-    demo_db_path = demo_data_dir / "neozen.db"
-    if demo_db_path.exists():
-        demo_db_path.unlink()
-    shutil.copy(db_path, demo_db_path)
-
-    env = os.environ.copy()
-    env["NEOZEN_DEMO_TEST_API"] = "1"  # /api/test/* endpoints
-
-    yield from run_server(
+    """Start the Litestar demo for the test session; yield its base URL."""
+    yield from demo_server(
         "Litestar",
         [
             "uvicorn",
@@ -267,8 +221,7 @@ def litestar_server(
             f"--port={litestar_port}",
         ],
         litestar_port,
-        env,
-        test_dir,
+        tmp_path_factory,
     )
 
 

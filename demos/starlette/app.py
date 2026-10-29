@@ -8,6 +8,7 @@ Run with: uvicorn demos.starlette.app:app --reload --port 8001
 
 from __future__ import annotations
 
+import os
 import secrets
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -66,7 +67,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 SECRET_KEY = "demo-secret-key-change-in-production"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 DATA_DIR = Path(__file__).parent / "data"
-DB_PATH = DATA_DIR / "neozen.db"
+# The browser tests point NEOZEN_DEMO_DB at a database of their own.
+DB_PATH = Path(os.environ.get("NEOZEN_DEMO_DB", DATA_DIR / "neozen.db"))
 
 # Ensure data directory exists
 DATA_DIR.mkdir(exist_ok=True)

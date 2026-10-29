@@ -10,10 +10,11 @@ Covers:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from neozen.core.email.base import EmailMessage
+from neozen.core.email.console import ConsoleEmailSender
 from neozen.core.email.notifications import NotificationService
 from neozen.core.security.lockout import LockoutConfig, LockoutManager
 from neozen.core.security.lockout_notifier import LockoutEmailNotifier
@@ -163,87 +164,69 @@ class TestLockoutManagerNotifier:
 # =============================================================================
 
 
-@pytest.fixture
-def mock_notifications() -> NotificationService:
-    """A NotificationService with the lockout-send method mocked."""
-    notif = MagicMock(spec=NotificationService)
-    notif.send_lockout_email = AsyncMock(return_value=True)
-    return notif
+class _FailingSender:
+    """An email sender whose server is down."""
+
+    async def send(self, message: EmailMessage) -> None:
+        msg = "SMTP down"
+        raise RuntimeError(msg)
+
+
+LOCKED_UNTIL = datetime(2026, 4, 11, 12, 0, tzinfo=UTC)
+
+
+async def _email_of(sid: str) -> str | None:
+    return f"{sid}@example.com"
 
 
 @pytest.mark.anyio
 class TestLockoutEmailNotifier:
-    async def test_resolves_email_and_sends(
-        self, mock_notifications: NotificationService
-    ) -> None:
-        async def resolve(sid: str) -> str | None:
-            return f"{sid}@example.com"
+    async def test_resolves_email_and_sends(self) -> None:
+        sender = ConsoleEmailSender()
+        notifier = LockoutEmailNotifier(NotificationService(sender=sender), _email_of)
 
-        notifier = LockoutEmailNotifier(mock_notifications, resolve)
         await notifier.on_lockout(
-            "alice",
-            locked_until=datetime(2026, 4, 11, 12, 0, tzinfo=UTC),
-            failed_attempts=5,
-            ip_address="10.0.0.1",
+            "alice", locked_until=LOCKED_UNTIL, failed_attempts=5, ip_address="10.0.0.1"
         )
 
-        mock_notifications.send_lockout_email.assert_awaited_once()
-        kwargs = mock_notifications.send_lockout_email.call_args.kwargs
-        assert kwargs["email"] == "alice@example.com"
-        assert kwargs["failed_attempts"] == 5
-        assert kwargs["ip_address"] == "10.0.0.1"
+        [message] = sender.sent_messages
+        assert message.to == "alice@example.com"
+        assert "10.0.0.1" in message.body_text
 
-    async def test_skips_when_email_is_none(
-        self, mock_notifications: NotificationService
-    ) -> None:
-        async def resolve(sid: str) -> str | None:
+    async def test_skips_when_email_is_none(self) -> None:
+        async def no_email(sid: str) -> str | None:
             return None
 
-        notifier = LockoutEmailNotifier(mock_notifications, resolve)
+        sender = ConsoleEmailSender()
+        notifier = LockoutEmailNotifier(NotificationService(sender=sender), no_email)
+
         await notifier.on_lockout(
-            "ldap-only-subject",
-            locked_until=datetime(2026, 4, 11, 12, 0, tzinfo=UTC),
-            failed_attempts=5,
+            "ldap-only-subject", locked_until=LOCKED_UNTIL, failed_attempts=5
         )
 
-        mock_notifications.send_lockout_email.assert_not_called()
+        assert sender.sent_messages == []
 
-    async def test_swallows_resolve_email_errors(
-        self, mock_notifications: NotificationService
-    ) -> None:
+    async def test_swallows_resolve_email_errors(self) -> None:
         async def broken_resolve(sid: str) -> str | None:
             msg = "DB down"
             raise RuntimeError(msg)
 
-        notifier = LockoutEmailNotifier(mock_notifications, broken_resolve)
+        sender = ConsoleEmailSender()
+        notifier = LockoutEmailNotifier(
+            NotificationService(sender=sender), broken_resolve
+        )
+
+        await notifier.on_lockout("alice", locked_until=LOCKED_UNTIL, failed_attempts=5)
+
+        assert sender.sent_messages == []
+
+    async def test_swallows_send_email_errors(self) -> None:
+        notifier = LockoutEmailNotifier(
+            NotificationService(sender=_FailingSender()), _email_of
+        )
 
         # Should not raise
-        await notifier.on_lockout(
-            "alice",
-            locked_until=datetime(2026, 4, 11, 12, 0, tzinfo=UTC),
-            failed_attempts=5,
-        )
-        mock_notifications.send_lockout_email.assert_not_called()
-
-    async def test_swallows_send_email_errors(
-        self, mock_notifications: NotificationService
-    ) -> None:
-        mock_notifications.send_lockout_email = AsyncMock(
-            side_effect=RuntimeError("SMTP down")
-        )
-
-        async def resolve(sid: str) -> str | None:
-            return f"{sid}@example.com"
-
-        notifier = LockoutEmailNotifier(mock_notifications, resolve)
-
-        # Should not raise
-        await notifier.on_lockout(
-            "alice",
-            locked_until=datetime(2026, 4, 11, 12, 0, tzinfo=UTC),
-            failed_attempts=5,
-        )
-        mock_notifications.send_lockout_email.assert_awaited_once()
+        await notifier.on_lockout("alice", locked_until=LOCKED_UNTIL, failed_attempts=5)
 
 
 # =============================================================================
@@ -256,8 +239,6 @@ class TestLockoutEndToEndIntegration:
     async def test_lockout_triggers_email_via_notification_service(
         self,
     ) -> None:
-        from neozen.core.email.console import ConsoleEmailSender  # noqa: PLC0415
-
         sender = ConsoleEmailSender()
         notifications = NotificationService(sender=sender, app_name="TestApp")
 
