@@ -88,7 +88,7 @@ class OIDCProviderMetadata:
     )
 
     code_challenge_methods_supported: list[str] = field(
-        default_factory=lambda: ["S256"]
+        default_factory=lambda: ["S256", "plain"]
     )
 
     # OIDC Core 1.0 Section 5.5 (claims parameter)

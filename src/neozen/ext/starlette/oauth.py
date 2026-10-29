@@ -20,6 +20,7 @@ Example:
 
 from __future__ import annotations
 
+import dataclasses
 import typing
 
 from starlette.datastructures import ImmutableMultiDict
@@ -70,6 +71,13 @@ def _error_response(
     )
 
 
+def _token_error_response(e: TokenError) -> Response:
+    """An error from the token, introspection or revocation endpoint."""
+    error = _error_response(e.error, e.error_description, token_error_status(e.error))
+    error.headers.update(token_error_headers(e.error))
+    return error
+
+
 def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
     """Create the token endpoint handler."""
 
@@ -82,11 +90,7 @@ def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
                 dict(form), client_id=client_id, client_secret=client_secret
             )
         except TokenError as e:
-            error = _error_response(
-                e.error, e.error_description, token_error_status(e.error)
-            )
-            error.headers.update(token_error_headers(e.error))
-            return error
+            return _token_error_response(e)
         return JSONResponse(response.to_dict(), headers=NO_STORE_HEADERS)
 
     return token_handler
@@ -107,7 +111,7 @@ def _create_introspect_handler(
             )
             return JSONResponse(response.to_dict())
         except TokenError as e:
-            return _error_response(e.error, e.error_description, 401)
+            return _token_error_response(e)
 
     return introspect_handler
 
@@ -125,7 +129,7 @@ def _create_revoke_handler(revocation_ep: RevocationEndpoint) -> typing.Callable
             )
             return Response(status_code=200)
         except TokenError as e:
-            return _error_response(e.error, e.error_description, 401)
+            return _token_error_response(e)
 
     return revoke_handler
 
@@ -150,13 +154,16 @@ def _create_authorize_handler(
             request.session["oauth_params"] = payload
             return RedirectResponse(login_url, status_code=302)
 
-        if response.requires_consent:
+        if response.requires_consent and response.consent_data:
             if consent_template_func:
                 return consent_template_func(request, response.consent_data)
-            return JSONResponse({
-                "error": "consent_required",
-                "consent_data": response.consent_data,
-            })
+            return JSONResponse(
+                {
+                    "error": "consent_required",
+                    "consent_data": dataclasses.asdict(response.consent_data),
+                },
+                status_code=403,
+            )
 
         if response.error:
             redirect_url = response.get_redirect_url()

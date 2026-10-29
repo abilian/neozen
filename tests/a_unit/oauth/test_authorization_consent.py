@@ -211,6 +211,49 @@ class TestRequirePKCE:
 
 
 @pytest.mark.anyio
+class TestExistingGrant:
+    """A grant skips consent only for the scopes it covers."""
+
+    async def _authorize(
+        self, endpoint: AuthorizationEndpoint, scope: str
+    ) -> AuthorizationResponse:
+        query = {k: v for k, v in _consent(scope=scope).items() if k != "approved"}
+        return await endpoint.handle_authorization_request(
+            {"response_type": "code", **query}, User()
+        )
+
+    async def test_covered_scope_skips_consent(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        endpoint = _endpoint(Client("app"), codes)
+        await _submit(endpoint, _consent(scope="openid profile"), User())
+
+        response = await self._authorize(endpoint, "openid")
+
+        assert response.code
+
+    async def test_wider_scope_needs_consent_again(
+        self, codes: MockStorage[AuthCode]
+    ) -> None:
+        endpoint = _endpoint(Client("app"), codes)
+        await _submit(endpoint, _consent(scope="openid"), User())
+
+        response = await self._authorize(endpoint, "openid profile")
+
+        assert response.requires_consent
+        assert response.code is None
+
+    async def test_consent_widens_the_grant(self, codes: MockStorage[AuthCode]) -> None:
+        endpoint = _endpoint(Client("app"), codes)
+        await _submit(endpoint, _consent(scope="openid"), User())
+        await _submit(endpoint, _consent(scope="profile"), User())
+
+        response = await self._authorize(endpoint, "openid profile")
+
+        assert response.code
+
+
+@pytest.mark.anyio
 async def test_defaulted_redirect_uri_is_not_recorded(
     codes: MockStorage[AuthCode],
 ) -> None:
@@ -221,6 +264,30 @@ async def test_defaulted_redirect_uri_is_not_recorded(
     assert response.redirect_uri == REGISTERED_URI
     [code] = await codes.get_many_by()
     assert code.redirect_uri is None
+
+
+@pytest.mark.anyio
+async def test_redirect_uri_is_required_with_several_registered(
+    codes: MockStorage[AuthCode],
+) -> None:
+    client = Client(
+        "app", redirect_uris=json.dumps([REGISTERED_URI, "https://app.example.com/b"])
+    )
+    payload = _consent()
+    del payload["redirect_uri"]
+    response = await _submit(_endpoint(client, codes), payload, User())
+    assert response.error == "invalid_request"
+    assert response.redirect_uri is None
+
+
+def test_redirect_keeps_the_registered_query_string() -> None:
+    response = AuthorizationResponse(
+        redirect_uri="https://app.example.com/cb?tenant=a", code="c", state="s"
+    )
+    assert (
+        response.get_redirect_url()
+        == "https://app.example.com/cb?tenant=a&code=c&state=s"
+    )
 
 
 @pytest.mark.anyio

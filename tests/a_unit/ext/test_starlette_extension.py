@@ -218,6 +218,12 @@ class TestLoginRequired:
         assert response.status_code == 303
         assert "/login" in response.headers["location"]
 
+    def test_next_url_is_encoded(self, client):
+        response = client.get("/protected-redirect?a=1&b=2", follow_redirects=False)
+        assert response.headers["location"] == (
+            "/login?next=http%3A%2F%2Ftestserver%2Fprotected-redirect%3Fa%3D1%26b%3D2"
+        )
+
     def test_authenticated_access(self, client, session_service, users_db):
         user = users_db["user_1"]
         # Create session directly

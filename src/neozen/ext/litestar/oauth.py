@@ -70,6 +70,13 @@ def _error_response(error: str, description: str | None, status_code: int) -> Re
     )
 
 
+def _token_error_response(e: TokenError) -> Response:
+    """An error from the token, introspection or revocation endpoint."""
+    error = _error_response(e.error, e.error_description, token_error_status(e.error))
+    error.headers.update(token_error_headers(e.error))
+    return error
+
+
 def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
     """Create the token endpoint handler."""
 
@@ -83,11 +90,7 @@ def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
                 dict(form), client_id=client_id, client_secret=client_secret
             )
         except TokenError as e:
-            error = _error_response(
-                e.error, e.error_description, token_error_status(e.error)
-            )
-            error.headers.update(token_error_headers(e.error))
-            return error
+            return _token_error_response(e)
         success = _json_response(response.to_dict())
         success.headers.update(NO_STORE_HEADERS)
         return success
@@ -111,7 +114,7 @@ def _create_introspect_handler(
             )
             return _json_response(response.to_dict())
         except TokenError as e:
-            return _error_response(e.error, e.error_description, 401)
+            return _token_error_response(e)
 
     return introspect_handler
 
@@ -130,7 +133,7 @@ def _create_revoke_handler(revocation_ep: RevocationEndpoint) -> typing.Callable
             )
             return Response(content=None, status_code=200)
         except TokenError as e:
-            return _error_response(e.error, e.error_description, 401)
+            return _token_error_response(e)
 
     return revoke_handler
 
@@ -159,10 +162,13 @@ def _create_authorize_handler(
         if response.requires_consent:
             if consent_template_func:
                 return consent_template_func(request, response.consent_data)
-            return _json_response({
-                "error": "consent_required",
-                "consent_data": response.consent_data,
-            })
+            return _json_response(
+                {
+                    "error": "consent_required",
+                    "consent_data": response.consent_data,
+                },
+                403,
+            )
 
         if response.error:
             redirect_url = response.get_redirect_url()

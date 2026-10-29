@@ -312,6 +312,14 @@ class TestEndSessionEndpoint:
         # Unknown client just returns None (no exception)
         assert result.client is None
 
+    async def test_malformed_id_token_hint(
+        self,
+        client_service: OAuthClientService[MockClient],
+    ) -> None:
+        endpoint = EndSessionEndpoint(client_service)
+        result = await endpoint({"id_token_hint": "not-a-jwt"})
+        assert result.client is None
+
 
 # =============================================================================
 # Registration Endpoint
@@ -353,7 +361,7 @@ class TestRegistrationEndpoint:
     ) -> None:
         endpoint = RegistrationEndpoint(client_service)
         response = await endpoint({
-            "redirect_uris": ["myapp://callback"],
+            "redirect_uris": ["com.example.app:/callback"],
             "application_type": "native",
         })
         assert response.client_secret is None
@@ -396,6 +404,57 @@ class TestRegistrationEndpoint:
             await endpoint({
                 "redirect_uris": ["https://app.example.com/callback#frag"],
             })
+
+    @pytest.mark.parametrize(
+        ("uri", "application_type"),
+        [
+            ("http://app.example.com/callback", "web"),
+            ("javascript:alert(1)", "web"),
+            ("com.example.app:/callback", "web"),
+            ("javascript:alert(1)", "native"),
+            ("myapp://callback", "native"),
+        ],
+    )
+    async def test_redirect_uri_scheme_rejected(
+        self,
+        client_service: OAuthClientService[MockClient],
+        uri: str,
+        application_type: str,
+    ) -> None:
+        endpoint = RegistrationEndpoint(client_service)
+        with pytest.raises(InvalidRedirectUriError):
+            await endpoint({
+                "redirect_uris": [uri],
+                "application_type": application_type,
+            })
+
+    async def test_loopback_http_redirect_uri_allowed(
+        self,
+        client_service: OAuthClientService[MockClient],
+    ) -> None:
+        endpoint = RegistrationEndpoint(client_service)
+        response = await endpoint({"redirect_uris": ["http://127.0.0.1:8080/cb"]})
+        assert response.client_id
+
+    async def test_scope_beyond_allowed_rejected(
+        self,
+        client_service: OAuthClientService[MockClient],
+    ) -> None:
+        endpoint = RegistrationEndpoint(client_service)
+        with pytest.raises(InvalidClientMetadataError):
+            await endpoint({
+                "redirect_uris": ["https://app.example.com/callback"],
+                "scope": "openid admin",
+            })
+
+    async def test_no_scope_gets_the_allowed_scopes(
+        self,
+        client_service: OAuthClientService[MockClient],
+    ) -> None:
+        endpoint = RegistrationEndpoint(client_service, allowed_scopes=["openid"])
+        response = await endpoint({"redirect_uris": ["https://app.example.com/cb"]})
+        client = await client_service.get_client(response.client_id)
+        assert client.allowed_scopes == "openid"
 
     async def test_disallowed_grant_type(
         self,

@@ -29,6 +29,7 @@ from neozen.core.scim.models import (
     User,
 )
 from neozen.core.scim.service import (
+    MAX_RESULTS,
     SCIMGroupService,
     SCIMUserService,
 )
@@ -505,6 +506,28 @@ class TestSCIMUserService:
         assert len(page2.resources) == 3
         # Different items
         assert page1.resources[0].id != page2.resources[0].id  # type: ignore[union-attr]
+
+    async def test_count_zero_returns_only_the_total(
+        self, user_service: SCIMUserService
+    ) -> None:
+        for i in range(3):
+            await user_service.create_user(User(user_name=f"user{i}"))
+
+        result = await user_service.list_users(count=0)
+
+        assert result.resources == []
+        assert result.total_results == 3
+
+    async def test_count_is_capped_at_max_results(
+        self, user_service: SCIMUserService
+    ) -> None:
+        for i in range(MAX_RESULTS + 1):
+            await user_service.create_user(User(user_name=f"user{i}"))
+
+        result = await user_service.list_users(count=MAX_RESULTS + 1)
+
+        assert len(result.resources) == MAX_RESULTS
+        assert result.total_results == MAX_RESULTS + 1
 
 
 # =============================================================================

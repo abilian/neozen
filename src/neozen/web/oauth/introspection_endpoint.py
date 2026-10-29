@@ -131,7 +131,7 @@ class IntrospectionEndpoint[
             self.client_service, client_id, client_secret
         )
         if client.is_public_client():
-            msg = "Public clients cannot introspect tokens."
+            msg = "Client authentication failed."
             raise TokenInvalidClientError(msg)
 
         # Parse request

@@ -524,7 +524,7 @@ class OAuthTokenService[
             "sub": stored.subject_id,
             "exp": int(ensure_utc(stored.expires_at).timestamp()),
             "iat": int(ensure_utc(stored.created_at).timestamp()),
-            "token_type": "access_token",
+            "token_type": "Bearer",  # RFC 7662 §2.2: the RFC 6749 §7.1 type
         }
 
     async def introspect_refresh_token(
@@ -562,7 +562,6 @@ class OAuthTokenService[
             "client_id": stored.client_id,
             "sub": stored.subject_id,
             "iat": int(ensure_utc(stored.created_at).timestamp()),
-            "token_type": "refresh_token",
         }
         if stored.expires_at:
             result["exp"] = int(ensure_utc(stored.expires_at).timestamp())

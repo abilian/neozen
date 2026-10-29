@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from neozen.core.scim.models import SchemaUri
+from neozen.core.scim.service import MAX_RESULTS
 
 
 @dataclass
@@ -24,8 +25,9 @@ class ServiceProviderConfig:
     bulk_max_operations: int = 0
     bulk_max_payload_size: int = 0
     filter_supported: bool = True
-    filter_max_results: int = 200
-    change_password_supported: bool = True
+    filter_max_results: int = MAX_RESULTS
+    # Whether the adapters store the password attribute: NeoZen can't know.
+    change_password_supported: bool = False
     sort_supported: bool = False
     etag_supported: bool = False
     authentication_schemes: list[dict[str, Any]] = field(

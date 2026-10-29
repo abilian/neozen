@@ -8,7 +8,9 @@ out-of-band.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -38,6 +40,33 @@ class InvalidRedirectUriError(RegistrationError):
 
     def __init__(self, description: str) -> None:
         super().__init__("invalid_redirect_uri", description)
+
+
+# Scopes a client may register for unless the endpoint is told otherwise.
+DEFAULT_REGISTRATION_SCOPES = ("openid", "profile", "email")
+
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def _is_allowed_redirect_uri(uri: str, *, native: bool) -> bool:
+    """Whether a client may register this redirect URI.
+
+    Web clients: https, or http on a loopback host (OAuth 2.1 §2.3.1).
+    Native clients may also use a private-use scheme in reverse-domain
+    form, such as ``com.example.app:/callback`` (RFC 8252 §7.1); the
+    required dot rules out ``javascript:``, ``data:`` and the like.
+    """
+    try:
+        parts = urlsplit(uri)
+    except ValueError:
+        return False
+    if parts.fragment:
+        return False
+    if parts.scheme == "https":
+        return bool(parts.hostname)
+    if parts.scheme == "http":
+        return parts.hostname in _LOOPBACK_HOSTS
+    return native and "." in parts.scheme
 
 
 class RegistrationRequest(BaseModel):
@@ -97,6 +126,9 @@ class RegistrationEndpoint:
 
     Production deployments should restrict access to this endpoint
     (e.g., require an initial bearer token) to prevent abuse.
+
+    A client can register only for the scopes in ``allowed_scopes``, and
+    gets all of them when it asks for none.
     """
 
     def __init__(
@@ -105,6 +137,7 @@ class RegistrationEndpoint:
         *,
         allowed_grant_types: list[str] | None = None,
         default_grant_types: list[str] | None = None,
+        allowed_scopes: list[str] | None = None,
     ) -> None:
         """Initialize the registration endpoint.
 
@@ -115,6 +148,8 @@ class RegistrationEndpoint:
             default_grant_types: Grants to assign when the request
                 doesn't specify any. Defaults to ["authorization_code",
                 "refresh_token"].
+            allowed_scopes: The scopes a client may register for. Defaults
+                to ``DEFAULT_REGISTRATION_SCOPES``.
         """
         self.client_service = client_service
         self.allowed_grant_types = allowed_grant_types or [
@@ -126,6 +161,7 @@ class RegistrationEndpoint:
             "authorization_code",
             "refresh_token",
         ]
+        self.allowed_scopes = allowed_scopes or list(DEFAULT_REGISTRATION_SCOPES)
 
     async def __call__(self, payload: dict[str, Any]) -> RegistrationResponse:
         """Process a registration request.
@@ -142,14 +178,20 @@ class RegistrationEndpoint:
         """
         request = self._parse_request(payload)
 
-        # Validate redirect URIs
+        # Application type → client type: native clients are public
+        application_type = (request.application_type or "web").lower()
+        native = application_type == "native"
+        client_type = "public" if native else "confidential"
+
         for uri in request.redirect_uris:
-            if not uri or not isinstance(uri, str):
-                msg = "redirect_uris must be a non-empty list of strings"
+            if not _is_allowed_redirect_uri(uri, native=native):
+                msg = f"redirect_uri not allowed: {uri}"
                 raise InvalidRedirectUriError(msg)
-            if "#" in uri:
-                msg = "redirect_uris must not contain fragments"
-                raise InvalidRedirectUriError(msg)
+
+        scopes = request.scope.split() if request.scope else self.allowed_scopes
+        if not_allowed := set(scopes) - set(self.allowed_scopes):
+            msg = f"scope not allowed: {' '.join(sorted(not_allowed))}"
+            raise InvalidClientMetadataError(msg)
 
         # Determine grant types
         grant_types = request.grant_types or list(self.default_grant_types)
@@ -163,12 +205,6 @@ class RegistrationEndpoint:
             grant_types
         )
 
-        # Application type → client type
-        # native and clients without a registered grant type for client_secret_*
-        # should be public clients
-        application_type = (request.application_type or "web").lower()
-        client_type = "public" if application_type == "native" else "confidential"
-
         # Token endpoint auth method
         auth_method = request.token_endpoint_auth_method or "client_secret_basic"
         if client_type == "public":
@@ -179,13 +215,10 @@ class RegistrationEndpoint:
             client_name=request.client_name or "Dynamically Registered Client",
             redirect_uris=request.redirect_uris,
             client_type=client_type,
-            allowed_scopes=request.scope.split() if request.scope else None,
+            allowed_scopes=scopes,
             allowed_grant_types=grant_types,
             token_endpoint_auth_method=auth_method,
         )
-
-        # Build response
-        from datetime import UTC, datetime  # noqa: PLC0415
 
         now = int(datetime.now(UTC).timestamp())
 

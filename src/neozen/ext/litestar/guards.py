@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import typing
+from urllib.parse import urlencode
 
 from litestar.connection import ASGIConnection
 from litestar.exceptions import NotAuthorizedException, PermissionDeniedException
@@ -110,7 +111,9 @@ class LoginRequiredGuard:
                     # Include next parameter for post-login redirect
                     next_url = str(connection.url)
                     separator = "&" if "?" in login_path else "?"
-                    redirect_to = f"{login_path}{separator}next={next_url}"
+                    redirect_to = (
+                        f"{login_path}{separator}{urlencode({'next': next_url})}"
+                    )
 
             raise AuthenticationRequiredError(
                 detail="Authentication required",

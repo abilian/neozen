@@ -26,6 +26,20 @@ from neozen.core.scim.models import (
     User,
 )
 
+# The most resources one list response returns, advertised as
+# filter.maxResults in /ServiceProviderConfig.
+MAX_RESULTS = 200
+
+
+def _page[T](items: list[T], start_index: int, count: int) -> list[T]:
+    """One page of a list (RFC 7644 §3.4.2.4).
+
+    ``count`` is clamped to [0, MAX_RESULTS]: 0 returns no resources, only
+    the total.
+    """
+    offset = max(start_index, 1) - 1
+    return items[offset : offset + min(max(count, 0), MAX_RESULTS)]
+
 
 class SubjectAdapter(Protocol):
     """Adapter for bridging an application's User model to SCIM.
@@ -197,13 +211,9 @@ class SCIMUserService:
         Args:
             filter_expr: SCIM filter string (e.g., `userName eq "alice"`).
             start_index: 1-based index of the first result.
-            count: Maximum number of results to return.
+            count: Maximum number of results to return, at most
+                ``MAX_RESULTS``.
         """
-        if start_index < 1:
-            start_index = 1
-        if count < 0:
-            count = 0
-
         all_users = await self.adapter.list_all()
 
         # Apply filter
@@ -214,9 +224,7 @@ class SCIMUserService:
         else:
             filtered = list(all_users)
 
-        # Paginate
-        offset = start_index - 1
-        page = filtered[offset : offset + count] if count else filtered[offset:]
+        page = _page(filtered, start_index, count)
 
         # Populate meta on returned items
         for u in page:
@@ -225,7 +233,7 @@ class SCIMUserService:
         return ListResponse(
             resources=page,
             total_results=len(filtered),
-            start_index=start_index,
+            start_index=max(start_index, 1),
             items_per_page=len(page),
         )
 
@@ -295,11 +303,6 @@ class SCIMGroupService:
         start_index: int = 1,
         count: int = 100,
     ) -> ListResponse:
-        if start_index < 1:
-            start_index = 1
-        if count < 0:
-            count = 0
-
         all_groups = await self.adapter.list_all()
 
         filtered: list[Group]
@@ -309,8 +312,7 @@ class SCIMGroupService:
         else:
             filtered = list(all_groups)
 
-        offset = start_index - 1
-        page = filtered[offset : offset + count] if count else filtered[offset:]
+        page = _page(filtered, start_index, count)
 
         for g in page:
             _populate_meta(g, resource_type="Group", base_url=self.base_url)
@@ -318,7 +320,7 @@ class SCIMGroupService:
         return ListResponse(
             resources=page,
             total_results=len(filtered),
-            start_index=start_index,
+            start_index=max(start_index, 1),
             items_per_page=len(page),
         )
 

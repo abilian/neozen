@@ -5,6 +5,7 @@ from __future__ import annotations
 import typing
 from collections.abc import Awaitable, Callable
 from functools import wraps
+from urllib.parse import urlencode
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
@@ -69,7 +70,7 @@ def login_required(
                     next_url = str(request.url)
                     separator = "&" if "?" in redirect_url else "?"
                     return RedirectResponse(
-                        f"{redirect_url}{separator}next={next_url}",
+                        f"{redirect_url}{separator}{urlencode({'next': next_url})}",
                         status_code=303,
                     )
 

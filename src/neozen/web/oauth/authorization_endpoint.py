@@ -118,7 +118,8 @@ class AuthorizationResponse:
             params["error_description"] = self.error_description
 
         if params:
-            return f"{self.redirect_uri}?{urlencode(params)}"
+            separator = "&" if "?" in self.redirect_uri else "?"
+            return f"{self.redirect_uri}{separator}{urlencode(params)}"
         return self.redirect_uri
 
 
@@ -153,6 +154,10 @@ CONSENT_TOKEN_LIFETIME = timedelta(minutes=10)
 def _challenge_method(request: AuthorizationRequest) -> CodeChallengeMethod | None:
     """The PKCE method, or None when the request carries no challenge."""
     return request.code_challenge_method if request.code_challenge else None
+
+
+def _scopes(scope: str | None) -> set[str]:
+    return set((scope or "").split())
 
 
 class AuthorizationEndpoint[
@@ -325,18 +330,18 @@ class AuthorizationEndpoint[
                     ),
                 )
         else:
-            # Use first registered redirect URI as default
+            # Optional only when exactly one URI is registered (RFC 6749 §3.1.2.3)
             uris = client.get_redirect_uris()
-            if not uris:
+            if len(uris) != 1:
                 return (
                     None,
                     None,
                     AuthorizationResponse(
                         error="invalid_request",
-                        error_description="No redirect_uri registered.",
+                        error_description="redirect_uri is required.",
                     ),
                 )
-            redirect_uri = uris[0]
+            [redirect_uri] = uris
 
         return client, redirect_uri, None
 
@@ -408,28 +413,30 @@ class AuthorizationEndpoint[
         request: AuthorizationRequest,
         consent_data: ConsentData,
     ) -> AuthorizationResponse:
-        """Check for existing grant and generate code or require consent."""
+        """Issue a code if a grant covers the scopes, else require consent."""
         try:
-            await self.grant_repository.get_one_by(
+            grant = await self.grant_repository.get_one_by(
                 client_id=client.client_id,
                 subject_id=subject.id,
             )
-            # Grant exists - generate code immediately
+        except DoesNotExist:
+            grant = None
+        if grant is not None and _scopes(request.scope) <= _scopes(grant.scope):
             return await self._generate_authorization_code(
                 client=client,
                 subject_id=subject.id,
                 redirect_uri=redirect_uri,
                 request=request,
             )
-        except DoesNotExist:
-            # Need consent. The token ties the consent form to this subject
-            # and request, so a cross-site POST cannot grant access (CSRF).
-            expires = int((datetime.now(UTC) + CONSENT_TOKEN_LIFETIME).timestamp())
-            token = self._consent_token(subject.id, request, expires)
-            return AuthorizationResponse(
-                requires_consent=True,
-                consent_data=dataclasses.replace(consent_data, consent_token=token),
-            )
+
+        # Need consent. The token ties the consent form to this subject
+        # and request, so a cross-site POST cannot grant access (CSRF).
+        expires = int((datetime.now(UTC) + CONSENT_TOKEN_LIFETIME).timestamp())
+        token = self._consent_token(subject.id, request, expires)
+        return AuthorizationResponse(
+            requires_consent=True,
+            consent_data=dataclasses.replace(consent_data, consent_token=token),
+        )
 
     def _consent_token(
         self, subject_id: typing.Any, request: AuthorizationRequest, expires: int
@@ -508,7 +515,7 @@ class AuthorizationEndpoint[
             )
 
         try:
-            await self.grant_repository.get_one_by(
+            grant = await self.grant_repository.get_one_by(
                 client_id=client.client_id, subject_id=subject.id
             )
         except DoesNotExist:
@@ -518,6 +525,9 @@ class AuthorizationEndpoint[
                 granted_at=datetime.now(UTC),
                 scope=request.scope or "",
             )
+        else:
+            scope = " ".join(sorted(_scopes(grant.scope) | _scopes(request.scope)))
+            await self.grant_repository.update_obj(grant, scope=scope)
 
         # Generate authorization code
         return await self._generate_authorization_code(

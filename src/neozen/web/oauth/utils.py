@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+from urllib.parse import unquote_plus
 
 from neozen.core.oauth.exceptions import (
     ClientAuthenticationError,
@@ -80,7 +81,8 @@ def parse_basic_auth(header: str | None) -> tuple[str | None, str | None]:
         encoded = header[6:]
         decoded = base64.b64decode(encoded).decode("utf-8")
         client_id, client_secret = decoded.split(":", 1)
-        return client_id, client_secret
+        # RFC 6749 §2.3.1: both are form-encoded before Base64.
+        return unquote_plus(client_id), unquote_plus(client_secret)
     except (ValueError, UnicodeDecodeError):
         return None, None
 

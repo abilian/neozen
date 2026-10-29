@@ -68,6 +68,14 @@ def _get_client_credentials() -> tuple[str | None, str | None]:
     return client_id, client_secret
 
 
+def _token_error_response(e: TokenError) -> Response:
+    """An error from the token, introspection or revocation endpoint."""
+    error = jsonify({"error": e.error, "error_description": e.error_description})
+    error.status_code = token_error_status(e.error)
+    error.headers.update(token_error_headers(e.error))
+    return error
+
+
 def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
     """Create the token endpoint handler."""
 
@@ -80,13 +88,7 @@ def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
                 payload, client_id=client_id, client_secret=client_secret
             )
         except TokenError as e:
-            error = jsonify({
-                "error": e.error,
-                "error_description": e.error_description,
-            })
-            error.status_code = token_error_status(e.error)
-            error.headers.update(token_error_headers(e.error))
-            return error
+            return _token_error_response(e)
         success = jsonify(response.to_dict())
         success.headers.update(NO_STORE_HEADERS)
         return success
@@ -109,10 +111,7 @@ def _create_introspect_handler(
             )
             return jsonify(response.to_dict())
         except TokenError as e:
-            return jsonify({
-                "error": e.error,
-                "error_description": e.error_description,
-            }), 401
+            return _token_error_response(e)
 
     return introspect
 
@@ -130,10 +129,7 @@ def _create_revoke_handler(revocation_ep: RevocationEndpoint) -> typing.Callable
             )
             return "", 200
         except TokenError as e:
-            return jsonify({
-                "error": e.error,
-                "error_description": e.error_description,
-            }), 401
+            return _token_error_response(e)
 
     return revoke
 

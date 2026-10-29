@@ -108,6 +108,7 @@ class TestIntrospection:
         )
         assert response.active
         assert response.sub == "alice"
+        assert response.token_type == "Bearer"
 
     async def test_public_client_is_refused(
         self, services: dict[str, typing.Any]

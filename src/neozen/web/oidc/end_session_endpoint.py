@@ -8,6 +8,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import jwt
+
+from neozen.core.oauth.exceptions import ClientInactiveError, ClientNotFoundError
+
 if TYPE_CHECKING:
     from neozen.core.oauth.client_service import OAuthClientService
     from neozen.core.oauth.models import OAuthClientModel
@@ -81,7 +85,8 @@ class EndSessionEndpoint:
             # Build redirect URL with optional state
             url = result.post_logout_redirect_uri
             if result.state:
-                url += f"?state={result.state}"
+                separator = "&" if "?" in url else "?"
+                url += f"{separator}{urlencode({'state': result.state})}"
             return redirect(url)
         else:
             return render_template("logged_out.html")
@@ -164,7 +169,7 @@ class EndSessionEndpoint:
 
         try:
             return await self.client_service.get_active_client(client_id)
-        except Exception:
+        except (ClientNotFoundError, ClientInactiveError):
             return None
 
     def _client_id_from_id_token(self, id_token: str) -> str | None:
@@ -175,18 +180,13 @@ class EndSessionEndpoint:
         use it to identify the client for redirect URI validation.
         """
         try:
-            import jwt  # noqa: PLC0415
-
-            unverified = jwt.decode(
-                id_token,
-                options={"verify_signature": False},
-            )
-            aud = unverified.get("aud")
-            if isinstance(aud, list):
-                return aud[0] if aud else None
-            return aud
-        except Exception:
+            unverified = jwt.decode(id_token, options={"verify_signature": False})
+        except jwt.PyJWTError:
             return None
+        aud = unverified.get("aud")
+        if isinstance(aud, list):
+            return aud[0] if aud else None
+        return aud
 
 
 __all__ = [

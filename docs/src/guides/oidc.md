@@ -182,6 +182,10 @@ response = await endpoint({
 # Returns client_id, client_secret, etc.
 ```
 
+Registration accepts https redirect URIs, and http ones only on a loopback host (`localhost`, `127.0.0.1`, `::1`). A native client (`"application_type": "native"`) can also use a private-use scheme in reverse-domain form, such as `com.example.app:/callback`. A client can register only for the scopes in `allowed_scopes` (by default `openid profile email`), and gets all of them when it asks for none.
+
+The endpoint is not authenticated: restrict access to it, for instance with an initial access token, before exposing it.
+
 ## CORS
 
 ```python
@@ -190,3 +194,5 @@ from neozen.web.oidc.cors import collect_allowed_origins
 origins = await collect_allowed_origins(client_service)
 # Use as CORS middleware allowed_origins
 ```
+
+Every active client's redirect URIs become allowed origins, including those of dynamically registered clients. Don't allow credentials (cookies) in that CORS configuration: the token, UserInfo and JWKS endpoints don't need them.

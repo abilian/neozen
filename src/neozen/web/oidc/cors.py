@@ -30,18 +30,16 @@ def origin_from_url(url: str) -> str | None:
     """
     try:
         parsed = urlparse(url)
-    except Exception:
+        port = parsed.port
+    except ValueError:  # bad IPv6 literal or port
         return None
 
-    if parsed.scheme not in ("http", "https"):
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return None
 
-    if not parsed.hostname:
-        return None
-
-    if parsed.port is None:
+    if port is None:
         return f"{parsed.scheme}://{parsed.hostname}"
-    return f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+    return f"{parsed.scheme}://{parsed.hostname}:{port}"
 
 
 async def collect_allowed_origins(
