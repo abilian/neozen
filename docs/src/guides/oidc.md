@@ -64,6 +64,10 @@ Each adapter can mount discovery and JWKS for you: `create_oidc_router` (Litesta
 | End Session | `/oauth/end_session` | Logout flow |
 | Registration | `/oauth/register` | Dynamic client registration |
 
+## Silent Authentication
+
+With `prompt=none`, the authorization endpoint never shows a page: it sends the client `login_required` when the user isn't signed in, and `consent_required` when the grant doesn't cover the request (OIDC Core §3.1.2.1). `prompt=login` and `max_age` are not supported yet: they need the time the user signed in.
+
 ## Consent Form
 
 When a user hasn't yet granted a client access, the authorization endpoint answers with `requires_consent` and a `consent_data` object, and your app renders the consent page. Its form posts back to the authorization endpoint with every field of `consent_data` as a hidden input, plus the user's answer:
@@ -156,13 +160,19 @@ await service.revoke_consent(user_id, client_id)
 ```python
 from neozen.web.oidc import EndSessionEndpoint
 
-endpoint = EndSessionEndpoint(client_service)
+endpoint = EndSessionEndpoint(
+    client_service, id_token_verifier=IDTokenVerifier(key_manager, issuer)
+)
 result = await endpoint(query_params)
 
-if result.post_logout_redirect_uri:
+if result.require_confirmation:
+    ...  # ask the user, then log out
+elif result.post_logout_redirect_uri:
     # Destroy session, then redirect
     ...
 ```
+
+`require_confirmation` is set unless the request has an `id_token_hint` that the verifier accepts (an expired one is fine): otherwise any site could log users out with a link. A `client_id` that isn't the hint's audience is refused.
 
 ## Dynamic Client Registration
 
@@ -177,7 +187,9 @@ response = await endpoint({
 # Returns client_id, client_secret, etc.
 ```
 
-Registration accepts https redirect URIs, and http ones only on a loopback host (`localhost`, `127.0.0.1`, `::1`). A native client (`"application_type": "native"`) can also use a private-use scheme in reverse-domain form, such as `com.example.app:/callback`. A client can register only for the scopes in `allowed_scopes` (by default `openid profile email`), and gets all of them when it asks for none.
+`registration_reply(endpoint, body)` gives the HTTP answer: 201 with the credentials and `Cache-Control: no-store`, or 400 with the RFC 7591 error.
+
+Registration accepts only the `code` response type and the `client_secret_basic` and `client_secret_post` authentication methods (`none` for native clients). It accepts https redirect URIs, and http ones only on a loopback host (`localhost`, `127.0.0.1`, `::1`). A native client (`"application_type": "native"`) can also use a private-use scheme in reverse-domain form, such as `com.example.app:/callback`. A client can register only for the scopes in `allowed_scopes` (by default `openid profile email`), and gets all of them when it asks for none.
 
 The endpoint is not authenticated: restrict access to it, for instance with an initial access token, before exposing it.
 

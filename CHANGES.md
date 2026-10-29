@@ -10,6 +10,26 @@ Maintenance release: fixes, hardening, performance and cleanup.
 
 ### Fixed
 
+- **Security: account recovery by email accepted any code.** `verify_recovery` never checked the emailed code. The code is now derived from the recovery session with the secret key and checked; a wrong one ends the session
+- **Security: any admin console admin could make themselves superadmin**, by granting the `superuser` role or adding `*` to a role. Defining roles and permissions, granting or removing `superuser`, acting on a superadmin's account and CSV imports that update users are now superadmin only
+- **Passkeys (WebAuthn) never worked**: registration and sign-in called a pydantic method on py_webauthn's dataclasses; a catch-all reported the error as "verification failed". Only the library's own errors are caught now. A registration started twice (a retry, a second tab) completes
+- **The Docker image didn't build**: the license file was missing from the build stage. It now also ships the migrations, so `alembic upgrade head` runs in the container
+- Admin console sign-in: the password check no longer blocks other requests, takes as long whether or not the email exists, and stops after five failures in 15 minutes
+- `SessionService.revoke_all_sessions`, and email verification after a second token was sent, failed when several rows matched
+- `RoleServiceFactory.has_role` and `get_subject_roles` counted expired and scoped role assignments
+- The database health check always reported unhealthy
+- CLI role commands committed what they had done before failing
+- Flask's `fresh_login_required` didn't check freshness; it now wants a session started within `max_age` (15 minutes). Flask decorators work on `async def` views
+- The Litestar rate-limit middleware didn't find a limiter set on `app.state` as documented, and let every request through; without a limiter it now fails
+- `redirect_uri` was normalized before the exact comparison (`https://host` became `https://host/`), so some registered URIs never matched
+- The Litestar and Starlette OAuth adapters didn't await an async `get_current_subject`, so a coroutine passed for a signed-in subject. Litestar's `/token`, `/introspect` and `/revoke` were refused by CSRF protection
+- RP-initiated logout could be triggered from another site: it now needs confirmation unless the `id_token_hint` verifies, and refuses a `client_id` that isn't the hint's audience
+- SCIM bodies of the wrong shape returned 500 where a 400 was due, and `"active": "false"` was read as true
+- Dynamic registration accepted any `token_endpoint_auth_method` and `response_types`
+- The admin audit log search only filtered the page shown, and its count ignored the search
+- With several `neozen serve` workers, admin sign-ins were lost when a request reached another worker (sessions are now kept in `NEOZEN_SESSION_DIR`)
+- `neozen serve` created tables without recording their Alembic revision, so a later `alembic upgrade head` clashed with them
+- The admin dashboard showed the number of users as the number of role assignments
 - **An authorization code from `AuthorizationEndpoint` could never be redeemed**: the endpoint stores the code's HMAC, but the token service looked up the code itself. `AuthorizationEndpoint`'s `code_hash_key` must be the token service's `token_hash_key` (`NeoZenFactory` already uses one key for both)
 - Magic links, password reset, account recovery, WebAuthn challenges, group invitations, social login state and `SessionService.list_sessions` failed with SQL storage on SQLite, which returns datetimes without a time zone
 - SCIM filters on a multi-valued attribute (`emails.value ew "example.com"`, or `emails` alone) matched nothing; one matching value is now enough (RFC 7644 §3.4.2.2)
@@ -39,6 +59,14 @@ Maintenance release: fixes, hardening, performance and cleanup.
 
 ### Changed
 
+- Every admin console change writes an audit entry naming the admin, the action and its target, and so does the CSV export, which is no longer cached and escapes values a spreadsheet would run as formulas
+- `neozen serve` checks the database's Alembic revision at startup: a new database is created and stamped, an older one is refused until migrated
+- With `prompt=none`, the authorization endpoint answers `login_required` or `consent_required` to the client, with no page; a malformed PKCE parameter is also sent back to the client
+- 401 and 403 JSON bodies are the same in every adapter (`{"error": "unauthorized" | "forbidden", "detail": ...}`); Starlette answers a visitor who isn't signed in with 401 (it was 403)
+- UserInfo answers a request without a token with a bare `Bearer` challenge (RFC 6750 §3.1); introspection responses are never cached
+- Social login providers: a missing HTTP client is a `RuntimeError`, and only transport and response errors become `OAuthTokenError` or `OAuthUserInfoError`
+- Configuration errors name the value they got. Settings typed as a set of choices are all checked
+- The admin sessions page is paged
 - The admin console's lists, counts and dashboards query the database a fixed number of times, whatever the number of rows: filtering, sorting and paging happen in SQL, and related rows come from joins. A permission check loads a subject's roles in two queries
 - The Litestar plugin sends a visitor that `login_required()` refuses to the login page (it answered 401 unless the app handled it); `redirect=False` still gives a 401, and a handler the app registers for `AuthenticationRequiredError` still wins
 - `TOTPFactor` and `WebAuthnFactor` fail as soon as they are created if `pyotp` or `webauthn` is missing
@@ -47,8 +75,15 @@ Maintenance release: fixes, hardening, performance and cleanup.
 - `id_generator` parameters default to a function returning a random hex ID (the default was `None`)
 - `neozen serve` logs its configuration warnings (they were printed)
 
+### Removed
+
+- `OAuthClientService.cleanup_expired_states`, which deleted nothing and returned 0
+- The admin console's unused `SUPPORT` and `AUDITOR` roles, `require_permission`, `require_admin` and `AdminUser`'s `can_*` properties and `has_permission`
+
 ### Added
 
+- `registration_reply`, the HTTP answer to a dynamic registration request
+- `role_service(session)`, a `RoleService` on the SQLAlchemy repositories
 - Admin console responses forbid framing (`Content-Security-Policy: frame-ancestors 'none'`, `X-Frame-Options: DENY`) and send `X-Content-Type-Options` and `Referrer-Policy`
 - Starting and ending an impersonation writes an audit entry with both the admin and the subject
 - A CI check of the locked dependencies against known vulnerabilities (`pip-audit`)

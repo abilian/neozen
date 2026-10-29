@@ -76,6 +76,10 @@ You should land on the dashboard. From here you can:
 - View audit logs (with live updates)
 - Configure security policies
 
+The bootstrap admin has the `superuser` role, which makes it a **superadmin**. A subject with the `admin` role is a plain **admin**: it manages users, sessions and groups, but only a superadmin can define roles and permissions, grant or remove `superuser`, act on a superadmin's account, or import a CSV that updates existing users. Every change made in the console is recorded in the audit log, with the admin who made it.
+
+Sign-in to the console is limited to five failed attempts per address and email every 15 minutes.
+
 ## 5. Stop and restart
 
 ```bash
@@ -183,7 +187,7 @@ helm install neozen ./deploy/helm \
 
 ## Migrations
 
-The reference deployment runs the schema baseline automatically on first start. For schema upgrades on existing databases:
+On first start, NeoZen creates the schema and records its revision in Alembic's `alembic_version` table. On later starts, it checks that revision: if the database was left at an older one, `neozen serve` refuses to start and says so. Run the migrations, then start it again:
 
 ```bash
 # Inside the container
@@ -205,7 +209,8 @@ The Alembic environment automatically translates async-driver URLs (`postgresql+
 | `NEOZEN_SECRET_KEY` | `change-me-in-production` | **Required in production**. Used for session HMAC and token hashing. The `_FILE` variant reads from a file. |
 | `NEOZEN_BIND_HOST` | `0.0.0.0` | Bind interface for the HTTP server. |
 | `NEOZEN_BIND_PORT` | `8000` | Bind port. |
-| `NEOZEN_WORKERS` | `1` | Uvicorn worker processes. Multi-replica is deferred to a future enterprise-focused release. |
+| `NEOZEN_WORKERS` | `1` | Uvicorn worker processes. They share admin sign-ins through `NEOZEN_SESSION_DIR`; running several hosts is deferred to a future enterprise-focused release. |
+| `NEOZEN_SESSION_DIR` | `<tmp>/neozen-sessions` | Where admin console sessions are kept, shared by the workers. Put it on a volume to keep sign-ins across container restarts. |
 | `NEOZEN_LOG_LEVEL` | `INFO` | Standard Python log levels. |
 | `NEOZEN_BOOTSTRAP_ADMIN` | `true` | If true and the database is empty, create a bootstrap admin and print the credentials once. |
 | `NEOZEN_BOOTSTRAP_ADMIN_EMAIL` | `admin@localhost` | Email for the bootstrap admin. |

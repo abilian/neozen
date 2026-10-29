@@ -65,6 +65,17 @@ def dashboard():
     return render_template("dashboard.html", user=current_user)
 ```
 
+The decorators work on `async def` views too. For a sensitive action, `fresh_login_required` also wants the session to have started recently (15 minutes by default, `max_age=` to change it), and sends an older one to sign in again:
+
+```python
+@app.route("/settings/password", methods=["POST"])
+@fresh_login_required
+def change_password():
+    ...
+```
+
+API clients get the same JSON from every adapter: `{"error": "unauthorized", "detail": ...}` with a 401, and `{"error": "forbidden", "detail": ...}` with a 403 (with Flask, `roles_required` and `permissions_required` call `abort(403)`, so your 403 error handler decides).
+
 ## Logout
 
 ```python
