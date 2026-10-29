@@ -68,20 +68,24 @@
         {% set is_self = target_user.id == current_user.id %}
         {% if 'admin' in role_names %}
         <form action="{{ url_for('admin_toggle_role', user_id=target_user.id, role='admin') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="secondary outline" {% if is_self %}disabled title="Cannot remove admin role from yourself"{% endif %}>Remove Admin</button>
         </form>
         {% else %}
         <form action="{{ url_for('admin_toggle_role', user_id=target_user.id, role='admin') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit">Grant Admin</button>
         </form>
         {% endif %}
 
         {% if 'user' in role_names %}
         <form action="{{ url_for('admin_toggle_role', user_id=target_user.id, role='user') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="secondary outline">Remove User</button>
         </form>
         {% else %}
         <form action="{{ url_for('admin_toggle_role', user_id=target_user.id, role='user') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="secondary">Grant User</button>
         </form>
         {% endif %}

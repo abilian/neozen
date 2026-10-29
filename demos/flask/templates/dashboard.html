@@ -102,6 +102,7 @@
     <div class="grid">
         <a href="{{ url_for('security_settings') }}" role="button" class="outline">Security Settings</a>
         <form action="/logout" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="outline">Logout</button>
         </form>
     </div>

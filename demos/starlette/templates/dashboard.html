@@ -74,6 +74,7 @@
         <p>You'll be prompted for a 6-digit code from your authenticator app
         on your next sign-in.</p>
         <form action="/totp/disable" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="outline secondary">
                 Disable two-factor authentication
             </button>
@@ -126,6 +127,7 @@
     <h2>Actions</h2>
     <div class="grid">
         <form action="/logout" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="outline">Logout</button>
         </form>
     </div>

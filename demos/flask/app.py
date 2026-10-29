@@ -17,6 +17,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
+from flask_wtf import CSRFProtect
 from pwdlib import PasswordHash
 
 from demos.shared.database import create_database, init_database
@@ -94,6 +95,8 @@ DATA_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__, template_folder=str(TEMPLATES_DIR))
 app.secret_key = "demo-secret-key-change-in-production"
+# Every form posts `csrf_token`; the JSON API is exempted below.
+csrf = CSRFProtect(app)
 hasher = PasswordHash.recommended()
 
 # Database setup
@@ -452,12 +455,14 @@ def login():
             if user.totp_enabled and TOTP_AVAILABLE:
                 # Store user ID in session for 2FA verification
                 session["pending_2fa_user_id"] = user.id
-                session["pending_2fa_next"] = request.args.get("next")
+                session["pending_2fa_next"] = _local_path(request.args.get("next"))
                 return redirect(url_for("login_totp"))
 
             login_user(user, remember=True)
             flash("Login successful!", "success")
-            return redirect(request.args.get("next") or url_for("dashboard"))
+            return redirect(
+                _local_path(request.args.get("next")) or url_for("dashboard")
+            )
 
         flash("Invalid email or password", "error")
 
@@ -544,7 +549,6 @@ def magic_login_verify():
     return redirect(url_for("login"))
 
 
-@app.route("/api/test/last-magic-link")
 def api_last_magic_link():
     """Test endpoint: return the last magic link URL sent (dev only)."""
     if email_sender.sent_messages:
@@ -554,6 +558,18 @@ def api_last_magic_link():
             if "magic-login/verify?token=" in line:
                 return jsonify({"url": line.strip()})
     return jsonify({"url": None})
+
+
+# It hands out sign-in links: mounted only for the browser tests.
+if os.environ.get("NEOZEN_DEMO_TEST_API") == "1":
+    app.add_url_rule("/api/test/last-magic-link", view_func=api_last_magic_link)
+
+
+def _local_path(url: str | None) -> str | None:
+    """``url`` if it is a path on this site, else None (no open redirect)."""
+    if not url or not url.startswith("/") or url.startswith(("//", "/\\")):
+        return None
+    return url
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -842,6 +858,11 @@ def api_logout():
     """Logout (JSON API)."""
     logout_user()
     return jsonify({"message": "Logged out"})
+
+
+# Called by scripts and tests, not from the pages.
+for _api_view in (api_register, api_login, api_logout):
+    csrf.exempt(_api_view)
 
 
 @app.route("/api/me")

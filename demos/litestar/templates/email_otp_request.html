@@ -8,6 +8,7 @@
 
 <article>
     <form action="/email-otp" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
         <label for="email">
             Email
             <input type="email"

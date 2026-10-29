@@ -8,6 +8,7 @@
 
 <article>
     <form action="/totp/verify" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
         <label for="code">
             Authenticator code
             <input type="text"

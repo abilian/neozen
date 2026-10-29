@@ -143,6 +143,7 @@ def flask_server(
 
     # Set environment for Flask to use test database
     env = os.environ.copy()
+    env["NEOZEN_DEMO_TEST_API"] = "1"  # /api/test/* endpoints
     env["FLASK_APP"] = "demos.flask.app:app"
     env["FLASK_DEBUG"] = "0"
     env["NEOZEN_TEST_DB_PATH"] = str(db_path)
@@ -203,6 +204,7 @@ def starlette_server(
     shutil.copy(db_path, demo_db_path)
 
     env = os.environ.copy()
+    env["NEOZEN_DEMO_TEST_API"] = "1"  # /api/test/* endpoints
 
     yield from run_server(
         "Starlette",
@@ -254,6 +256,7 @@ def litestar_server(
     shutil.copy(db_path, demo_db_path)
 
     env = os.environ.copy()
+    env["NEOZEN_DEMO_TEST_API"] = "1"  # /api/test/* endpoints
 
     yield from run_server(
         "Litestar",

@@ -31,6 +31,7 @@
 </article>
 
 <form action="/totp/enroll" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label for="code">
         6-digit code from your authenticator
         <input type="text"

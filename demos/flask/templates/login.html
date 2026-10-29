@@ -8,6 +8,7 @@
     <p>Enter your credentials to access your account.</p>
 
     <form action="/login" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label for="email">
             Email
             <input
@@ -159,7 +160,8 @@ document.getElementById('passkey-login').addEventListener('click', async () => {
         const verifyResponse = await fetch('{{ url_for("webauthn_complete_auth") }}', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
             },
             body: JSON.stringify({
                 credential: response,

@@ -133,6 +133,7 @@
                 {% endif %}
                 <li>
                     <form action="/logout" method="post" style="margin: 0;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="outline">Logout</button>
                     </form>
                 </li>

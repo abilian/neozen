@@ -8,6 +8,7 @@
     <p>Enter the 6-digit code from your authenticator app.</p>
 
     <form action="{{ url_for('login_totp') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label for="code">
             Authentication Code
             <input
@@ -30,6 +31,7 @@
     <details style="margin-top: 1rem;">
         <summary>Lost your authenticator? Use a backup code</summary>
         <form action="{{ url_for('login_backup_code') }}" method="post" style="margin-top: 1rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label for="backup_code">
                 Backup Code
                 <input

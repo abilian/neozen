@@ -49,8 +49,15 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from starlette.routing import Mount, Route
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 # =============================================================================
 # Application Setup
@@ -139,8 +146,65 @@ def render_template(
     ctx = context or {}
     ctx["messages"] = request.session.pop("messages", [])
     ctx["request"] = request
+    ctx["csrf_token"] = csrf_token(request)
     content = templates.get_template(template_name).render(**ctx)
     return HTMLResponse(content=content, status_code=status_code)
+
+
+# =============================================================================
+# CSRF Protection
+# =============================================================================
+
+
+def csrf_token(request: Request) -> str:
+    """The session's CSRF token, which every form posts back."""
+    return request.session.setdefault("csrf_token", secrets.token_urlsafe(32))
+
+
+class CSRFMiddleware:
+    """Refuse a form POST that doesn't carry the session's CSRF token.
+
+    Starlette has no CSRF support of its own. The JSON API, called by
+    scripts and tests, and the admin console, which checks its own token,
+    are left out. Must run inside `SessionMiddleware`.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] != "http"
+            or scope["method"] in {"GET", "HEAD", "OPTIONS"}
+            or scope["path"].startswith(("/api/", "/admin"))
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
+        body = await request.body()
+        sent = (await request.form()).get("csrf_token")
+        expected = request.session.get("csrf_token")
+        if not (
+            isinstance(sent, str)
+            and expected
+            and secrets.compare_digest(sent, expected)
+        ):
+            response = PlainTextResponse("CSRF token missing or invalid", 403)
+            await response(scope, receive, send)
+            return
+
+        # The body was read here: hand it to the app again.
+        replayed = False
+
+        async def replay() -> Message:
+            nonlocal replayed
+            if replayed:
+                return await receive()
+            replayed = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        await self.app(scope, replay, send)
 
 
 async def _verify_credentials(session: Any, email: str, password: str) -> Any:
@@ -559,6 +623,7 @@ def create_app() -> Starlette:
 
     middleware = [
         Middleware(SessionMiddleware, secret_key=SECRET_KEY),
+        Middleware(CSRFMiddleware),
         Middleware(NeoZenMiddleware, backend=backend),
     ]
 

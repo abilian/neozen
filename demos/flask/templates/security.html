@@ -17,10 +17,12 @@
         <p>You have <strong>{{ backup_codes_remaining }}</strong> backup codes remaining.</p>
         <div class="grid">
             <form action="{{ url_for('security_regenerate_backup_codes') }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="outline">Regenerate Backup Codes</button>
             </form>
             <form action="{{ url_for('security_disable_totp') }}" method="post"
                   onsubmit="return confirm('Are you sure you want to disable 2FA? This will make your account less secure.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="secondary outline">Disable 2FA</button>
             </form>
         </div>
@@ -60,6 +62,7 @@
                         <form action="{{ url_for('security_delete_passkey', credential_id=passkey.credential_id) }}"
                               method="post" style="margin: 0;"
                               onsubmit="return confirm('Delete this passkey?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="secondary outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">Delete</button>
                         </form>
                     </td>
@@ -101,6 +104,7 @@
                         <form action="{{ url_for('security_unlink_account', provider_id=account.provider_id) }}"
                               method="post" style="margin: 0;"
                               onsubmit="return confirm('Unlink this account?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="secondary outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">Unlink</button>
                         </form>
                     </td>

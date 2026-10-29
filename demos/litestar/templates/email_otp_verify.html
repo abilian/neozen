@@ -9,6 +9,7 @@ The code expires in 10 minutes.</p>
 
 <article>
     <form action="/email-otp/verify" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
         <label for="code">
             6-digit code
             <input type="text"

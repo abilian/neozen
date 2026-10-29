@@ -8,6 +8,7 @@
     <p>Register for a new account to get started.</p>
 
     <form action="/register" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
         <label for="email">
             Email
             <input

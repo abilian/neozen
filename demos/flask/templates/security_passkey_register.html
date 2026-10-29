@@ -113,7 +113,8 @@ document.getElementById('passkey-form').addEventListener('submit', async (e) => 
         const verifyResponse = await fetch('{{ url_for("security_register_passkey_complete") }}', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
             },
             body: JSON.stringify({
                 credential: response,

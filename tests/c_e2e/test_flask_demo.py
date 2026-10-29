@@ -190,6 +190,36 @@ class TestFlaskLogin:
         data = response.get_json()
         assert "Invalid" in data["error"]
 
+    @pytest.mark.parametrize(
+        ("next_url", "location"),
+        [
+            ("/profile", "/profile"),
+            ("https://evil.example.com/", "/dashboard"),
+            ("//evil.example.com/", "/dashboard"),
+        ],
+    )
+    def test_login_follows_only_local_next(
+        self, client: FlaskClient, next_url: str, location: str
+    ) -> None:
+        client.post(
+            "/api/register",
+            json={"email": "test@example.com", "password": "securepassword123"},
+        )
+        response = client.post(
+            "/login",
+            query_string={"next": next_url},
+            data={"email": "test@example.com", "password": "securepassword123"},
+        )
+        assert response.status_code == 302
+        assert response.headers["Location"] == location
+
+    def test_login_form_needs_the_csrf_token(
+        self, flask_app, client: FlaskClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(flask_app.config, "WTF_CSRF_ENABLED", True)
+        response = client.post("/login", data={"email": "a@b.c", "password": "x"})
+        assert response.status_code == 400
+
     def test_login_api_nonexistent_user(self, client: FlaskClient) -> None:
         response = client.post(
             "/api/login",

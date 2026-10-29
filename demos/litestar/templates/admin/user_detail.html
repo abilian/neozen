@@ -67,20 +67,24 @@
         {% set role_names = user_roles | map(attribute='name') | list %}
         {% if 'admin' in role_names %}
         <form action="/admin/users/{{ target_user.id }}/toggle-role/admin" method="post">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="secondary outline">Remove Admin</button>
         </form>
         {% else %}
         <form action="/admin/users/{{ target_user.id }}/toggle-role/admin" method="post">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
             <button type="submit">Grant Admin</button>
         </form>
         {% endif %}
 
         {% if 'user' in role_names %}
         <form action="/admin/users/{{ target_user.id }}/toggle-role/user" method="post">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="secondary outline">Remove User</button>
         </form>
         {% else %}
         <form action="/admin/users/{{ target_user.id }}/toggle-role/user" method="post">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="secondary">Grant User</button>
         </form>
         {% endif %}

@@ -8,6 +8,7 @@ Run with: uvicorn demos.litestar.app:app --reload --port 8003
 
 from __future__ import annotations
 
+import os
 import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from pwdlib import PasswordHash
 
 from demos.shared.database import create_database, init_database
 from litestar import Litestar, Request, Response, get, post
+from litestar.config.csrf import CSRFConfig
 from litestar.connection import ASGIConnection
 from litestar.datastructures import State
 from litestar.exceptions import NotAuthorizedException
@@ -27,6 +29,7 @@ from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.params import FromPath
 from litestar.response import Redirect
 from litestar.stores.memory import MemoryStore
+from litestar.template.base import csrf_token
 from neozen.admin.services import AdminService
 from neozen.core.email.console import ConsoleEmailSender
 from neozen.core.factors.email_otp import EmailOTPConfig, EmailOTPFactor
@@ -311,6 +314,7 @@ def render_template(
     ctx = context or {}
     ctx["messages"] = request.session.pop("messages", [])
     ctx["request"] = request
+    ctx["csrf_token"] = csrf_token({"request": request})
     content = templates.get_template(template_name).render(**ctx)
     return Response(content=content, status_code=status_code, media_type="text/html")
 
@@ -1131,7 +1135,6 @@ def create_app() -> Litestar:
             email_otp_request_submit,
             email_otp_verify_page,
             email_otp_verify_submit,
-            api_last_email_otp,
             # TOTP routes
             totp_enroll_page,
             totp_enroll_confirm,
@@ -1146,14 +1149,22 @@ def create_app() -> Litestar:
             admin_sessions,
             admin_revoke_session,
             # JSON API routes
-            api_last_magic_link,
             api_register,
             api_login,
             api_logout,
             api_me,
+            # They hand out sign-in links and codes: browser tests only.
+            *(
+                [api_last_magic_link, api_last_email_otp]
+                if os.environ.get("NEOZEN_DEMO_TEST_API") == "1"
+                else []
+            ),
         ],
         plugins=[NeoZenPlugin(neozen_config)],
         middleware=[session_config.middleware],
+        # Every form posts `_csrf_token`. The JSON API, called by scripts
+        # and tests, is left out.
+        csrf_config=CSRFConfig(secret=SECRET_KEY, exclude=["/api"]),
         stores={"sessions": MemoryStore()},
         on_startup=[on_startup],
         state=State({"session_factory": session_factory}),
