@@ -51,7 +51,7 @@ Versions 0.1.0 to 0.8.0 were never tagged or published. They are reconstructed f
 - Authorization codes are single-use under concurrency, and a replayed refresh token revokes the client's tokens for that subject
 - Rate limits are keyed on the peer address: clients could pick their bucket with `X-Forwarded-For`. Behind a proxy, set `FORWARDED_ALLOW_IPS`
 - Security checks fail closed: a crashing pre-hook stops the operation, and factor enrollment errors propagate
-- Litestar role and permission guards always returned 401; they now load the user, and deny with 403
+- Litestar role and permission guards alway returned 401; they now load the user, and deny with 403
 - Flask runs async calls on one event loop per thread, and closes it when the thread ends
 - The admin CSV export includes every subject, not the first 50
 - Five admin pages that failed to render
@@ -72,7 +72,7 @@ Versions 0.1.0 to 0.8.0 were never tagged or published. They are reconstructed f
 
 ### Added
 
-- **Reference deployment**: the `neozen.serve` package, with `ServeConfig` (environment variables, and a `_FILE` variant for mounted secrets), a first-run admin bootstrap with a grep-able credential banner, and `/healthz` and `/readyz` endpoints
+- **Reference deployment**: the `neozen.serve` package, with `ServeConfig` (environment variables, and a `_FILE` variant for mounted secrets), a first-run admin bootstrap woth a grep-able credential banner, and `/healthz` and `/readyz` endpoints
 - `neozen serve`, the production-mode CLI command
 - Multi-stage `Dockerfile` (non-root user, healthcheck, OCI labels), `docker-compose.yml` with PostgreSQL 16, and a starter Helm chart
 - Alembic migrations, with a 1.0 baseline and async-URL auto-translation
