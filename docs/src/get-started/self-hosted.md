@@ -115,6 +115,8 @@ controller). NeoZen does not handle TLS itself.
 
 Set `FORWARDED_ALLOW_IPS` to the proxy's address (uvicorn reads it from the environment). NeoZen keys rate limits and account lockout on the client address, and only trusts `X-Forwarded-For` from those IPs; without it, every client shares the proxy's address.
 
+Have the proxy send `Strict-Transport-Security: max-age=31536000; includeSubDomains` too, so browsers never reach the console over plain HTTP. NeoZen sets the other security headers itself: `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY` (the console can't be framed), `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`.
+
 ### Real secret key
 
 Replace `change-me-in-production` with a real secret key:

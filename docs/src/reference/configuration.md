@@ -2,7 +2,7 @@
 
 ## Session Configuration
 
-Passed to `SessionServiceFactory` or `SessionService`:
+Passed to `SessionService` (`SessionServiceFactory` uses the defaults):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|

@@ -95,6 +95,10 @@ CSRFProtect(app)  # every POST must now carry the token
 
 The OAuth consent form is the exception: NeoZen protects it itself, with a `consent_token` (see [Consent Form](oidc.md#consent-form)).
 
+## Security Headers
+
+NeoZen doesn't set headers on your app's responses. Behind HTTPS, send at least `Strict-Transport-Security` (usually from the reverse proxy), and `Content-Security-Policy: frame-ancestors 'none'` on the sign-in and account pages, so another site can't frame them (clickjacking). A full Content Security Policy depends on your templates and scripts.
+
 ## Admin Guard
 
 ```python

@@ -4,6 +4,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 Versions 0.1.0 to 0.8.0 were never tagged or published. They are reconstructed from the commit history, one per development milestone.
 
+## [Unreleased]
+
+Maintenance release: fixes and hardening, no new API.
+
+### Fixed
+
+- An existing grant no longer skips consent when a client asks for more scopes than it covers; consenting widens the grant
+- An authorization request may omit `redirect_uri` only when the client has exactly one registered (RFC 6749 §3.1.2.3); the first of several was used before
+- `code` and `state` are appended correctly to a redirect URI that already has a query string
+- Introspection and revocation return 400 for `invalid_request`, and 401 with `WWW-Authenticate` only for `invalid_client`
+- Without a consent template, the Starlette and Litestar adapters answer `consent_required` with a 403 (it was a 200, and the Starlette one failed to serialize it)
+- Client credentials in the `Authorization: Basic` header are form-decoded (RFC 6749 §2.3.1)
+- Introspection returns `token_type: Bearer` for access tokens, and no `token_type` for refresh tokens
+- Discovery advertises `plain` PKCE, which the server accepts
+- SCIM: `count=0` returns no resources, only the total, and no page holds more than the advertised `filter.maxResults` (200)
+- SCIM `/ServiceProviderConfig` no longer claims `changePassword` support by default
+- Dynamic client registration accepts only https redirect URIs (http on a loopback host), plus reverse-domain private-use schemes for native clients, and only the scopes in `allowed_scopes` (by default `openid profile email`); a client that asks for none gets `allowed_scopes`, where it used to get every scope
+- The rate limiter counts an attempt before deciding, so concurrent requests can't all pass on the same count
+- `max_sessions_per_subject` is enforced: a new session past the limit revokes the subject's oldest one
+- The `next=` parameter of the Starlette and Litestar login redirects is URL-encoded
+- The Flask extension no longer turns a request refused by an earlier `before_request` hook (a CSRF check, for instance) into a 500
+- Errors no longer pass silently: the HIBP check accepts the password only when the API is unreachable, and logs it; the admin console skips only missing rows; RP-initiated logout ignores only unknown clients and malformed ID tokens
+- Admin console: logout is POST only, and `page` and `per_page` are validated (a bad value is a 400, `per_page` is at most 200)
+- Updated dependencies with known vulnerabilities, among them `pyjwt`, `cryptography` and `starlette`
+
+### Added
+
+- Admin console responses forbid framing (`Content-Security-Policy: frame-ancestors 'none'`, `X-Frame-Options: DENY`) and send `X-Content-Type-Options` and `Referrer-Policy`
+- Starting and ending an impersonation writes an audit entry with both the admin and the subject
+- A CI check of the locked dependencies against known vulnerabilities (`pip-audit`)
+- Demos: CSRF protection on every form; the `/api/test/*` endpoints that hand out sign-in links and codes exist only when `NEOZEN_DEMO_TEST_API=1`; the Flask demo follows only local `next=` paths
+- Docs: HSTS and security headers, a recommended session limit, and the dynamic registration and CORS rules
+
 ## [0.9.0] - 2026-10-29
 
 **First public release.** The bar for 0.9 is "clean": the docs, tests, packaging and reference deployment are all in good shape. 0.9 is not yet semver-stable, so the API may still change before 1.0.

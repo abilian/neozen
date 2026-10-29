@@ -17,6 +17,8 @@ service = SessionService(
 )
 ```
 
+In production, set `max_sessions_per_subject` to 5–10: enough for a user's devices, while a stolen password can't open sessions without limit. When a subject reaches the limit, signing in again ends its oldest session.
+
 ### Methods
 
 | Method | Description | Returns |
