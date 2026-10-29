@@ -54,7 +54,7 @@ class LockoutConfig:
     progression_multiplier: float = 2.0
 
 
-@dataclass
+@dataclass(frozen=True)
 class LockoutStatus:
     """Account lockout status.
 

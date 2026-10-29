@@ -85,7 +85,7 @@ class ClientCredentialsTokenRequest(BaseModel):
 # =============================================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class TokenResponse:
     """Response from token endpoint."""
 

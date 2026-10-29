@@ -15,6 +15,11 @@ from litestar.handlers import BaseRouteHandler
 from litestar.types import ASGIApp, Message, Receive, Scope, Send
 
 from neozen.core.security import RateLimiter, RateLimitResult
+from neozen.web.rate_limit import (
+    LIMIT_EXCEEDED,
+    rate_limit_headers,
+    too_many_requests,
+)
 
 if typing.TYPE_CHECKING:
     from collections.abc import Callable
@@ -136,20 +141,10 @@ class RateLimitMiddleware:
         scope["state"]["rate_limit_result"] = result
 
         if not result.allowed:
-            retry_after = (
-                int(result.retry_after.total_seconds()) if result.retry_after else 60
-            )
-
-            body = json.dumps({
-                "error": "Too Many Requests",
-                "message": "Rate limit exceeded. Please try again later.",
-                "retry_after": retry_after,
-            }).encode()
-            headers: list[tuple[bytes, bytes]] = [
+            body, limited_headers = too_many_requests(result, config.max_attempts)
+            headers = [
                 (b"content-type", b"application/json"),
-                (b"retry-after", str(retry_after).encode()),
-                (b"x-ratelimit-limit", str(config.max_attempts).encode()),
-                (b"x-ratelimit-remaining", b"0"),
+                *_encode(limited_headers),
             ]
             await send(
                 typing.cast(
@@ -166,7 +161,7 @@ class RateLimitMiddleware:
                     Message,
                     {
                         "type": "http.response.body",
-                        "body": body,
+                        "body": json.dumps(body).encode(),
                     },
                 )
             )
@@ -175,26 +170,18 @@ class RateLimitMiddleware:
         # Wrap send to add headers
         async def send_wrapper(message: Message) -> None:
             if message["type"] == "http.response.start":
-                headers = list(message.get("headers", []))
-                headers.extend([
-                    (
-                        b"x-ratelimit-limit",
-                        str(config.max_attempts).encode(),
-                    ),
-                    (
-                        b"x-ratelimit-remaining",
-                        str(result.remaining_attempts).encode(),
-                    ),
-                ])
-                if result.reset_at:
-                    headers.append((
-                        b"x-ratelimit-reset",
-                        str(int(result.reset_at.timestamp())).encode(),
-                    ))
-                message["headers"] = headers
+                message["headers"] = [
+                    *message.get("headers", []),
+                    *_encode(rate_limit_headers(result, config.max_attempts)),
+                ]
             await send(message)
 
         await self.app(scope, receive, send_wrapper)
+
+
+def _encode(headers: dict[str, str]) -> list[tuple[bytes, bytes]]:
+    """ASGI header pairs."""
+    return [(k.lower().encode(), v.encode()) for k, v in headers.items()]
 
 
 class RateLimitGuard:
@@ -261,14 +248,8 @@ class RateLimitGuard:
         if not result.allowed:
             from litestar.exceptions import HTTPException  # noqa: PLC0415
 
-            retry_after = (
-                int(result.retry_after.total_seconds()) if result.retry_after else 60
-            )
-            raise HTTPException(
-                status_code=429,
-                detail="Rate limit exceeded. Please try again later.",
-                headers={"Retry-After": str(retry_after)},
-            )
+            headers = too_many_requests(result, self.limiter.config.max_attempts)[1]
+            raise HTTPException(status_code=429, detail=LIMIT_EXCEEDED, headers=headers)
 
 
 def rate_limit_guard(

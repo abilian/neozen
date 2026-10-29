@@ -12,6 +12,7 @@ from functools import wraps
 from flask import Response, g, jsonify, request
 
 from neozen.core.security import RateLimiter, RateLimitResult
+from neozen.web.rate_limit import rate_limit_headers, too_many_requests
 
 from .extension import run_sync
 
@@ -95,20 +96,7 @@ def rate_limit(
                     if custom_response:
                         return custom_response
 
-                # Default 429 response
-                retry_after = (
-                    int(result.retry_after.total_seconds())
-                    if result.retry_after
-                    else 60
-                )
-                response = jsonify({
-                    "error": "Too Many Requests",
-                    "message": "Rate limit exceeded. Please try again later.",
-                    "retry_after": retry_after,
-                })
-                response.status_code = 429
-                response.headers["Retry-After"] = str(retry_after)
-                return response
+                return _too_many_requests(result, limiter.config.max_attempts)
 
             # Add rate limit headers to response
             response = f(*args, **kwargs)
@@ -117,14 +105,9 @@ def rate_limit(
             if not isinstance(response, Response):
                 return response
 
-            # Add rate limit headers
-            response.headers["X-RateLimit-Limit"] = str(limiter.config.max_attempts)
-            response.headers["X-RateLimit-Remaining"] = str(result.remaining_attempts)
-            if result.reset_at:
-                response.headers["X-RateLimit-Reset"] = str(
-                    int(result.reset_at.timestamp())
-                )
-
+            response.headers.update(
+                rate_limit_headers(result, limiter.config.max_attempts)
+            )
             return response
 
         return decorated_function  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
@@ -194,17 +177,7 @@ class FlaskRateLimitMiddleware:
         g.rate_limit_result = result
 
         if not result.allowed:
-            retry_after = (
-                int(result.retry_after.total_seconds()) if result.retry_after else 60
-            )
-            response = jsonify({
-                "error": "Too Many Requests",
-                "message": "Rate limit exceeded. Please try again later.",
-                "retry_after": retry_after,
-            })
-            response.status_code = 429
-            response.headers["Retry-After"] = str(retry_after)
-            return response
+            return _too_many_requests(result, self.limiter.config.max_attempts)
 
         return None
 
@@ -212,15 +185,18 @@ class FlaskRateLimitMiddleware:
         """Add rate limit headers to response."""
         result = getattr(g, "rate_limit_result", None)
         if result:
-            response.headers["X-RateLimit-Limit"] = str(
-                self.limiter.config.max_attempts
+            response.headers.update(
+                rate_limit_headers(result, self.limiter.config.max_attempts)
             )
-            response.headers["X-RateLimit-Remaining"] = str(result.remaining_attempts)
-            if result.reset_at:
-                response.headers["X-RateLimit-Reset"] = str(
-                    int(result.reset_at.timestamp())
-                )
         return response
+
+
+def _too_many_requests(result: RateLimitResult, limit: int) -> Response:
+    body, headers = too_many_requests(result, limit)
+    response = jsonify(body)
+    response.status_code = 429
+    response.headers.update(headers)
+    return response
 
 
 __all__ = [

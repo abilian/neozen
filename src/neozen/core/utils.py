@@ -5,6 +5,13 @@ from __future__ import annotations
 import secrets
 import uuid
 from datetime import UTC, datetime
+from typing import Any, ClassVar, Protocol
+
+
+class DataclassInstance(Protocol):
+    """Any dataclass instance (typeshed's, which lives in a private module)."""
+
+    __dataclass_fields__: ClassVar[dict[str, Any]]
 
 
 def hex_id() -> str:

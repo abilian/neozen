@@ -5,10 +5,29 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from neozen.cli.database import DatabaseContext, get_database_url
+
+if TYPE_CHECKING:
+    from neozen.core.authz.services import RoleService
+
+
+def _role_service(session: AsyncSession) -> RoleService:
+    """A role service on the CLI's database session."""
+    from neozen.core.authz.services import RoleService  # noqa: PLC0415
+    from neozen.storage.sqlalchemy.repositories import (  # noqa: PLC0415
+        RoleAssignmentRepository,
+        RoleRepository,
+    )
+
+    # RoleService isn't generic over its repositories yet (planned for 0.10).
+    return RoleService(
+        role_repository=RoleRepository(session=session),  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+        role_assignment_repository=RoleAssignmentRepository(session=session),  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+    )
 
 
 async def _create_role(
@@ -18,18 +37,7 @@ async def _create_role(
     description: str,
 ) -> dict:
     """Create a new role in the database."""
-    from neozen.core.authz.services import RoleService  # noqa: PLC0415
-    from neozen.storage.sqlalchemy.repositories import (  # noqa: PLC0415
-        RoleAssignmentRepository,
-        RoleRepository,
-    )
-
-    role_repo = RoleRepository(session=session)
-    assignment_repo = RoleAssignmentRepository(session=session)
-    service = RoleService(
-        role_repository=role_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-    )
+    service = _role_service(session)
 
     role = await service.create_role(
         name=name,
@@ -48,18 +56,7 @@ async def _create_role(
 
 async def _list_roles(session: AsyncSession) -> list[dict]:
     """List all roles from the database."""
-    from neozen.core.authz.services import RoleService  # noqa: PLC0415
-    from neozen.storage.sqlalchemy.repositories import (  # noqa: PLC0415
-        RoleAssignmentRepository,
-        RoleRepository,
-    )
-
-    role_repo = RoleRepository(session=session)
-    assignment_repo = RoleAssignmentRepository(session=session)
-    service = RoleService(
-        role_repository=role_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-    )
+    service = _role_service(session)
 
     roles = await service.list_roles()
 
@@ -77,18 +74,7 @@ async def _list_roles(session: AsyncSession) -> list[dict]:
 
 async def _delete_role(session: AsyncSession, name: str) -> None:
     """Delete a role from the database."""
-    from neozen.core.authz.services import RoleService  # noqa: PLC0415
-    from neozen.storage.sqlalchemy.repositories import (  # noqa: PLC0415
-        RoleAssignmentRepository,
-        RoleRepository,
-    )
-
-    role_repo = RoleRepository(session=session)
-    assignment_repo = RoleAssignmentRepository(session=session)
-    service = RoleService(
-        role_repository=role_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-    )
+    service = _role_service(session)
 
     await service.delete_role(name)
 
@@ -102,18 +88,8 @@ async def _assign_role(
 ) -> dict:
     """Assign a role to a subject."""
     from neozen.core.authz.models import ScopeType  # noqa: PLC0415
-    from neozen.core.authz.services import RoleService  # noqa: PLC0415
-    from neozen.storage.sqlalchemy.repositories import (  # noqa: PLC0415
-        RoleAssignmentRepository,
-        RoleRepository,
-    )
 
-    role_repo = RoleRepository(session=session)
-    assignment_repo = RoleAssignmentRepository(session=session)
-    service = RoleService(
-        role_repository=role_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-    )
+    service = _role_service(session)
 
     st = ScopeType(scope_type) if scope_type else ScopeType.GLOBAL
 
@@ -142,18 +118,8 @@ async def _revoke_role(
 ) -> None:
     """Revoke a role from a subject."""
     from neozen.core.authz.models import ScopeType  # noqa: PLC0415
-    from neozen.core.authz.services import RoleService  # noqa: PLC0415
-    from neozen.storage.sqlalchemy.repositories import (  # noqa: PLC0415
-        RoleAssignmentRepository,
-        RoleRepository,
-    )
 
-    role_repo = RoleRepository(session=session)
-    assignment_repo = RoleAssignmentRepository(session=session)
-    service = RoleService(
-        role_repository=role_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-    )
+    service = _role_service(session)
 
     st = ScopeType(scope_type) if scope_type else ScopeType.GLOBAL
 
@@ -167,18 +133,7 @@ async def _revoke_role(
 
 async def _list_subject_roles(session: AsyncSession, subject_id: str) -> list[dict]:
     """List roles assigned to a subject."""
-    from neozen.core.authz.services import RoleService  # noqa: PLC0415
-    from neozen.storage.sqlalchemy.repositories import (  # noqa: PLC0415
-        RoleAssignmentRepository,
-        RoleRepository,
-    )
-
-    role_repo = RoleRepository(session=session)
-    assignment_repo = RoleAssignmentRepository(session=session)
-    service = RoleService(
-        role_repository=role_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-    )
+    service = _role_service(session)
 
     roles = await service.get_subject_roles(subject_id)
 
@@ -195,18 +150,7 @@ async def _list_subject_roles(session: AsyncSession, subject_id: str) -> list[di
 
 async def _init_builtin_roles(session: AsyncSession) -> list[str]:
     """Initialize built-in roles."""
-    from neozen.core.authz.services import RoleService  # noqa: PLC0415
-    from neozen.storage.sqlalchemy.repositories import (  # noqa: PLC0415
-        RoleAssignmentRepository,
-        RoleRepository,
-    )
-
-    role_repo = RoleRepository(session=session)
-    assignment_repo = RoleAssignmentRepository(session=session)
-    service = RoleService(
-        role_repository=role_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-        role_assignment_repository=assignment_repo,  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
-    )
+    service = _role_service(session)
 
     await service.ensure_builtin_roles()
 

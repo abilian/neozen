@@ -30,7 +30,7 @@ class RateLimitConfig:
     by_subject: bool = True
 
 
-@dataclass
+@dataclass(frozen=True)
 class RateLimitResult:
     """Result of rate limit check.
 

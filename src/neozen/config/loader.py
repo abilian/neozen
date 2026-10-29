@@ -5,12 +5,17 @@ Handles TOML loading, environment variable expansion, and duration parsing.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import re
 import tomllib
+import typing
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
+
+if typing.TYPE_CHECKING:
+    from neozen.core.utils import DataclassInstance
 
 from .exceptions import ConfigError
 from .types import (
@@ -247,7 +252,40 @@ def load_config(path: Path | str | None = None) -> NeoZenConfig:
     return _build_config(config_data)
 
 
-def _build_config(data: dict[str, Any]) -> NeoZenConfig:  # noqa: C901
+def _section[C: DataclassInstance](
+    cls: type[C], table: dict[str, Any], **values: Any
+) -> C:
+    """Build a config dataclass from its TOML table.
+
+    Each field the table sets replaces the default: durations are parsed,
+    lists become tuples. ``values`` are fields built by the caller (nested
+    tables).
+    """
+    hints = typing.get_type_hints(cls)
+    for f in dataclasses.fields(cls):
+        if f.name in values or f.name not in table:
+            continue
+        value = table[f.name]
+        hint = hints[f.name]
+        if hint is timedelta or timedelta in typing.get_args(hint):
+            value = parse_duration(value)
+        elif isinstance(value, list):
+            value = tuple(value)
+        values[f.name] = value
+    return cls(**values)
+
+
+def _oauth_provider(table: dict[str, Any]) -> OAuthProviderConfig:
+    """A provider: its known keys, everything else in `extra`."""
+    known = {f.name for f in dataclasses.fields(OAuthProviderConfig)} - {"extra"}
+    return _section(
+        OAuthProviderConfig,
+        table,
+        extra={k: v for k, v in table.items() if k not in known},
+    )
+
+
+def _build_config(data: dict[str, Any]) -> NeoZenConfig:
     """Build NeoZenConfig from raw dictionary.
 
     Args:
@@ -257,248 +295,52 @@ def _build_config(data: dict[str, Any]) -> NeoZenConfig:  # noqa: C901
         NeoZenConfig instance.
 
     """
-    config_parts: dict[str, Any] = {}
+    simple = {
+        "database": DatabaseConfig,
+        "session": SessionConfig,
+        "password": PasswordConfig,
+        "totp": TOTPConfig,
+        "webauthn": WebAuthnConfig,
+        "oauth_server": OAuthServerConfig,
+        "authorization": AuthorizationConfig,
+        "admin": AdminConfig,
+        "logging": LoggingConfig,
+    }
+    parts: dict[str, Any] = {
+        name: _section(cls, data[name]) for name, cls in simple.items() if name in data
+    }
 
-    # Database
-    if "database" in data:
-        db = data["database"]
-        config_parts["database"] = DatabaseConfig(
-            url=db.get("url", DatabaseConfig.url),
-            pool_size=db.get("pool_size", DatabaseConfig.pool_size),
-            pool_recycle=db.get("pool_recycle", DatabaseConfig.pool_recycle),
-            echo=db.get("echo", DatabaseConfig.echo),
-        )
-
-    # Session
-    if "session" in data:
-        sess = data["session"]
-        default_session = SessionConfig()
-        config_parts["session"] = SessionConfig(
-            lifetime=parse_duration(sess.get("lifetime")) or default_session.lifetime,
-            sliding_window=parse_duration(sess.get("sliding_window")),
-            cookie_name=sess.get("cookie_name", default_session.cookie_name),
-            cookie_secure=sess.get("cookie_secure", default_session.cookie_secure),
-            cookie_httponly=sess.get(
-                "cookie_httponly", default_session.cookie_httponly
-            ),
-            cookie_samesite=sess.get(
-                "cookie_samesite", default_session.cookie_samesite
-            ),
-            cookie_domain=sess.get("cookie_domain"),
-            cookie_path=sess.get("cookie_path", default_session.cookie_path),
-        )
-
-    # Password
-    if "password" in data:
-        pwd = data["password"]
-        default_pwd = PasswordConfig()
-        config_parts["password"] = PasswordConfig(
-            min_length=pwd.get("min_length", default_pwd.min_length),
-            max_length=pwd.get("max_length", default_pwd.max_length),
-            require_uppercase=pwd.get(
-                "require_uppercase", default_pwd.require_uppercase
-            ),
-            require_lowercase=pwd.get(
-                "require_lowercase", default_pwd.require_lowercase
-            ),
-            require_digit=pwd.get("require_digit", default_pwd.require_digit),
-            require_special=pwd.get("require_special", default_pwd.require_special),
-            special_characters=pwd.get(
-                "special_characters", default_pwd.special_characters
-            ),
-            check_hibp=pwd.get("check_hibp", default_pwd.check_hibp),
-            hibp_threshold=pwd.get("hibp_threshold", default_pwd.hibp_threshold),
-            history_count=pwd.get("history_count", default_pwd.history_count),
-        )
-
-    # TOTP
-    if "totp" in data:
-        totp = data["totp"]
-        default_totp = TOTPConfig()
-        config_parts["totp"] = TOTPConfig(
-            issuer=totp.get("issuer", default_totp.issuer),
-            digits=totp.get("digits", default_totp.digits),
-            interval=totp.get("interval", default_totp.interval),
-            algorithm=totp.get("algorithm", default_totp.algorithm),
-            backup_code_count=totp.get(
-                "backup_code_count", default_totp.backup_code_count
-            ),
-            backup_code_length=totp.get(
-                "backup_code_length", default_totp.backup_code_length
-            ),
-        )
-
-    # WebAuthn
-    if "webauthn" in data:
-        wa = data["webauthn"]
-        default_wa = WebAuthnConfig()
-        config_parts["webauthn"] = WebAuthnConfig(
-            rp_id=wa.get("rp_id", default_wa.rp_id),
-            rp_name=wa.get("rp_name", default_wa.rp_name),
-            origin=wa.get("origin", default_wa.origin),
-            challenge_timeout=parse_duration(wa.get("challenge_timeout"))
-            or default_wa.challenge_timeout,
-            user_verification=wa.get("user_verification", default_wa.user_verification),
-            authenticator_attachment=wa.get("authenticator_attachment"),
-            resident_key=wa.get("resident_key", default_wa.resident_key),
-        )
-
-    # OAuth (client)
     if "oauth" in data:
-        oauth_data = data["oauth"]
-        providers: dict[str, OAuthProviderConfig] = {}
-        for name, prov in oauth_data.get("providers", {}).items():
-            scopes = prov.get("scopes", [])
-            providers[name] = OAuthProviderConfig(
-                enabled=prov.get("enabled", False),
-                client_id=prov.get("client_id", ""),
-                client_secret=prov.get("client_secret", ""),
-                scopes=tuple(scopes) if isinstance(scopes, list) else scopes,
-                extra={
-                    k: v
-                    for k, v in prov.items()
-                    if k not in ("enabled", "client_id", "client_secret", "scopes")
-                },
-            )
-        default_oauth = OAuthConfig()
-        default_scopes = oauth_data.get(
-            "default_scopes", list(default_oauth.default_scopes)
-        )
-        config_parts["oauth"] = OAuthConfig(
-            state_lifetime=parse_duration(oauth_data.get("state_lifetime"))
-            or default_oauth.state_lifetime,
-            default_scopes=tuple(default_scopes)
-            if isinstance(default_scopes, list)
-            else default_scopes,
-            providers=providers,
+        oauth = data["oauth"]
+        parts["oauth"] = _section(
+            OAuthConfig,
+            oauth,
+            providers={
+                name: _oauth_provider(table)
+                for name, table in oauth.get("providers", {}).items()
+            },
         )
 
-    # OAuth Server
-    if "oauth_server" in data:
-        os_data = data["oauth_server"]
-        default_os = OAuthServerConfig()
-        config_parts["oauth_server"] = OAuthServerConfig(
-            enabled=os_data.get("enabled", False),
-            access_token_lifetime=parse_duration(os_data.get("access_token_lifetime"))
-            or default_os.access_token_lifetime,
-            refresh_token_lifetime=parse_duration(os_data.get("refresh_token_lifetime"))
-            or default_os.refresh_token_lifetime,
-            authorization_code_lifetime=parse_duration(
-                os_data.get("authorization_code_lifetime")
-            )
-            or default_os.authorization_code_lifetime,
-            require_pkce=os_data.get("require_pkce", default_os.require_pkce),
-            allow_refresh_token_rotation=os_data.get(
-                "allow_refresh_token_rotation", default_os.allow_refresh_token_rotation
-            ),
-            jwt_algorithm=os_data.get("jwt_algorithm", default_os.jwt_algorithm),
-            issuer=os_data.get("issuer"),
-            jwt_access_tokens=os_data.get("jwt_access_tokens", False),
-            jwt_audience=os_data.get("jwt_audience"),
-        )
-
-    # Security
     if "security" in data:
         sec = data["security"]
-        rate_limit = RateLimitConfig()
-        lockout = LockoutConfig()
-
-        if "rate_limit" in sec:
-            rl = sec["rate_limit"]
-            rate_limit = RateLimitConfig(
-                enabled=rl.get("enabled", False),
-                login_attempts=rl.get("login_attempts", rate_limit.login_attempts),
-                login_window=parse_duration(rl.get("login_window"))
-                or rate_limit.login_window,
-                registration_attempts=rl.get(
-                    "registration_attempts", rate_limit.registration_attempts
-                ),
-                registration_window=parse_duration(rl.get("registration_window"))
-                or rate_limit.registration_window,
-            )
-
-        if "lockout" in sec:
-            lo = sec["lockout"]
-            lockout = LockoutConfig(
-                enabled=lo.get("enabled", False),
-                threshold=lo.get("threshold", lockout.threshold),
-                duration=parse_duration(lo.get("duration")) or lockout.duration,
-                reset_on_success=lo.get("reset_on_success", lockout.reset_on_success),
-            )
-
-        config_parts["security"] = SecurityConfig(
-            secret_key=sec.get("secret_key", ""),
-            rate_limit=rate_limit,
-            lockout=lockout,
+        parts["security"] = _section(
+            SecurityConfig,
+            sec,
+            rate_limit=_section(RateLimitConfig, sec.get("rate_limit", {})),
+            lockout=_section(LockoutConfig, sec.get("lockout", {})),
         )
 
-    # Email
     if "email" in data:
-        em = data["email"]
-        smtp_config = EmailSMTPConfig()
-        if "smtp" in em:
-            smtp = em["smtp"]
-            smtp_config = EmailSMTPConfig(
-                host=smtp.get("host", smtp_config.host),
-                port=smtp.get("port", smtp_config.port),
-                username=smtp.get("username", smtp_config.username),
-                password=smtp.get("password", smtp_config.password),
-                use_tls=smtp.get("use_tls", smtp_config.use_tls),
-            )
-        default_email = EmailConfig()
-        config_parts["email"] = EmailConfig(
-            provider=em.get("provider", default_email.provider),
-            from_address=em.get("from_address", default_email.from_address),
-            from_name=em.get("from_name", default_email.from_name),
-            smtp=smtp_config,
-            sendgrid_api_key=em.get("sendgrid", {}).get("api_key", ""),
-            postmark_api_key=em.get("postmark", {}).get("api_key", ""),
+        email = data["email"]
+        parts["email"] = _section(
+            EmailConfig,
+            email,
+            smtp=_section(EmailSMTPConfig, email.get("smtp", {})),
+            sendgrid_api_key=email.get("sendgrid", {}).get("api_key", ""),
+            postmark_api_key=email.get("postmark", {}).get("api_key", ""),
         )
 
-    # Authorization
-    if "authorization" in data:
-        auth = data["authorization"]
-        default_auth = AuthorizationConfig()
-        builtin_roles = auth.get("builtin_roles", list(default_auth.builtin_roles))
-        first_user_roles = auth.get(
-            "first_user_roles", list(default_auth.first_user_roles)
-        )
-        config_parts["authorization"] = AuthorizationConfig(
-            builtin_roles=tuple(builtin_roles)
-            if isinstance(builtin_roles, list)
-            else builtin_roles,
-            first_user_roles=tuple(first_user_roles)
-            if isinstance(first_user_roles, list)
-            else first_user_roles,
-            superuser_permission=auth.get(
-                "superuser_permission", default_auth.superuser_permission
-            ),
-        )
-
-    # Admin
-    if "admin" in data:
-        adm = data["admin"]
-        default_admin = AdminConfig()
-        config_parts["admin"] = AdminConfig(
-            enabled=adm.get("enabled", default_admin.enabled),
-            path_prefix=adm.get("path_prefix", default_admin.path_prefix),
-            require_role=adm.get("require_role", default_admin.require_role),
-        )
-
-    # Logging
-    if "logging" in data:
-        log = data["logging"]
-        default_log = LoggingConfig()
-        audit_events = log.get("audit_events", list(default_log.audit_events))
-        config_parts["logging"] = LoggingConfig(
-            level=log.get("level", default_log.level),
-            audit_enabled=log.get("audit_enabled", default_log.audit_enabled),
-            audit_events=tuple(audit_events)
-            if isinstance(audit_events, list)
-            else audit_events,
-        )
-
-    return NeoZenConfig(**config_parts)
+    return NeoZenConfig(**parts)
 
 
 __all__ = [

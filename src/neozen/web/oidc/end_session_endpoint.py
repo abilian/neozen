@@ -25,7 +25,7 @@ class InvalidPostLogoutRedirectError(EndSessionError):
     """Raised when post_logout_redirect_uri is not registered for the client."""
 
 
-@dataclass
+@dataclass(frozen=True)
 class EndSessionRequest:
     """Parsed end-session request parameters.
 
@@ -46,7 +46,7 @@ class EndSessionRequest:
     ui_locales: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class EndSessionResult:
     """Result of processing an end-session request.
 

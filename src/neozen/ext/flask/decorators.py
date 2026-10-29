@@ -7,6 +7,8 @@ from functools import wraps
 
 from flask import jsonify
 
+from neozen.web.auth.permissions import check_user_permissions
+
 from .helpers import current_user
 
 if typing.TYPE_CHECKING:
@@ -182,7 +184,6 @@ def permissions_required(*permissions: str) -> Callable[[F], F]:
         def delete_user(id):
             ...
     """
-    from neozen.core.authz.models import Permission  # noqa: PLC0415
 
     def decorator(f: F) -> F:
         @wraps(f)
@@ -194,27 +195,10 @@ def permissions_required(*permissions: str) -> Callable[[F], F]:
                 neozen = _get_neozen()
                 return neozen.handle_unauthorized()
 
-            # Check permissions
-            for perm_str in permissions:
-                required = Permission.parse(perm_str)
-                has_perm = False
+            if check_user_permissions(current_user, permissions) is not None:
+                from flask import abort  # noqa: PLC0415
 
-                # Try has_permission method first
-                if hasattr(current_user, "has_permission"):
-                    has_perm = current_user.has_permission(required)  # type: ignore[operator]  # ty: ignore[call-non-callable]
-                else:
-                    # Fall back to checking permissions attribute
-                    user_perms = getattr(current_user, "permissions", [])
-                    for user_perm_str in user_perms:
-                        user_perm = Permission.parse(user_perm_str)
-                        if user_perm.matches(required):
-                            has_perm = True
-                            break
-
-                if not has_perm:
-                    from flask import abort  # noqa: PLC0415
-
-                    abort(403)
+                abort(403)
 
             return f(*args, **kwargs)
 

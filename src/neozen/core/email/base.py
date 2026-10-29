@@ -6,7 +6,7 @@ import typing
 from dataclasses import dataclass, field
 
 
-@dataclass
+@dataclass(frozen=True)
 class EmailMessage:
     """Represents an email message.
 

@@ -34,7 +34,7 @@ SCOPE_CLAIMS: dict[str, list[str]] = {
 }
 
 
-@dataclass
+@dataclass(frozen=True)
 class SubjectClaims:
     """Container for claims about a subject.
 

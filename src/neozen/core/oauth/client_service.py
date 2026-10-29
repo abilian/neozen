@@ -28,7 +28,7 @@ from neozen.core.oauth.models import OAuthClientModel
 from neozen.core.repository import DoesNotExist, RepositoryProtocol
 
 
-@dataclass
+@dataclass(frozen=True)
 class ClientCredentials:
     """Result of client creation with credentials."""
 

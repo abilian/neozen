@@ -17,7 +17,7 @@ read from there, so they work unchanged when imported here.
 
 from __future__ import annotations
 
-import sys
+import logging
 
 from litestar import Litestar
 from litestar.datastructures import State
@@ -30,6 +30,8 @@ from neozen.serve.bootstrap import bootstrap_admin_if_needed, format_bootstrap_n
 from neozen.serve.config import ServeConfig
 from neozen.serve.healthcheck import healthz, readyz
 from neozen.storage.sqlalchemy.base import Base
+
+logger = logging.getLogger(__name__)
 
 
 def build_serve_app(config: ServeConfig | None = None) -> Litestar:
@@ -45,10 +47,9 @@ def build_serve_app(config: ServeConfig | None = None) -> Litestar:
     if config is None:
         config = ServeConfig.from_env()
 
-    # Surface validation warnings to stderr so operators see them
-    # at startup without crashing the server.
+    # Operators see configuration problems at startup; they are not fatal.
     for warning in config.validate():
-        print(f"[neozen serve] WARNING: {warning}", file=sys.stderr)
+        logger.warning(warning)
 
     engine = create_async_engine(config.db_url, echo=False)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -92,9 +93,11 @@ def build_serve_app(config: ServeConfig | None = None) -> Litestar:
         ],
         middleware=[sessions.middleware, admin_app_module.AUTH_MIDDLEWARE],
         exception_handlers=admin_app_module.EXCEPTION_HANDLERS,
+        dependencies=admin_app_module.DEPENDENCIES,
         after_request=admin_app_module.add_security_headers,
         csrf_config=admin_app_module.csrf_config(admin_config),
         on_startup=[on_startup],
+        on_shutdown=[engine.dispose],
         state=State({
             "config": admin_config,
             "session_factory": session_factory,

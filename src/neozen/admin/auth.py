@@ -36,7 +36,7 @@ class AdminRole(Enum):
     AUDITOR = "auditor"  # Read-only + audit logs
 
 
-@dataclass
+@dataclass(frozen=True)
 class AdminUser:
     """Authenticated admin user."""
 
@@ -300,7 +300,15 @@ class AdminAuthMiddleware(AbstractAuthenticationMiddleware):
 def redirect_to_login_handler(
     request: Request, exc: NotAuthorizedException
 ) -> Response:
-    """Exception handler sending unauthenticated admin requests to login."""
+    """Exception handler sending unauthenticated admin requests to login.
+
+    An HTMX request (a polled widget, say) gets ``HX-Redirect`` instead:
+    HTMX would follow a 303 and swap the login page into the widget.
+    """
+    if request.headers.get("HX-Request") == "true":
+        return Response(
+            content=None, status_code=204, headers={"HX-Redirect": "/login"}
+        )
     return redirect_to_login()
 
 

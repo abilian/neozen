@@ -13,6 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from neozen.core.security import RateLimiter
+from neozen.web.rate_limit import rate_limit_headers, too_many_requests
 
 if typing.TYPE_CHECKING:
     from starlette.types import ASGIApp
@@ -119,35 +120,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Store result in request state
         request.state.rate_limit_result = result
 
+        limit = self.limiter.config.max_attempts
         if not result.allowed:
-            retry_after = (
-                int(result.retry_after.total_seconds()) if result.retry_after else 60
-            )
-            return JSONResponse(
-                {
-                    "error": "Too Many Requests",
-                    "message": "Rate limit exceeded. Please try again later.",
-                    "retry_after": retry_after,
-                },
-                status_code=429,
-                headers={
-                    "Retry-After": str(retry_after),
-                    "X-RateLimit-Limit": str(self.limiter.config.max_attempts),
-                    "X-RateLimit-Remaining": "0",
-                },
-            )
+            body, headers = too_many_requests(result, limit)
+            return JSONResponse(body, status_code=429, headers=headers)
 
         # Process request
         response = await call_next(request)
 
-        # Add rate limit headers
-        response.headers["X-RateLimit-Limit"] = str(self.limiter.config.max_attempts)
-        response.headers["X-RateLimit-Remaining"] = str(result.remaining_attempts)
-        if result.reset_at:
-            response.headers["X-RateLimit-Reset"] = str(
-                int(result.reset_at.timestamp())
-            )
-
+        response.headers.update(rate_limit_headers(result, limit))
         return response
 
 
@@ -220,18 +201,12 @@ class LoginRateLimitMiddleware(BaseHTTPMiddleware):
         result = await self.limiter.check(key)
 
         if not result.allowed:
-            retry_after = (
-                int(result.retry_after.total_seconds()) if result.retry_after else 60
+            body, headers = too_many_requests(
+                result,
+                self.limiter.config.max_attempts,
+                "Too many login attempts. Please try again later.",
             )
-            return JSONResponse(
-                {
-                    "error": "Too Many Requests",
-                    "message": "Too many login attempts. Please try again later.",
-                    "retry_after": retry_after,
-                },
-                status_code=429,
-                headers={"Retry-After": str(retry_after)},
-            )
+            return JSONResponse(body, status_code=429, headers=headers)
 
         # Store key in request state for later recording
         request.state.rate_limit_key = key

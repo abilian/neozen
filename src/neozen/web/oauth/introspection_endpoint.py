@@ -31,7 +31,7 @@ class IntrospectionRequest(BaseModel):
     token_type_hint: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class IntrospectionResponse:
     """Response from introspection endpoint."""
 

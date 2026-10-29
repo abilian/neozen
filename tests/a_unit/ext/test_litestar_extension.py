@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 
 import pytest
 from litestar import Litestar, Request, Response, get
-from litestar.response import Redirect
 from litestar.testing import TestClient
 
 from neozen.ext.litestar import (
@@ -142,18 +141,6 @@ def app(config):
     def login_route(request: Request) -> Response:
         return Response(content={"page": "login"}, media_type="application/json")
 
-    # Exception handler for authentication redirects
-    def handle_auth_error(
-        request: Request, exc: AuthenticationRequiredError
-    ) -> Response:
-        if exc.redirect_to:
-            return Redirect(path=exc.redirect_to)
-        return Response(
-            content={"error": exc.detail},
-            status_code=401,
-            media_type="application/json",
-        )
-
     return Litestar(
         route_handlers=[
             index,
@@ -164,7 +151,6 @@ def app(config):
             login_route,
         ],
         plugins=[NeoZenPlugin(config)],
-        exception_handlers={AuthenticationRequiredError: handle_auth_error},
     )
 
 
@@ -255,6 +241,21 @@ class TestLoginRequired:
         response = client.get("/protected-redirect", follow_redirects=False)
         assert response.status_code in (302, 303, 307)
         assert "/login" in response.headers.get("location", "")
+
+    def test_app_handler_overrides_the_plugin(self, config):
+        @get("/p", guards=[login_required()], sync_to_thread=False)
+        def protected(request: Request) -> Response:
+            return Response(content={})
+
+        def teapot(request: Request, exc: AuthenticationRequiredError) -> Response:
+            return Response(content={}, status_code=418)
+
+        app = Litestar(
+            route_handlers=[protected],
+            plugins=[NeoZenPlugin(config)],
+            exception_handlers={AuthenticationRequiredError: teapot},
+        )
+        assert TestClient(app).get("/p").status_code == 418
 
     def test_authenticated_access(self, client, session_service, users_db):
         user = users_db["user_1"]

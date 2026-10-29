@@ -41,8 +41,9 @@ class LoginRequiredGuard:
     AuthenticationRequiredError if not. The error includes redirect
     information that can be used by an exception handler.
 
-    Note: For redirect functionality, configure an exception handler
-    at the app level to handle AuthenticationRequiredError.
+    `NeoZenPlugin` turns the error into a redirect to the login page, or
+    a 401 for ``redirect=False``; an app can register its own handler for
+    AuthenticationRequiredError instead.
 
     Example:
         @get("/dashboard", guards=[LoginRequiredGuard()])
@@ -52,16 +53,6 @@ class LoginRequiredGuard:
         @get("/api/me", guards=[LoginRequiredGuard(redirect=False)])
         async def api_me(current_user: CurrentUser) -> dict:
             return {"id": current_user.id}
-
-        # To handle redirects, add an exception handler:
-        async def handle_auth_error(request: Request, exc: AuthenticationRequiredError):
-            if exc.redirect_to:
-                return Redirect(exc.redirect_to)
-            return Response({"error": exc.detail}, status_code=401)
-
-        app = Litestar(
-            exception_handlers={AuthenticationRequiredError: handle_auth_error},
-        )
     """
 
     __slots__ = ("redirect", "scopes")

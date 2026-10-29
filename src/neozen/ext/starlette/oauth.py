@@ -23,13 +23,11 @@ from __future__ import annotations
 import dataclasses
 import typing
 
-from starlette.datastructures import ImmutableMultiDict
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from neozen.core.oauth.client_service import OAuthClientService
-from neozen.core.oauth.exceptions import TokenError
 from neozen.core.oauth.models import (
     OAuthAccessTokenModel,
     OAuthAuthorizationCodeModel,
@@ -39,27 +37,19 @@ from neozen.core.oauth.models import (
 )
 from neozen.core.oauth.services import OAuthTokenService
 from neozen.web.oauth import (
-    NO_STORE_HEADERS,
     AuthorizationEndpoint,
     IntrospectionEndpoint,
     RevocationEndpoint,
     TokenEndpoint,
     parse_basic_auth,
-    token_error_headers,
-    token_error_status,
+)
+from neozen.web.oauth.http import (
+    HttpReply,
+    introspection_reply,
+    revocation_reply,
+    token_reply,
 )
 from neozen.web.oidc import DiscoveryEndpoint, JWKSEndpoint
-
-
-def _get_client_credentials(
-    request: Request, form: ImmutableMultiDict
-) -> tuple[str | None, str | None]:
-    """Extract client credentials from request (header or form)."""
-    client_id, client_secret = parse_basic_auth(request.headers.get("Authorization"))
-    if not client_id:
-        client_id = typing.cast(str | None, form.get("client_id"))
-        client_secret = typing.cast(str | None, form.get("client_secret"))
-    return client_id, client_secret
 
 
 def _error_response(
@@ -71,11 +61,10 @@ def _error_response(
     )
 
 
-def _token_error_response(e: TokenError) -> Response:
-    """An error from the token, introspection or revocation endpoint."""
-    error = _error_response(e.error, e.error_description, token_error_status(e.error))
-    error.headers.update(token_error_headers(e.error))
-    return error
+def _response(reply: HttpReply) -> Response:
+    if reply.body is None:
+        return Response(status_code=reply.status, headers=reply.headers)
+    return JSONResponse(reply.body, status_code=reply.status, headers=reply.headers)
 
 
 def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
@@ -84,14 +73,8 @@ def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
     async def token_handler(request: Request) -> Response:
         """OAuth 2.1 Token Endpoint."""
         form = await request.form()
-        client_id, client_secret = _get_client_credentials(request, form)
-        try:
-            response = await token_ep(
-                dict(form), client_id=client_id, client_secret=client_secret
-            )
-        except TokenError as e:
-            return _token_error_response(e)
-        return JSONResponse(response.to_dict(), headers=NO_STORE_HEADERS)
+        auth = request.headers.get("Authorization")
+        return _response(await token_reply(token_ep, form, auth))
 
     return token_handler
 
@@ -104,14 +87,8 @@ def _create_introspect_handler(
     async def introspect_handler(request: Request) -> Response:
         """OAuth 2.1 Token Introspection Endpoint (RFC 7662)."""
         form = await request.form()
-        client_id, client_secret = _get_client_credentials(request, form)
-        try:
-            response = await introspection_ep(
-                dict(form), client_id=client_id, client_secret=client_secret
-            )
-            return JSONResponse(response.to_dict())
-        except TokenError as e:
-            return _token_error_response(e)
+        auth = request.headers.get("Authorization")
+        return _response(await introspection_reply(introspection_ep, form, auth))
 
     return introspect_handler
 
@@ -122,14 +99,8 @@ def _create_revoke_handler(revocation_ep: RevocationEndpoint) -> typing.Callable
     async def revoke_handler(request: Request) -> Response:
         """OAuth 2.1 Token Revocation Endpoint (RFC 7009)."""
         form = await request.form()
-        client_id, client_secret = _get_client_credentials(request, form)
-        try:
-            await revocation_ep(
-                dict(form), client_id=client_id, client_secret=client_secret
-            )
-            return Response(status_code=200)
-        except TokenError as e:
-            return _token_error_response(e)
+        auth = request.headers.get("Authorization")
+        return _response(await revocation_reply(revocation_ep, form, auth))
 
     return revoke_handler
 

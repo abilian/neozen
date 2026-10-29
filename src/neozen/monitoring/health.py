@@ -8,11 +8,11 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
 
-@dataclass
+@dataclass(frozen=True)
 class CheckResult:
     """Individual health check result.
 
@@ -31,7 +31,7 @@ class CheckResult:
     details: dict[str, str | int | float | bool] = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(frozen=True)
 class HealthStatus:
     """Overall health status.
 
@@ -140,10 +140,9 @@ class HealthChecker:
         check_fn = self._checks[name]
         start = time.perf_counter()
 
+        # A check that raises reports an unhealthy dependency.
         try:
             result = await check_fn()
-            result.latency_ms = (time.perf_counter() - start) * 1000
-            return result
         except Exception as e:
             return CheckResult(
                 name=name,
@@ -151,6 +150,7 @@ class HealthChecker:
                 message=f"Check failed with error: {e!s}",
                 latency_ms=(time.perf_counter() - start) * 1000,
             )
+        return replace(result, latency_ms=(time.perf_counter() - start) * 1000)
 
     async def check_all(self) -> HealthStatus:
         """Run all registered health checks.

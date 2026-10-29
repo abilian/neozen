@@ -32,7 +32,6 @@ from flask import (
 from werkzeug.wrappers import Response as WerkzeugResponse
 
 from neozen.core.oauth.client_service import OAuthClientService
-from neozen.core.oauth.exceptions import TokenError
 from neozen.core.oauth.models import (
     OAuthAccessTokenModel,
     OAuthAuthorizationCodeModel,
@@ -42,14 +41,17 @@ from neozen.core.oauth.models import (
 )
 from neozen.core.oauth.services import OAuthTokenService
 from neozen.web.oauth import (
-    NO_STORE_HEADERS,
     AuthorizationEndpoint,
     IntrospectionEndpoint,
     RevocationEndpoint,
     TokenEndpoint,
     parse_basic_auth,
-    token_error_headers,
-    token_error_status,
+)
+from neozen.web.oauth.http import (
+    HttpReply,
+    introspection_reply,
+    revocation_reply,
+    token_reply,
 )
 from neozen.web.oidc import DiscoveryEndpoint, JWKSEndpoint
 
@@ -59,21 +61,11 @@ ResponseValue = (
 )
 
 
-def _get_client_credentials() -> tuple[str | None, str | None]:
-    """Extract client credentials from request (header or form)."""
-    client_id, client_secret = parse_basic_auth(request.headers.get("Authorization"))
-    if not client_id:
-        client_id = request.form.get("client_id")
-        client_secret = request.form.get("client_secret")
-    return client_id, client_secret
-
-
-def _token_error_response(e: TokenError) -> Response:
-    """An error from the token, introspection or revocation endpoint."""
-    error = jsonify({"error": e.error, "error_description": e.error_description})
-    error.status_code = token_error_status(e.error)
-    error.headers.update(token_error_headers(e.error))
-    return error
+def _response(reply: HttpReply) -> Response:
+    response = jsonify(reply.body) if reply.body is not None else Response()
+    response.status_code = reply.status
+    response.headers.update(reply.headers)
+    return response
 
 
 def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
@@ -81,17 +73,8 @@ def _create_token_handler(token_ep: TokenEndpoint) -> typing.Callable:
 
     async def token() -> ResponseValue:
         """OAuth 2.1 Token Endpoint."""
-        client_id, client_secret = _get_client_credentials()
-        try:
-            payload = dict(request.form)
-            response = await token_ep(
-                payload, client_id=client_id, client_secret=client_secret
-            )
-        except TokenError as e:
-            return _token_error_response(e)
-        success = jsonify(response.to_dict())
-        success.headers.update(NO_STORE_HEADERS)
-        return success
+        auth = request.headers.get("Authorization")
+        return _response(await token_reply(token_ep, request.form, auth))
 
     return token
 
@@ -103,15 +86,10 @@ def _create_introspect_handler(
 
     async def introspect() -> ResponseValue:
         """OAuth 2.1 Token Introspection Endpoint (RFC 7662)."""
-        client_id, client_secret = _get_client_credentials()
-        try:
-            payload = dict(request.form)
-            response = await introspection_ep(
-                payload, client_id=client_id, client_secret=client_secret
-            )
-            return jsonify(response.to_dict())
-        except TokenError as e:
-            return _token_error_response(e)
+        auth = request.headers.get("Authorization")
+        return _response(
+            await introspection_reply(introspection_ep, request.form, auth)
+        )
 
     return introspect
 
@@ -121,15 +99,8 @@ def _create_revoke_handler(revocation_ep: RevocationEndpoint) -> typing.Callable
 
     async def revoke() -> ResponseValue:
         """OAuth 2.1 Token Revocation Endpoint (RFC 7009)."""
-        client_id, client_secret = _get_client_credentials()
-        try:
-            payload = dict(request.form)
-            await revocation_ep(
-                payload, client_id=client_id, client_secret=client_secret
-            )
-            return "", 200
-        except TokenError as e:
-            return _token_error_response(e)
+        auth = request.headers.get("Authorization")
+        return _response(await revocation_reply(revocation_ep, request.form, auth))
 
     return revoke
 

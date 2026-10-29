@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from neozen.core.oidc.keys import KeyManager
 
 
-@dataclass
+@dataclass(frozen=True)
 class IDTokenClaims:
     """ID Token claims (OIDC Core 1.0 Section 2).
 

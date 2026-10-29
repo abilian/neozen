@@ -118,88 +118,45 @@ class KeyManager(Protocol):
         ...
 
 
-def _generate_rsa_signing_key(kid: str | None = None) -> SigningKey:
-    """Generate an RSA signing key for RS256.
-
-    Uses the `cryptography` library, which is a dependency of
-    `pyjwt[crypto]`.
-    """
+def _generate_signing_key(alg: SigningAlgorithm) -> SigningKey:
+    """Generate a signing key: RSA 2048 for RS256, P-256 for ES256."""
     # Lazy import: pyjwt[crypto] / cryptography is an optional extra.
     from cryptography.hazmat.primitives import serialization  # noqa: PLC0415
-    from cryptography.hazmat.primitives.asymmetric import rsa  # noqa: PLC0415
+    from cryptography.hazmat.primitives.asymmetric import ec, rsa  # noqa: PLC0415
 
-    if kid is None:
-        kid = secrets.token_urlsafe(16)
-
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048,
-    )
+    kid = secrets.token_urlsafe(16)
+    private_key: rsa.RSAPrivateKey | ec.EllipticCurvePrivateKey
+    if alg == "RS256":
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        rsa_numbers = private_key.public_key().public_numbers()
+        public_jwk = JWK(
+            kty="RSA",
+            kid=kid,
+            use="sig",
+            alg=alg,
+            n=_b64url_uint(rsa_numbers.n),
+            e=_b64url_uint(rsa_numbers.e),
+        )
+    else:
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        ec_numbers = private_key.public_key().public_numbers()
+        # RFC 7518 §6.2.1: coordinates are the full 32 bytes for P-256.
+        public_jwk = JWK(
+            kty="EC",
+            kid=kid,
+            use="sig",
+            alg=alg,
+            crv="P-256",
+            x=_b64url(ec_numbers.x.to_bytes(32, "big")),
+            y=_b64url(ec_numbers.y.to_bytes(32, "big")),
+        )
 
     private_pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     )
-
-    public_numbers = private_key.public_key().public_numbers()
-    public_jwk = JWK(
-        kty="RSA",
-        kid=kid,
-        use="sig",
-        alg="RS256",
-        n=_b64url_uint(public_numbers.n),
-        e=_b64url_uint(public_numbers.e),
-    )
-
-    return SigningKey(
-        kid=kid,
-        alg="RS256",
-        private_pem=private_pem,
-        public_jwk=public_jwk,
-    )
-
-
-def _generate_ec_signing_key(kid: str | None = None) -> SigningKey:
-    """Generate a P-256 signing key for ES256."""
-    # Lazy import: pyjwt[crypto] / cryptography is an optional extra.
-    from cryptography.hazmat.primitives import serialization  # noqa: PLC0415
-    from cryptography.hazmat.primitives.asymmetric import ec  # noqa: PLC0415
-
-    if kid is None:
-        kid = secrets.token_urlsafe(16)
-
-    private_key = ec.generate_private_key(ec.SECP256R1())
-    private_pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
-    )
-
-    # RFC 7518 §6.2.1: coordinates are the full 32 bytes for P-256.
-    public_numbers = private_key.public_key().public_numbers()
-    public_jwk = JWK(
-        kty="EC",
-        kid=kid,
-        use="sig",
-        alg="ES256",
-        crv="P-256",
-        x=_b64url(public_numbers.x.to_bytes(32, "big")),
-        y=_b64url(public_numbers.y.to_bytes(32, "big")),
-    )
-
-    return SigningKey(
-        kid=kid,
-        alg="ES256",
-        private_pem=private_pem,
-        public_jwk=public_jwk,
-    )
-
-
-_KEY_GENERATORS = {
-    "RS256": _generate_rsa_signing_key,
-    "ES256": _generate_ec_signing_key,
-}
+    return SigningKey(kid=kid, alg=alg, private_pem=private_pem, public_jwk=public_jwk)
 
 
 class InMemoryKeyManager:
@@ -245,7 +202,7 @@ class InMemoryKeyManager:
                 is_active=False,
             )
 
-        new_key = _KEY_GENERATORS[self.algorithm]()
+        new_key = _generate_signing_key(self.algorithm)
         self._keys[new_key.kid] = new_key
         self._active_kid = new_key.kid
         return new_key

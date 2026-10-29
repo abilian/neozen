@@ -244,12 +244,12 @@ class TestLitestarLogin:
 class TestLitestarProtectedRoutes:
     """Tests for protected routes."""
 
-    async def test_dashboard_unauthorized_when_not_logged_in(
+    async def test_dashboard_redirects_to_login_when_not_logged_in(
         self, client: AsyncClient
     ) -> None:
-        # Litestar returns 401 Unauthorized instead of redirecting
         response = await client.get("/dashboard", follow_redirects=False)
-        assert response.status_code == 401
+        assert response.status_code == 302
+        assert response.headers["location"].startswith("/login?next=")
 
     async def test_dashboard_accessible_when_logged_in(
         self, client: AsyncClient
@@ -377,6 +377,6 @@ class TestLitestarFullFlow:
         response = await client.post("/api/logout")
         assert response.status_code == 200
 
-        # 7. Verify logged out (dashboard returns 401)
+        # 7. Verify logged out (dashboard sends back to login)
         response = await client.get("/dashboard", follow_redirects=False)
-        assert response.status_code == 401
+        assert response.status_code == 302

@@ -86,7 +86,7 @@ class RegistrationRequest(BaseModel):
     application_type: str | None = None  # "web" or "native"
 
 
-@dataclass
+@dataclass(frozen=True)
 class RegistrationResponse:
     """Successful client registration response (RFC 7591 Section 3.2.1)."""
 

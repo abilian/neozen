@@ -4,7 +4,7 @@ Covers the new /users/import (GET + POST in dry-run and apply modes)
 and /users/export routes added during the 1.0 admin bulk-ops UI work.
 
 These tests use Litestar's TestClient and exercise the route layer
-end-to-end against an in-memory SQLite database. They are intentionally
+end-to-end against a SQLite database. They are intentionally
 narrow: the heavy lifting is already covered by tests in
 test_admin_bulk.py (which test the bulk module directly). What we
 verify here is the wiring: form submission → bulk module → response.
@@ -13,6 +13,7 @@ verify here is the wiring: form submission → bulk module → response.
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
 from litestar.testing import TestClient
@@ -24,9 +25,11 @@ from .conftest import superadmin_client
 
 
 @pytest.fixture
-def admin_client() -> TestClient:
+def admin_client(tmp_path: Path) -> TestClient:
+    # A file: the tests restart the app, which disposes the engine, and an
+    # in-memory database would go with it.
     config = AdminConfig(
-        db_url="sqlite+aiosqlite:///:memory:",
+        db_url=f"sqlite+aiosqlite:///{tmp_path / 'admin.db'}",
         secret_key="test-secret-key",
     )
     return superadmin_client(create_admin_app(config))

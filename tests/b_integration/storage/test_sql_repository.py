@@ -66,6 +66,17 @@ class TestSQLRepositoryProtocol:
     # create() tests
     # -------------------------------------------------------------------------
 
+    @pytest.mark.parametrize(
+        "filters", [{"name = '' OR 1=1 --": "x"}, {"missing": "x"}]
+    )
+    async def test_unknown_column_names_never_reach_the_sql(
+        self, sql_repository: SampleRepository, filters: dict[str, str]
+    ) -> None:
+        with pytest.raises(ValueError, match="Not a column"):
+            await sql_repository.get_many_by(**filters)
+        with pytest.raises(ValueError, match="Not a column"):
+            await sql_repository.create(id="1", **filters)
+
     async def test_create_returns_object(
         self, sql_repository: SampleRepository
     ) -> None:

@@ -13,6 +13,9 @@ from importlib.metadata import version
 
 from neozen.cli.commands import client, config, data, role, serve as serve_cmd, subject
 
+# What add_subparsers returns.
+type _Subparsers = argparse._SubParsersAction[argparse.ArgumentParser]
+
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser."""
@@ -56,7 +59,18 @@ Examples:
         description="Available commands",
     )
 
-    # Subject command
+    _add_subject_command(subparsers)
+    _add_client_command(subparsers)
+    _add_role_command(subparsers)
+    _add_config_command(subparsers)
+    _add_data_command(subparsers)
+    _add_serve_command(subparsers)
+
+    return parser
+
+
+def _add_subject_command(subparsers: _Subparsers) -> None:
+    """Subject command."""
     subject_parser = subparsers.add_parser(
         "subject",
         help="Manage subjects",
@@ -104,7 +118,9 @@ Examples:
     )
     subject_list.set_defaults(func=subject.list_subjects)
 
-    # Client command
+
+def _add_client_command(subparsers: _Subparsers) -> None:
+    """Client command."""
     client_parser = subparsers.add_parser(
         "client",
         help="Manage OAuth clients",
@@ -213,7 +229,9 @@ Examples:
     )
     client_activate.set_defaults(func=client.activate)
 
-    # Role command
+
+def _add_role_command(subparsers: _Subparsers) -> None:
+    """Role command."""
     role_parser = subparsers.add_parser(
         "role",
         help="Manage authorization roles",
@@ -359,7 +377,9 @@ Examples:
     )
     role_init.set_defaults(func=role.init)
 
-    # Config command
+
+def _add_config_command(subparsers: _Subparsers) -> None:
+    """Config command."""
     config_parser = subparsers.add_parser(
         "config",
         help="Configuration management",
@@ -442,7 +462,9 @@ Examples:
     )
     config_init.set_defaults(func=config.init_command)
 
-    # Data command
+
+def _add_data_command(subparsers: _Subparsers) -> None:
+    """Data command."""
     data_parser = subparsers.add_parser(
         "data",
         help="Data import/export and test data generation",
@@ -492,7 +514,9 @@ Examples:
     )
     data_populate.set_defaults(func=data.populate)
 
-    # Serve command (production-mode unified Litestar app)
+
+def _add_serve_command(subparsers: _Subparsers) -> None:
+    """Serve command (production-mode unified Litestar app)."""
     serve_parser = subparsers.add_parser(
         "serve",
         help="Run the production server",
@@ -527,8 +551,6 @@ Examples:
         help="Skip first-run admin bootstrap (env: NEOZEN_BOOTSTRAP_ADMIN=false)",
     )
     serve_parser.set_defaults(func=serve_cmd.serve)
-
-    return parser
 
 
 def main(args: list[str] | None = None) -> int:
