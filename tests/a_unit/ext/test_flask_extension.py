@@ -82,6 +82,17 @@ class TestNeoZenExtension:
         assert "neozen" in app.extensions
         assert app.extensions["neozen"].extension is neozen
 
+    def test_earlier_hook_answering_first_is_not_an_error(self):
+        """A CSRF check registered before NeoZen may refuse the request."""
+        app = Flask(__name__)
+        app.secret_key = "test-secret"
+        app.before_request(lambda: ("refused", 400))
+        NeoZen(app)
+
+        response = app.test_client().post("/")
+
+        assert response.status_code == 400
+
     def test_init_app_factory_pattern(self):
         app = Flask(__name__)
         app.secret_key = "test-secret"

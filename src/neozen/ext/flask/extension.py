@@ -267,10 +267,14 @@ class NeoZen:
         return subject or AnonymousUser()  # type: ignore[return-value]  # ty: ignore[invalid-return-type]
 
     def _handle_session_cookie(self, response: Response) -> Response:
-        """After request hook to set/clear session cookie."""
-        # Handle login
-        if g._neozen_login_user is not None:
-            _subject, token, remember = g._neozen_login_user
+        """After request hook to set/clear session cookie.
+
+        It also runs when an earlier ``before_request`` hook (a CSRF check,
+        say) answered first and ours never set up ``g``.
+        """
+        login = g.get("_neozen_login_user")
+        if login is not None:
+            _subject, token, remember = login
             max_age = self.cookie_max_age if remember else None
             response.set_cookie(
                 self.cookie_name,
@@ -281,8 +285,7 @@ class NeoZen:
                 samesite=self.cookie_samesite,
             )
 
-        # Handle logout
-        elif g._neozen_logout:
+        elif g.get("_neozen_logout"):
             response.delete_cookie(
                 self.cookie_name,
                 samesite=self.cookie_samesite,

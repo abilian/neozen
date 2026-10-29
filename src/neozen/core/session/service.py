@@ -98,6 +98,7 @@ class SessionService[S: SessionModel]:
             sliding_window_seconds: How much to extend expiration on activity.
                 Set to None to disable sliding window.
             max_sessions_per_subject: Maximum active sessions per subject.
+                Creating one more revokes the oldest.
                 Set to None for unlimited.
 
         """
@@ -128,6 +129,15 @@ class SessionService[S: SessionModel]:
         """
         now = datetime.now(UTC)
         expires_at = now + timedelta(seconds=self.session_lifetime_seconds)
+
+        if self.max_sessions_per_subject is not None:
+            # Make room for the new session by ending the oldest ones.
+            active = sorted(
+                await self.list_sessions(subject_id), key=lambda s: s.created_at
+            )
+            excess = len(active) - self.max_sessions_per_subject + 1
+            for old in active[: max(excess, 0)]:
+                await self.storage.update_obj(old, revoked_at=now)
 
         # Generate token
         token, token_hash = generate_token_hash_pair(

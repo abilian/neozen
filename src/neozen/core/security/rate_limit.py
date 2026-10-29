@@ -5,7 +5,7 @@ Protects against brute force attacks by limiting authentication attempts.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 from neozen.core.security.rate_limit_store import RateLimitEntry, RateLimitStore
@@ -112,100 +112,71 @@ class RateLimiter:
     ) -> RateLimitResult:
         """Check if request is allowed.
 
+        With ``increment``, the attempt is counted first and the decision
+        made on the count the store returns, so concurrent requests can't
+        all pass on the same stale count.
+
         Args:
             key: Rate limit key.
-            increment: Whether to increment the counter.
+            increment: Whether to count this request as an attempt.
 
         Returns:
             RateLimitResult with allowed status and remaining attempts.
         """
         now = datetime.now(UTC)
-
         entry = await self.store.get(key)
 
-        # No entry yet - allowed
-        if entry is None:
-            if increment:
-                entry = await self.store.increment(key)
-                return RateLimitResult(
-                    allowed=True,
-                    remaining_attempts=self.config.max_attempts - 1,
-                    reset_at=now + self.config.window,
-                    current_attempts=1,
-                )
-            return RateLimitResult(
-                allowed=True,
-                remaining_attempts=self.config.max_attempts,
-                reset_at=now + self.config.window,
-                current_attempts=0,
-            )
-
-        # Check if locked
-        if entry.locked_until and entry.locked_until > now:
-            retry_after = entry.locked_until - now
+        if entry is not None and entry.locked_until and entry.locked_until > now:
             return RateLimitResult(
                 allowed=False,
                 remaining_attempts=0,
                 reset_at=entry.locked_until,
-                retry_after=retry_after,
+                retry_after=entry.locked_until - now,
                 current_attempts=entry.attempts,
             )
 
-        # Check if window has expired
-        if entry.first_attempt_at:
-            window_end = entry.first_attempt_at + self.config.window
-            if window_end <= now:
-                # Window expired - reset
-                await self.store.delete(key)
-                if increment:
-                    entry = await self.store.increment(key)
-                    return RateLimitResult(
-                        allowed=True,
-                        remaining_attempts=self.config.max_attempts - 1,
-                        reset_at=now + self.config.window,
-                        current_attempts=1,
-                    )
-                return RateLimitResult(
-                    allowed=True,
-                    remaining_attempts=self.config.max_attempts,
-                    reset_at=now + self.config.window,
-                    current_attempts=0,
-                )
+        if entry is not None and self._window_expired(entry, now):
+            await self.store.delete(key)
+            entry = None
 
-        # Check if max attempts exceeded
-        if entry.attempts >= self.config.max_attempts:
-            # Lock the key
-            entry = RateLimitEntry(
-                attempts=entry.attempts,
-                first_attempt_at=entry.first_attempt_at,
-                last_attempt_at=entry.last_attempt_at,
-                locked_until=now + self.config.lockout_duration,
-            )
-            await self.store.set(key, entry, ttl=self.config.lockout_duration)
-            return RateLimitResult(
-                allowed=False,
-                remaining_attempts=0,
-                reset_at=entry.locked_until,
-                retry_after=self.config.lockout_duration,
-                current_attempts=entry.attempts,
-            )
-
-        # Allowed - increment if requested
         if increment:
             entry = await self.store.increment(key)
 
-        remaining = max(0, self.config.max_attempts - entry.attempts)
-        reset_at = (
-            entry.first_attempt_at + self.config.window
-            if entry.first_attempt_at
-            else now + self.config.window
+        result = self._decide(entry, now, counted=increment)
+        if not result.allowed:
+            locked = replace(entry or RateLimitEntry(), locked_until=result.reset_at)
+            await self.store.set(key, locked, ttl=self.config.lockout_duration)
+        return result
+
+    def _window_expired(self, entry: RateLimitEntry, now: datetime) -> bool:
+        return (
+            entry.first_attempt_at is not None
+            and entry.first_attempt_at + self.config.window <= now
         )
 
+    def _decide(
+        self, entry: RateLimitEntry | None, now: datetime, *, counted: bool
+    ) -> RateLimitResult:
+        """Allow or deny on the attempt count alone.
+
+        ``counted`` says whether ``entry`` already includes this request.
+        """
+        attempts = entry.attempts if entry else 0
+        previous = attempts - 1 if counted else attempts
+        if previous >= self.config.max_attempts:
+            return RateLimitResult(
+                allowed=False,
+                remaining_attempts=0,
+                reset_at=now + self.config.lockout_duration,
+                retry_after=self.config.lockout_duration,
+                current_attempts=attempts,
+            )
+        first = entry.first_attempt_at if entry else None
         return RateLimitResult(
             allowed=True,
-            remaining_attempts=remaining,
-            reset_at=reset_at,
-            current_attempts=entry.attempts,
+            remaining_attempts=max(0, self.config.max_attempts - attempts),
+            reset_at=(first or now) + self.config.window,
+            current_attempts=attempts,
         )
 
     async def record_attempt(

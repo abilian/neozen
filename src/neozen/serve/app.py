@@ -92,6 +92,7 @@ def build_serve_app(config: ServeConfig | None = None) -> Litestar:
         ],
         middleware=[sessions.middleware, admin_app_module.AUTH_MIDDLEWARE],
         exception_handlers=admin_app_module.EXCEPTION_HANDLERS,
+        after_request=admin_app_module.add_security_headers,
         csrf_config=admin_app_module.csrf_config(admin_config),
         on_startup=[on_startup],
         state=State({

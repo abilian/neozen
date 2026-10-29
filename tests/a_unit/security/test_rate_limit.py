@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import anyio
+import anyio.lowlevel
 import pytest
 
 from neozen.core.security.rate_limit import (
@@ -252,3 +254,32 @@ class TestRateLimiter:
         assert result.retry_after is not None
         assert result.retry_after > timedelta(0)
         assert result.retry_after <= timedelta(minutes=30)
+
+
+class SlowStore(InMemoryRateLimitStore):
+    """Yields to other tasks on every call, like a networked store."""
+
+    async def get(self, key: str) -> RateLimitEntry | None:
+        await anyio.lowlevel.checkpoint()
+        return await super().get(key)
+
+    async def increment(self, key: str) -> RateLimitEntry:
+        await anyio.lowlevel.checkpoint()
+        return await super().increment(key)
+
+
+@pytest.mark.anyio
+async def test_concurrent_attempts_cannot_exceed_the_limit(
+    config: RateLimitConfig,
+) -> None:
+    limiter = RateLimiter(config, SlowStore())
+    results = []
+
+    async def attempt() -> None:
+        results.append(await limiter.check("k", increment=True))
+
+    async with anyio.create_task_group() as tg:
+        for _ in range(10):
+            tg.start_soon(attempt)
+
+    assert sum(r.allowed for r in results) == config.max_attempts

@@ -10,7 +10,7 @@ import json
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from advanced_alchemy.exceptions import IntegrityError as RepositoryIntegrityError
 from jinja2 import Environment, FileSystemLoader
@@ -19,7 +19,7 @@ from litestar.config.csrf import CSRFConfig
 from litestar.datastructures import State
 from litestar.exceptions import NotAuthorizedException
 from litestar.middleware import DefineMiddleware
-from litestar.params import FromPath
+from litestar.params import FromPath, Parameter
 from litestar.status_codes import HTTP_303_SEE_OTHER
 from litestar.template.base import csrf_token
 from markupsafe import escape
@@ -43,7 +43,9 @@ from neozen.admin.auth import (
 )
 from neozen.admin.config import AdminConfig
 from neozen.admin.services import AdminService, UserListFilters
+from neozen.core.audit.types import AuditActions
 from neozen.core.exceptions import NeoZenException
+from neozen.ext.litestar.rate_limit import get_client_ip
 from neozen.storage import DoesNotExist
 from neozen.storage.sqlalchemy.base import Base
 from neozen.storage.sqlalchemy.models import RoleAssignment, Session, Subject
@@ -174,7 +176,7 @@ async def login(request: Request) -> Response:
     return redirect("/")
 
 
-@get("/logout", sync_to_thread=False, exclude_from_auth=True)
+@post("/logout", sync_to_thread=False, exclude_from_auth=True)
 def logout(request: Request) -> Response:
     """Log out the current admin user."""
     clear_current_admin(request)
@@ -250,8 +252,15 @@ async def dashboard_stats(request: Request) -> Response:
 # -----------------------------------------------------------------------------
 
 
+# Pagination query parameters: Litestar answers 400 to anything else.
+Page = Annotated[int, Parameter(ge=1)]
+PerPage = Annotated[int, Parameter(ge=1, le=200)]
+
+
 @get("/users")
-async def list_users(request: Request) -> Response:
+async def list_users(
+    request: Request, page: Page = 1, per_page: PerPage = 50
+) -> Response:
     """List all users with search, filters, and pagination."""
     # Parse query parameters
     search = request.query_params.get("search")
@@ -260,8 +269,6 @@ async def list_users(request: Request) -> Response:
     verified = request.query_params.get("verified")
     sort_by = request.query_params.get("sort", "created_at")
     sort_order = request.query_params.get("order", "desc")
-    page = int(request.query_params.get("page", "1"))
-    per_page = int(request.query_params.get("per_page", "50"))
 
     # Build filters
     status_list = [status] if status else None
@@ -587,6 +594,13 @@ async def impersonate_user(request: Request, user_id: FromPath[str]) -> Response
         service = AdminService(session)
         try:
             user = await service.get_subject(user_id)
+            await service.record_admin_action(
+                action=AuditActions.ADMIN_IMPERSONATE,
+                actor_id=admin.id,
+                subject_id=user.id,
+                ip_address=get_client_ip(request.scope),
+            )
+            await session.commit()
             start_impersonation(request, user.id, user.email, user.username)
             flash(
                 request,
@@ -600,9 +614,21 @@ async def impersonate_user(request: Request, user_id: FromPath[str]) -> Response
         return redirect(f"/users/{user_id}")
 
 
-@post("/stop-impersonation", sync_to_thread=False)
-def end_impersonation(request: Request) -> Response:
+@post("/stop-impersonation")
+async def end_impersonation(request: Request) -> Response:
     """Stop impersonating a user."""
+    impersonation = get_impersonation(request)
+    admin = get_current_admin(request)
+    if impersonation and admin:
+        session_factory: async_sessionmaker = request.app.state.session_factory
+        async with session_factory() as session:
+            await AdminService(session).record_admin_action(
+                action=AuditActions.ADMIN_IMPERSONATE_END,
+                actor_id=admin.id,
+                subject_id=impersonation["user_id"],
+                ip_address=get_client_ip(request.scope),
+            )
+            await session.commit()
     stop_impersonation(request)
     flash(request, "Stopped impersonation.", "success")
     return redirect("/")
@@ -1228,14 +1254,13 @@ async def access_analyzer(request: Request) -> Response:
 
 
 @get("/audit")
-async def list_audit_logs(request: Request) -> Response:
+async def list_audit_logs(request: Request, page: Page = 1) -> Response:
     """List audit logs with filters."""
     # Parse query parameters
     search = request.query_params.get("search")
     event_type = request.query_params.get("event_type")
     action = request.query_params.get("action")
     outcome = request.query_params.get("outcome")
-    page = int(request.query_params.get("page", "1"))
     per_page = 50
 
     session_factory: async_sessionmaker = request.app.state.session_factory
@@ -1616,6 +1641,20 @@ ROUTE_HANDLERS: list[Any] = [
 AUTH_MIDDLEWARE = DefineMiddleware(AdminAuthMiddleware)
 EXCEPTION_HANDLERS: dict[Any, Any] = {NotAuthorizedException: redirect_to_login_handler}
 
+# The console must not be framed by another site (clickjacking).
+SECURITY_HEADERS = {
+    "Content-Security-Policy": "frame-ancestors 'none'",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+}
+
+
+def add_security_headers(response: Response) -> Response:
+    """``after_request`` hook: set ``SECURITY_HEADERS`` on every response."""
+    response.headers.update(SECURITY_HEADERS)
+    return response
+
 
 def csrf_config(config: AdminConfig) -> CSRFConfig:
     """CSRF protection for every admin form and HTMX request.
@@ -1684,6 +1723,7 @@ def create_admin_app(config: AdminConfig | None = None) -> Litestar:
         route_handlers=ROUTE_HANDLERS,
         middleware=[sessions.middleware, AUTH_MIDDLEWARE],
         exception_handlers=EXCEPTION_HANDLERS,
+        after_request=add_security_headers,
         csrf_config=csrf_config(config),
         on_startup=[on_startup],
         state=State({
@@ -1700,7 +1740,9 @@ __all__ = [
     "AUTH_MIDDLEWARE",
     "EXCEPTION_HANDLERS",
     "ROUTE_HANDLERS",
+    "SECURITY_HEADERS",
     "AdminConfig",
+    "add_security_headers",
     "create_admin_app",
     "csrf_config",
     "session_config",

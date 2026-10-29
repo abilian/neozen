@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import dataclasses
+import typing
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 
 from neozen.core.factors.password_policy import (
+    DefaultHIBPChecker,
     HIBPCheckerProtocol,
     PasswordHasherProtocol,
     PasswordHistoryModel,
@@ -336,3 +339,40 @@ class TestRecordPassword:
         records = await history_storage.get_many_by(subject_id="user1")
         # Should have 2 records (the 2 most recent)
         assert len(records) == 2
+
+
+# "password" → SHA-1 5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8
+_PASSWORD_RANGE = (
+    "1E4C9B93F3F0682250B6CF8331B7EE68FD8:3861493\n0018A45C4D1DEF81644B54AB7F969B88D65:1"
+)
+
+
+def _hibp(
+    handler: typing.Callable[[httpx.Request], httpx.Response],
+) -> DefaultHIBPChecker:
+    return DefaultHIBPChecker(
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+
+
+@pytest.mark.anyio
+class TestDefaultHIBPChecker:
+    async def test_breached_password(self) -> None:
+        checker = _hibp(lambda _: httpx.Response(200, text=_PASSWORD_RANGE))
+        assert await checker.is_compromised("password")
+
+    async def test_unbreached_password(self) -> None:
+        checker = _hibp(lambda _: httpx.Response(200, text=_PASSWORD_RANGE))
+        assert not await checker.is_compromised("correct horse battery staple")
+
+    async def test_unreachable_api_accepts_the_password(self) -> None:
+        def fail(request: httpx.Request) -> httpx.Response:
+            msg = "down"
+            raise httpx.ConnectError(msg, request=request)
+
+        assert not await _hibp(fail).is_compromised("password")
+
+    async def test_malformed_answer_is_an_error(self) -> None:
+        checker = _hibp(lambda _: httpx.Response(200, text="garbage"))
+        with pytest.raises(ValueError, match="unpack"):
+            await checker.is_compromised("password")

@@ -21,6 +21,7 @@ from neozen.core.repository import (
     RepositoryProtocol,
     WritableRepositoryProtocol,
 )
+from neozen.core.session.service import SessionRevokedError
 
 # =============================================================================
 # Repository Protocol Split Tests
@@ -192,6 +193,22 @@ class MockSessionStorage:
 
     async def delete(self, obj: MockSession) -> None:
         self._sessions.remove(obj)
+
+
+@pytest.mark.anyio
+async def test_session_limit_revokes_the_oldest() -> None:
+    from neozen.core.session.service import SessionService
+
+    service = SessionService(
+        storage=MockSessionStorage(), hash_key="test", max_sessions_per_subject=2
+    )
+    first = await service.create_session("user1")
+    await service.create_session("user1")
+    await service.create_session("user1")
+
+    assert len(await service.list_sessions("user1")) == 2
+    with pytest.raises(SessionRevokedError):
+        await service.validate_session(first)
 
 
 class TestListSessions:

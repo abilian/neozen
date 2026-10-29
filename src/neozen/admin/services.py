@@ -12,9 +12,10 @@ from typing import Any, cast, overload
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from neozen.core.audit.types import AuditLogEntry
+from neozen.core.audit.types import AuditLogEntry, AuditOutcome
 from neozen.core.authz.services import RoleService
 from neozen.core.utils import generate_id
+from neozen.storage.base import DoesNotExist
 from neozen.storage.sqlalchemy.models import (
     Group,
     GroupMembership,
@@ -345,8 +346,8 @@ class AdminService:
             try:
                 role = await self.role_repo.get_one_by(id=assignment.role_id)
                 roles.append(role)
-            except Exception:
-                pass  # Role may have been deleted
+            except DoesNotExist:
+                pass  # dangling assignment: SQLite doesn't enforce the FK
         return roles
 
     async def list_subjects_paginated(
@@ -755,7 +756,7 @@ class AdminService:
                                 "source_name": f"{group.name} ({role.name})",
                             })
                             seen_permissions.add(perm)
-            except Exception:  # noqa: S112
+            except DoesNotExist:
                 continue
 
         return result
@@ -811,7 +812,7 @@ class AdminService:
                     "source_name": source_name,
                 })
                 seen.add(assignment.subject_id)
-            except Exception:  # noqa: S112
+            except DoesNotExist:
                 continue
 
     async def _add_group_role_subjects(
@@ -827,7 +828,7 @@ class AdminService:
         for gra in group_assignments:
             try:
                 group, members = await self._load_group_with_members(gra.group_id)
-            except Exception:  # noqa: S112
+            except DoesNotExist:
                 continue
             for member, _member_role in members:
                 if member.id in seen:
@@ -1023,8 +1024,8 @@ class AdminService:
             try:
                 subject = await self.subject_repo.get_one_by(id=m.subject_id)
                 members.append((subject, m.role))
-            except Exception:
-                pass
+            except DoesNotExist:
+                pass  # dangling membership: SQLite doesn't enforce the FK
         return members
 
     async def add_group_member(
@@ -1093,8 +1094,8 @@ class AdminService:
             try:
                 role = await self.role_repo.get_one_by(id=a.role_id)
                 roles.append(role)
-            except Exception:
-                pass
+            except DoesNotExist:
+                pass  # dangling assignment: SQLite doesn't enforce the FK
         return roles
 
     async def assign_role_to_group(
@@ -1500,6 +1501,26 @@ class AdminService:
             })
 
         return activity
+
+    async def record_admin_action(
+        self,
+        *,
+        action: str,
+        actor_id: str,
+        subject_id: str,
+        ip_address: str | None = None,
+    ) -> None:
+        """Write an audit entry for an admin acting on a subject."""
+        await self.audit_log_repo.create(
+            id=generate_id(),
+            timestamp=datetime.now(UTC),
+            event_type="admin",
+            action=action,
+            outcome=AuditOutcome.SUCCESS,
+            subject_id=subject_id,
+            actor_id=actor_id,
+            ip_address=ip_address,
+        )
 
     def _audit_log_to_entry(self, log: AuditLog) -> AuditLogEntry:
         """Convert AuditLog model to AuditLogEntry."""

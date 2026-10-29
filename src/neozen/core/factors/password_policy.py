@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
 import typing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from neozen.core.exceptions import NeoZenException
+
+_log = logging.getLogger(__name__)
 
 
 class PasswordPolicyError(NeoZenException):
@@ -113,6 +116,10 @@ class DefaultHIBPChecker:
 
     Uses the Pwned Passwords API with k-Anonymity to check if a password
     has been compromised without sending the full hash.
+
+    ``http_client`` is an ``httpx.AsyncClient``. When the API can't be
+    reached or answers with an error, the password is accepted and a
+    warning is logged: an outage must not block every password change.
     """
 
     http_client: typing.Any = field(default=None)
@@ -131,19 +138,22 @@ class DefaultHIBPChecker:
         prefix = sha1_hash[:5]
         suffix = sha1_hash[5:]
 
+        import httpx  # noqa: PLC0415  # ken: optional dependency
+
         try:
             response = await self.http_client.get(f"{self.api_url}{prefix}")
-            if response.status_code != 200:
-                return False
+        except httpx.HTTPError as e:
+            _log.warning("HIBP check skipped, API unreachable: %s", e)
+            return False
+        if response.status_code != 200:
+            _log.warning("HIBP check skipped, API status %s", response.status_code)
+            return False
 
-            for line in response.text.splitlines():
-                hash_suffix, _count = line.split(":")
-                if hmac.compare_digest(hash_suffix, suffix):
-                    return True
-            return False
-        except Exception:
-            # If we can't reach HIBP, fail open (allow the password)
-            return False
+        for line in response.text.splitlines():
+            hash_suffix, _count = line.split(":")
+            if hmac.compare_digest(hash_suffix, suffix):
+                return True
+        return False
 
 
 class PasswordPolicyValidator[S]:
