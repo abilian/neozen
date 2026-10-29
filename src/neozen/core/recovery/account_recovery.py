@@ -12,7 +12,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
+from neozen.core.recovery.password_reset import (
+    PasswordChanger,
+    SubjectLookup as EmailSubjectLookup,
+)
 from neozen.core.recovery.types import RecoveryMethod, RecoveryOption
+from neozen.core.utils import ensure_utc
 
 
 class RecoveryKeyModel(Protocol):
@@ -82,12 +87,8 @@ class RecoverySessionRepository(Protocol):
         ...
 
 
-class SubjectLookup(Protocol):
-    """Protocol for looking up subjects."""
-
-    async def get_by_email(self, email: str) -> Any | None:
-        """Get subject by email address."""
-        ...
+class SubjectLookup(EmailSubjectLookup, Protocol):
+    """Protocol for looking up subjects, by email or by ID."""
 
     async def get_by_id(self, subject_id: str) -> Any | None:
         """Get subject by ID."""
@@ -103,18 +104,6 @@ class BackupCodeChecker(Protocol):
         code: str,
     ) -> bool:
         """Verify and consume a backup code."""
-        ...
-
-
-class PasswordChanger(Protocol):
-    """Protocol for changing passwords."""
-
-    async def change_password(
-        self,
-        subject_id: str,
-        new_password: str,
-    ) -> bool:
-        """Change password for subject."""
         ...
 
 
@@ -149,7 +138,7 @@ class AccountRecoveryConfig:
     require_verification: bool = True
 
 
-@dataclass
+@dataclass(frozen=True)
 class RecoveryInitiation:
     """Result of initiating recovery."""
 
@@ -160,7 +149,7 @@ class RecoveryInitiation:
     hint: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class RecoveryVerification:
     """Result of verifying recovery."""
 
@@ -419,7 +408,7 @@ class AccountRecoveryService:
 
         # Check expiration
         now = datetime.now(UTC)
-        if session.expires_at <= now:
+        if ensure_utc(session.expires_at) <= now:
             return RecoveryVerification(
                 verified=False,
                 session_id=session_id,
@@ -485,7 +474,7 @@ class AccountRecoveryService:
 
         # Check expiration
         now = datetime.now(UTC)
-        if session.expires_at <= now:
+        if ensure_utc(session.expires_at) <= now:
             return False
 
         # Check if verified (if verification required)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import sys
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -79,7 +80,6 @@ def webauthn_factor(
         credential_repository=credential_storage,
         challenge_repository=challenge_storage,
     )
-    # Note: _webauthn will be None if py-webauthn is not installed
     return factor
 
 
@@ -321,47 +321,17 @@ class TestWebAuthnErrorHandling:
         assert "expired" in error.message
 
 
-@pytest.mark.anyio
-class TestWebAuthnFactorWithoutLibrary:
-    """Tests for WebAuthn factor when py-webauthn is not available."""
+def test_factor_needs_the_webauthn_package(
+    monkeypatch: pytest.MonkeyPatch,
+    credential_storage: MockStorage[MockWebAuthnCredential],
+    challenge_storage: MockStorage[MockWebAuthnChallenge],
+    webauthn_config: WebAuthnConfig,
+) -> None:
+    monkeypatch.setitem(sys.modules, "webauthn", None)  # import fails
 
-    async def test_begin_registration_without_library(
-        self,
-        credential_storage: MockStorage[MockWebAuthnCredential],
-        challenge_storage: MockStorage[MockWebAuthnChallenge],
-        webauthn_config: WebAuthnConfig,
-    ) -> None:
-        """Test that operations fail gracefully without py-webauthn."""
-        factor = WebAuthnFactor(
+    with pytest.raises(WebAuthnError, match="webauthn package is required"):
+        WebAuthnFactor(
             config=webauthn_config,
             credential_repository=credential_storage,
             challenge_repository=challenge_storage,
         )
-        # Force _webauthn to None to simulate library not available
-        factor._webauthn = None
-
-        subject = MockSubject(id="user1", email="user@example.com")
-
-        with pytest.raises(WebAuthnError) as exc_info:
-            await factor.begin_registration(subject)
-
-        assert "webauthn package is required" in str(exc_info.value.message)
-
-    async def test_begin_authentication_without_library(
-        self,
-        credential_storage: MockStorage[MockWebAuthnCredential],
-        challenge_storage: MockStorage[MockWebAuthnChallenge],
-        webauthn_config: WebAuthnConfig,
-    ) -> None:
-        """Test that operations fail gracefully without py-webauthn."""
-        factor = WebAuthnFactor(
-            config=webauthn_config,
-            credential_repository=credential_storage,
-            challenge_repository=challenge_storage,
-        )
-        factor._webauthn = None
-
-        with pytest.raises(WebAuthnError) as exc_info:
-            await factor.begin_authentication()
-
-        assert "webauthn package is required" in str(exc_info.value.message)

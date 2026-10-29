@@ -165,7 +165,7 @@ class TestValidateAuthorizationCode:
     ) -> None:
         verifier = "a" * 43
         await auth_code_storage.create(
-            code="test_code",
+            code=get_token_hash("test_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -183,7 +183,7 @@ class TestValidateAuthorizationCode:
             code_verifier=verifier,
         )
 
-        assert auth_code.code == "test_code"
+        assert auth_code.code == get_token_hash("test_code", key=TOKEN_HASH_KEY)
         assert auth_code.client_id == "client_1"
 
     async def test_raises_not_found_error(
@@ -204,7 +204,7 @@ class TestValidateAuthorizationCode:
         token_service: OAuthTokenService,
     ) -> None:
         await auth_code_storage.create(
-            code="test_code",
+            code=get_token_hash("test_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -229,7 +229,7 @@ class TestValidateAuthorizationCode:
         token_service: OAuthTokenService,
     ) -> None:
         await auth_code_storage.create(
-            code="test_code",
+            code=get_token_hash("test_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) - timedelta(minutes=1),  # expired
@@ -254,7 +254,7 @@ class TestValidateAuthorizationCode:
         token_service: OAuthTokenService,
     ) -> None:
         await auth_code_storage.create(
-            code="test_code",
+            code=get_token_hash("test_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -279,7 +279,7 @@ class TestValidateAuthorizationCode:
         token_service: OAuthTokenService,
     ) -> None:
         await auth_code_storage.create(
-            code="test_code",
+            code=get_token_hash("test_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -471,7 +471,7 @@ class TestExchangeAuthorizationCode:
     ) -> None:
         client = await client_storage.create(client_id="client_1")
         auth_code = await auth_code_storage.create(
-            code="test_code",
+            code=get_token_hash("test_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -503,7 +503,7 @@ class TestExchangeAuthorizationCode:
         """
         client = await client_storage.create(client_id="client_1")
         auth_code = await auth_code_storage.create(
-            code="test_code_single_use",
+            code=get_token_hash("test_code_single_use", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),

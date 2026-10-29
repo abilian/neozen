@@ -15,6 +15,7 @@ from typing import Any, Protocol
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
 from neozen.core.email.base import EmailMessage, EmailSenderProtocol
 from neozen.core.models import NeoZenModel
+from neozen.core.utils import ensure_utc
 
 
 @dataclass(frozen=True)
@@ -291,7 +292,7 @@ class MagicLinkFactor:
 
         # Check if expired
         now = datetime.now(UTC)
-        if token_record.expires_at <= now:
+        if ensure_utc(token_record.expires_at) <= now:
             return False
 
         # Mark as used

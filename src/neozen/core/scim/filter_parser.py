@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -107,19 +108,19 @@ class SimpleExpression(FilterExpression):
 
         `item` can be a dict or an object with attributes.
         """
-        actual = _get_attr(item, self.attribute)
+        values = _get_attr(item, self.attribute)
 
+        # RFC 7644 §3.4.2.2: a multi-valued attribute matches if any of
+        # its values does.
         if self.op == FilterOp.PR:
-            return actual is not None and actual != "" and actual != []
+            return any(v is not None and v not in ("", []) for v in values)
+        return any(self._compare(v) for v in values if v is not None)
 
-        if actual is None:
-            return False
-
+    def _compare(self, actual: Any) -> bool:
         if self.op in _STRING_OP_SET:
             return _eval_string_op(self.op, actual, self.value)
         if self.op in _COMPARISON_OP_SET:
             return _eval_comparison_op(self.op, actual, self.value)
-
         return False
 
 
@@ -158,19 +159,35 @@ def _matches(expr: FilterExpression, item: Any) -> bool:
     return False
 
 
-def _get_attr(item: Any, attribute: str) -> Any:
-    """Look up an attribute on an item.
+def _get_attr(item: Any, attribute: str) -> list[Any]:
+    """The values an attribute path reaches on an item.
 
     Supports dotted access (e.g., `name.familyName`) for nested
-    objects/dicts. Case-insensitive at the top level.
+    objects/dicts, case-insensitively. A path through a multi-valued
+    attribute (`emails.value`) gives one value per element, and a
+    multi-valued attribute of complex values without a sub-attribute
+    (`emails`) stands for their `value` (RFC 7644 §3.4.2.2).
     """
-    parts = attribute.split(".")
-    value = item
-    for part in parts:
-        value = _get_one(value, part)
-        if value is None:
-            return None
-    return value
+    values = [item]
+    multi_valued = False
+    for part in attribute.split("."):
+        found = []
+        multi_valued = False
+        for value in values:
+            child = _get_one(value, part)
+            if isinstance(child, list):
+                multi_valued = True
+                found.extend(child)
+            elif child is not None:
+                found.append(child)
+        values = found
+    if multi_valued:
+        return [v if _is_simple(v) else _get_one(v, "value") for v in values]
+    return values
+
+
+def _is_simple(value: Any) -> bool:
+    return isinstance(value, (str, int, float, bool, datetime, date))
 
 
 def _get_one(item: Any, name: str) -> Any:
@@ -229,7 +246,7 @@ _TOKEN_RE = re.compile(
 )
 
 
-@dataclass
+@dataclass(frozen=True)
 class Token:
     type: str
     value: str

@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from neozen.core.exceptions import NeoZenException
 from neozen.core.repository import DoesNotExist
 from neozen.core.subject import Subject
+from neozen.core.utils import ensure_utc, hex_id
 
 
 class WebAuthnError(NeoZenException):
@@ -159,9 +160,7 @@ def _load_webauthn_modules() -> tuple[typing.Any, typing.Any, typing.Any]:
     """Lazily import the optional ``webauthn`` package and its helpers.
 
     Returns ``(webauthn, webauthn_structs, webauthn_helpers)``. Raises
-    ``ImportError`` if the package isn't installed; callers decide whether
-    that's a hard failure (registration / authentication) or a soft no-op
-    (``__post_init__`` lazy-load).
+    ``ImportError`` if the package isn't installed.
     """
     import webauthn  # noqa: PLC0415
     from webauthn import helpers as webauthn_helpers  # noqa: PLC0415
@@ -180,26 +179,21 @@ class WebAuthnFactor[S: Subject]:
     config: WebAuthnConfig
     credential_repository: WebAuthnCredentialRepositoryProtocol[typing.Any]
     challenge_repository: WebAuthnChallengeRepositoryProtocol[typing.Any]
-    id_generator: typing.Callable[[], str] | None = None
+    id_generator: typing.Callable[[], str] = hex_id
     _webauthn: typing.Any = field(default=None, repr=False)
     _webauthn_structs: typing.Any = field(default=None, repr=False)
     _webauthn_helpers: typing.Any = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
-        """Import webauthn lazily (no-op if the optional dep is absent)."""
+        """Import webauthn, an optional dependency (the ``webauthn`` extra)."""
         try:
             modules = _load_webauthn_modules()
-        except ImportError:
-            return
+        except ImportError as e:
+            msg = "webauthn package is required for WebAuthn support"
+            raise WebAuthnError(msg) from e
         object.__setattr__(self, "_webauthn", modules[0])
         object.__setattr__(self, "_webauthn_structs", modules[1])
         object.__setattr__(self, "_webauthn_helpers", modules[2])
-
-    def _generate_id(self) -> str:
-        """Generate a unique ID."""
-        if self.id_generator:
-            return self.id_generator()
-        return secrets.token_hex(16)
 
     def _generate_challenge(self) -> bytes:
         """Generate a cryptographically secure challenge."""
@@ -222,14 +216,7 @@ class WebAuthnFactor[S: Subject]:
         Returns:
             Registration options to pass to the browser.
 
-        Raises:
-            WebAuthnError: If webauthn library is not available.
-
         """
-        if self._webauthn is None:
-            msg = "webauthn package is required for WebAuthn support"
-            raise WebAuthnError(msg)
-
         # Get existing credentials to exclude
         existing = await self.credential_repository.get_many_by(subject_id=subject.id)
         exclude_credentials = [
@@ -261,7 +248,7 @@ class WebAuthnFactor[S: Subject]:
         )
 
         await self.challenge_repository.create(
-            id=self._generate_id(),
+            id=self.id_generator(),
             challenge=challenge_b64,
             subject_id=subject.id,
             operation="registration",
@@ -297,9 +284,6 @@ class WebAuthnFactor[S: Subject]:
             WebAuthnRegistrationError: If registration verification fails.
 
         """
-        if self._webauthn is None:
-            msg = "webauthn package is required for WebAuthn support"
-            raise WebAuthnError(msg)
 
         # Get and validate challenge
         try:
@@ -311,7 +295,7 @@ class WebAuthnFactor[S: Subject]:
             msg = "No registration challenge found"
             raise WebAuthnRegistrationError(msg) from None
 
-        if datetime.now(UTC) > challenge_record.expires_at:
+        if datetime.now(UTC) > ensure_utc(challenge_record.expires_at):
             await self.challenge_repository.delete(challenge_record)
             raise WebAuthnChallengeExpiredError
 
@@ -333,7 +317,7 @@ class WebAuthnFactor[S: Subject]:
 
             # Store the credential
             credential_record = await self.credential_repository.create(
-                id=self._generate_id(),
+                id=self.id_generator(),
                 subject_id=subject.id,
                 credential_id=self._webauthn_helpers.bytes_to_base64url(
                     verification.credential_id
@@ -378,9 +362,6 @@ class WebAuthnFactor[S: Subject]:
             Authentication options to pass to the browser.
 
         """
-        if self._webauthn is None:
-            msg = "webauthn package is required for WebAuthn support"
-            raise WebAuthnError(msg)
 
         allow_credentials = []
         subject_id = None
@@ -417,7 +398,7 @@ class WebAuthnFactor[S: Subject]:
         )
 
         await self.challenge_repository.create(
-            id=self._generate_id(),
+            id=self.id_generator(),
             challenge=challenge_b64,
             subject_id=subject_id,
             operation="authentication",
@@ -451,9 +432,6 @@ class WebAuthnFactor[S: Subject]:
             WebAuthnCredentialNotFoundError: If the credential is not found.
 
         """
-        if self._webauthn is None:
-            msg = "webauthn package is required for WebAuthn support"
-            raise WebAuthnError(msg)
 
         # Get and validate challenge
         try:
@@ -465,7 +443,7 @@ class WebAuthnFactor[S: Subject]:
             msg = "No authentication challenge found"
             raise WebAuthnAuthenticationError(msg) from None
 
-        if datetime.now(UTC) > challenge_record.expires_at:
+        if datetime.now(UTC) > ensure_utc(challenge_record.expires_at):
             await self.challenge_repository.delete(challenge_record)
             raise WebAuthnChallengeExpiredError
 

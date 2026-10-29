@@ -16,6 +16,7 @@ from typing import Any, Protocol
 
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
 from neozen.core.models import NeoZenModel
+from neozen.core.utils import ensure_utc
 
 
 class InvitationStatus(StrEnum):
@@ -93,7 +94,7 @@ class InvitationRepository(Protocol):
     async def delete(self, obj: Invitation) -> None: ...
 
 
-@dataclass
+@dataclass(frozen=True)
 class InvitationDetails:
     """Details extracted from a valid invitation."""
 
@@ -226,7 +227,7 @@ class InvitationService:
             msg = f"Invitation already {invitation.status}"
             raise InvitationAlreadyUsedError(msg)
 
-        if datetime.now(UTC) > invitation.expires_at:
+        if datetime.now(UTC) > ensure_utc(invitation.expires_at):
             await self.repository.update_obj(
                 invitation, status=InvitationStatus.EXPIRED.value
             )

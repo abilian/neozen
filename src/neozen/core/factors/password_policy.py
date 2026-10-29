@@ -11,12 +11,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-import secrets
 import typing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from neozen.core.exceptions import NeoZenException
+from neozen.core.factors.password import PasswordHasherProtocol
+from neozen.core.utils import hex_id
 
 _log = logging.getLogger(__name__)
 
@@ -85,21 +86,6 @@ class PasswordHistoryRepositoryProtocol[Model: PasswordHistoryModel](typing.Prot
     async def create(self, **data: typing.Any) -> Model: ...
 
     async def delete(self, obj: Model) -> None: ...
-
-
-class PasswordHasherProtocol(typing.Protocol):
-    """Protocol for password hashers."""
-
-    def verify_and_update(
-        self, password: str | bytes, hash: str | bytes
-    ) -> tuple[bool, str | None]: ...
-
-    def hash(
-        self,
-        password: str | bytes,
-        *,
-        salt: bytes | None = None,
-    ) -> str: ...
 
 
 class HIBPCheckerProtocol(typing.Protocol):
@@ -171,19 +157,13 @@ class PasswordPolicyValidator[S]:
         hasher: PasswordHasherProtocol | None = None,
         history_repository: PasswordHistoryRepositoryProtocol[typing.Any] | None = None,
         hibp_checker: HIBPCheckerProtocol | None = None,
-        id_generator: typing.Callable[[], str] | None = None,
+        id_generator: typing.Callable[[], str] = hex_id,
     ) -> None:
         self.policy = policy
         self.hasher = hasher
         self.history_repository = history_repository
         self.hibp_checker = hibp_checker
         self._id_generator = id_generator
-
-    def _generate_id(self) -> str:
-        """Generate a unique ID for password history records."""
-        if self._id_generator:
-            return self._id_generator()
-        return secrets.token_hex(16)
 
     def _validate_complexity(self, password: str) -> list[str]:
         """Validate password complexity requirements."""
@@ -290,7 +270,7 @@ class PasswordPolicyValidator[S]:
 
         # Create new history record
         await self.history_repository.create(
-            id=self._generate_id(),
+            id=self._id_generator(),
             subject_id=subject_id,
             hashed_password=hashed_password,
             created_at=datetime.now(UTC),

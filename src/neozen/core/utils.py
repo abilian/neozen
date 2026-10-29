@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import UTC, datetime
+
+
+def hex_id() -> str:
+    """A random 32-hex-digit ID."""
+    return secrets.token_hex(16)
 
 
 def generate_id() -> str:

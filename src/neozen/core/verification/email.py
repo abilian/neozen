@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
 from neozen.core.repository import DoesNotExist, RepositoryProtocol
+from neozen.core.utils import ensure_utc
 
 
 class EmailVerificationTokenModel(typing.Protocol):
@@ -189,10 +190,7 @@ class EmailVerificationService[T: EmailVerificationTokenModel]:
 
         # Check expiration
         now = datetime.now(UTC)
-        expires_at = verification.expires_at
-        # Handle offset-naive datetimes from database
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=UTC)
+        expires_at = ensure_utc(verification.expires_at)
         if expires_at < now:
             raise EmailVerificationTokenExpiredError
 

@@ -62,7 +62,7 @@ async def _store_code(
     storage: MockStorage[MockOAuthAuthorizationCode], challenge: str | None
 ) -> None:
     await storage.create(
-        code="test_code",
+        code=get_token_hash("test_code", key=TOKEN_HASH_KEY),
         client_id="client_1",
         subject_id="user_1",
         expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -166,7 +166,7 @@ class TestAuthorizationCodeGrant:
         await client_storage.create(client_id="client_1")
         verifier = "a" * 43
         await auth_code_storage.create(
-            code="test_code",
+            code=get_token_hash("test_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -281,7 +281,7 @@ class TestAuthorizationCodeGrant:
         await client_storage.create(client_id="client_1")
         verifier = "a" * 43
         await auth_code_storage.create(
-            code="expired_code",
+            code=get_token_hash("expired_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) - timedelta(minutes=1),  # expired
@@ -313,7 +313,7 @@ class TestAuthorizationCodeGrant:
         correct_challenge = "correct_challenge_43_chars_xxxxxxxxxxxxxxxxxx"
         wrong_verifier = "wrong_verifier_43_chars_xxxxxxxxxxxxxxxxxxxxxx"
         await auth_code_storage.create(
-            code="test_code",
+            code=get_token_hash("test_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -575,7 +575,7 @@ class TestIDTokenIntegration:
         await client_storage.create(client_id="client_1")
         verifier = "a" * 43
         await auth_code_storage.create(
-            code="oidc_code",
+            code=get_token_hash("oidc_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -608,7 +608,7 @@ class TestIDTokenIntegration:
         endpoint = await self._build_endpoint_with_oidc(token_service)
         await client_storage.create(client_id="client_1")
         await auth_code_storage.create(
-            code="oidc_code",
+            code=get_token_hash("oidc_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -641,7 +641,7 @@ class TestIDTokenIntegration:
         await client_storage.create(client_id="client_1")
         verifier = "a" * 43
         await auth_code_storage.create(
-            code="non_oidc_code",
+            code=get_token_hash("non_oidc_code", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -671,7 +671,7 @@ class TestIDTokenIntegration:
         await client_storage.create(client_id="client_1")
         verifier = "a" * 43
         await auth_code_storage.create(
-            code="code_without_oidc",
+            code=get_token_hash("code_without_oidc", key=TOKEN_HASH_KEY),
             client_id="client_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -997,7 +997,7 @@ class TestConfidentialCodeExchange:
     ) -> None:
         await _create_service_client(client_storage)
         await auth_code_storage.create(
-            code="test_code",
+            code=get_token_hash("test_code", key=TOKEN_HASH_KEY),
             client_id="svc_1",
             subject_id="user_1",
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -1056,7 +1056,7 @@ async def test_challenge_without_method_fails_verification(
     await client_storage.create(client_id="client_1")
     verifier = "a" * 43
     await auth_code_storage.create(
-        code="test_code",
+        code=get_token_hash("test_code", key=TOKEN_HASH_KEY),
         client_id="client_1",
         subject_id="user_1",
         expires_at=datetime.now(UTC) + timedelta(minutes=10),

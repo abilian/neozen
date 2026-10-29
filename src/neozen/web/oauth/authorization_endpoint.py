@@ -84,7 +84,7 @@ class ConsentRequest(AuthorizationRequest):
 # =============================================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class AuthorizationResponse:
     """Response from authorization endpoint."""
 
@@ -123,7 +123,7 @@ class AuthorizationResponse:
         return self.redirect_uri
 
 
-@dataclass
+@dataclass(frozen=True)
 class ConsentData:
     """Data needed to render consent page."""
 
@@ -212,7 +212,8 @@ class AuthorizationEndpoint[
             client_service: Service for client management.
             grant_repository: Repository for OAuth grants.
             authorization_code_repository: Repository for authorization codes.
-            code_hash_key: Key for hashing authorization codes.
+            code_hash_key: Key for hashing authorization codes: the token
+                service's `token_hash_key`, which looks them up.
             code_prefix: Prefix for generated codes.
             code_lifetime: How long codes are valid.
             require_pkce: Require PKCE from confidential clients too. Public

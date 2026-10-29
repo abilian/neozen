@@ -6,6 +6,7 @@ without HTTP/web concerns. These services are used by web adapters.
 
 from __future__ import annotations
 
+import dataclasses
 import typing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -44,7 +45,7 @@ async def _revoke_matching[T](
         await repository.update_obj(token, revoked_at=now)
 
 
-@dataclass
+@dataclass(frozen=True)
 class TokenPair:
     """Generated token pair."""
 
@@ -57,7 +58,7 @@ class TokenPair:
     scope: str | None
 
 
-@dataclass
+@dataclass(frozen=True)
 class AccessTokenResult:
     """Result of access token generation (for refresh)."""
 
@@ -189,8 +190,13 @@ class OAuthTokenService[
             RedirectUriMismatchError: Redirect URI doesn't match.
             PKCEVerificationFailedError: PKCE verification failed.
         """
+        # Codes are stored as their HMAC, like tokens; the authorization
+        # endpoint must hash them with the same key.
+        code_hash = get_token_hash(code, key=self.token_hash_key)
         try:
-            auth_code = await self.authorization_code_repository.get_one_by(code=code)
+            auth_code = await self.authorization_code_repository.get_one_by(
+                code=code_hash
+            )
         except DoesNotExist as e:
             raise AuthorizationCodeNotFoundError from e
 
@@ -427,9 +433,12 @@ class OAuthTokenService[
                 access_token_hash=result.access_token_hash,
             )
 
-            result.new_refresh_token = new_refresh
-            result.new_refresh_token_hash = new_refresh_hash
-            result.new_refresh_expires_at = new_refresh_expires_at
+            result = dataclasses.replace(
+                result,
+                new_refresh_token=new_refresh,
+                new_refresh_token_hash=new_refresh_hash,
+                new_refresh_expires_at=new_refresh_expires_at,
+            )
 
         return result
 

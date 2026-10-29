@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import secrets
 import typing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -21,6 +20,7 @@ from neozen.core.oauth_client.models import (
 )
 from neozen.core.oauth_client.providers.base import OAuthProvider
 from neozen.core.repository import DoesNotExist
+from neozen.core.utils import ensure_utc, hex_id
 
 # Error messages
 _INVALID_STATE = "Invalid state parameter"
@@ -43,14 +43,8 @@ class OAuthClientService:
     social_account_repository: SocialAccountRepositoryProtocol[typing.Any]
     http_client: typing.Any = field(default=None, repr=False)
     state_expiry_seconds: int = 600  # 10 minutes
-    id_generator: typing.Callable[[], str] | None = None
+    id_generator: typing.Callable[[], str] = hex_id
     _providers: dict[str, OAuthProvider] = field(default_factory=dict, repr=False)
-
-    def _generate_id(self) -> str:
-        """Generate a unique ID."""
-        if self.id_generator:
-            return self.id_generator()
-        return secrets.token_hex(16)
 
     def register_provider(self, config: OAuthProviderConfig) -> OAuthProvider:
         """Register an OAuth provider.
@@ -186,7 +180,7 @@ class OAuthClientService:
             raise OAuthStateError(_INVALID_STATE) from None
 
         # Check expiration
-        if datetime.now(UTC) > state_record.expires_at:
+        if datetime.now(UTC) > ensure_utc(state_record.expires_at):
             await self.state_repository.delete(state_record)
             raise OAuthStateError(_STATE_EXPIRED)
 
@@ -241,7 +235,7 @@ class OAuthClientService:
             token_expires_at = datetime.now(UTC) + timedelta(seconds=tokens.expires_in)
 
         return await self.social_account_repository.create(
-            id=self._generate_id(),
+            id=self.id_generator(),
             subject_id=subject_id,
             provider_id=user_info.provider_id,
             provider_user_id=user_info.provider_user_id,

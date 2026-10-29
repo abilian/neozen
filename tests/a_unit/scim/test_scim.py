@@ -25,6 +25,7 @@ from neozen.core.scim.models import (
     GroupMember,
     ListResponse,
     Meta,
+    Name,
     SchemaUri,
     User,
 )
@@ -244,6 +245,27 @@ class TestFilterTokenizer:
 
 
 class TestFilterMatching:
+    @pytest.mark.parametrize(
+        ("filter_text", "expected"),
+        [
+            ('emails.value ew "corp.com"', True),
+            ('emails ew "corp.com"', True),  # stands for emails.value
+            ('emails.value eq "nobody@x.org"', False),
+            ("emails pr", True),
+            ("name pr", True),
+            ('name.familyName eq "Doe"', True),
+        ],
+    )
+    def test_multi_valued_and_complex_attributes(
+        self, filter_text: str, expected: bool
+    ) -> None:
+        user = User(
+            user_name="alice",
+            emails=[Email(value="a@x.org"), Email(value="alice@corp.com")],
+            name=Name(family_name="Doe"),
+        )
+        assert parse_filter(filter_text).matches(user) is expected
+
     def test_eq_string_case_insensitive(self) -> None:
         expr = parse_filter('userName eq "ALICE"')
         user = User(user_name="alice")

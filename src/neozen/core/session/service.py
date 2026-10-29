@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
 from neozen.core.repository import DoesNotExist, RepositoryProtocol
 from neozen.core.session.models import SessionModel
+from neozen.core.utils import ensure_utc
 
 
 class SessionError(Exception):
@@ -193,10 +194,7 @@ class SessionService[S: SessionModel]:
 
         # Check expiration
         now = datetime.now(UTC)
-        expires_at = session.expires_at
-        # Handle timezone-naive datetimes from SQLite
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=UTC)
+        expires_at = ensure_utc(session.expires_at)
         if expires_at < now:
             raise SessionExpiredError
 
@@ -339,7 +337,7 @@ class SessionService[S: SessionModel]:
         for s in sessions:
             if not include_revoked and s.revoked_at is not None:
                 continue
-            if not include_expired and s.expires_at <= now:
+            if not include_expired and ensure_utc(s.expires_at) <= now:
                 continue
             result.append(s)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import sys
 from datetime import UTC, datetime
 
 import pyotp
@@ -14,6 +15,7 @@ from neozen.core.factors.totp import (
     InvalidTOTPCodeError,
     TOTPAlreadyEnabledError,
     TOTPConfig,
+    TOTPError,
     TOTPFactor,
     TOTPNotEnabledError,
     TOTPSubjectModel,
@@ -484,3 +486,12 @@ class TestRemainingBackupCodes:
 
         count = await totp_factor.get_remaining_backup_codes_count(subject)
         assert count == 2  # Only unused codes
+
+
+def test_factor_needs_pyotp(
+    monkeypatch: pytest.MonkeyPatch, subject_storage: MockStorage[MockTOTPSubject]
+) -> None:
+    monkeypatch.setitem(sys.modules, "pyotp", None)  # import fails
+
+    with pytest.raises(TOTPError, match="pyotp is required"):
+        TOTPFactor(config=TOTPConfig(), subject_repository=subject_storage)

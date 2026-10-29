@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from neozen.core.crypto import generate_token_hash_pair, get_token_hash
 from neozen.core.models import NeoZenModel
+from neozen.core.utils import ensure_utc
 
 
 @dataclass(frozen=True)
@@ -30,7 +31,7 @@ class PasswordResetConfig:
     token_prefix: str = "nz_pr_"
 
 
-@dataclass
+@dataclass(frozen=True)
 class PasswordResetResult:
     """Result of password reset request or completion.
 
@@ -273,7 +274,7 @@ class PasswordResetService:
 
         # Check if expired
         now = datetime.now(UTC)
-        return token_record.expires_at > now
+        return ensure_utc(token_record.expires_at) > now
 
     async def reset_password(
         self,
@@ -309,7 +310,7 @@ class PasswordResetService:
 
         # Check if expired
         now = datetime.now(UTC)
-        if token_record.expires_at <= now:
+        if ensure_utc(token_record.expires_at) <= now:
             return PasswordResetResult(
                 success=False,
                 message="This reset link has expired.",

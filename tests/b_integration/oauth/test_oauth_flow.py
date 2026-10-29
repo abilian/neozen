@@ -5,11 +5,16 @@ Tests the full OAuth flow with real SQLAlchemy repositories.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from pwdlib import PasswordHash
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from neozen.core.crypto import get_token_hash
+from neozen.core.oauth.client_service import OAuthClientService
+from neozen.core.oauth.pkce import compute_s256_challenge
 from neozen.core.oauth.services import OAuthTokenService
 from neozen.storage.sqlalchemy import Base
 from neozen.storage.sqlalchemy.oauth_models import (
@@ -24,6 +29,7 @@ from neozen.storage.sqlalchemy.oauth_repositories import (
     OAuthGrantRepository,
     OAuthRefreshTokenRepository,
 )
+from neozen.web.oauth import AuthorizationEndpoint, TokenEndpoint
 
 TOKEN_HASH_KEY = "test_secret_key_for_oauth_flow"
 
@@ -120,7 +126,7 @@ class TestOAuthAuthorizationCodeFlow:
         code_challenge = code_verifier
 
         auth_code = OAuthAuthorizationCode()
-        auth_code.code = "test_auth_code_hash"
+        auth_code.code = get_token_hash("test_auth_code_hash", key=TOKEN_HASH_KEY)
         auth_code.client_id = "test_client_app"
         auth_code.subject_id = "user_123"
         auth_code.expires_at = datetime.now(UTC) + timedelta(minutes=10)
@@ -174,7 +180,7 @@ class TestOAuthAuthorizationCodeFlow:
         # 2. Create a valid authorization code and exchange it
         code_verifier = "test_verifier_43_chars_xxxxxxxxxxxxxxxxxxx"
         auth_code = OAuthAuthorizationCode()
-        auth_code.code = "refresh_test_code"
+        auth_code.code = get_token_hash("refresh_test_code", key=TOKEN_HASH_KEY)
         auth_code.client_id = "refresh_test_client"
         auth_code.subject_id = "user_456"
         auth_code.expires_at = datetime.now(UTC) + timedelta(minutes=10)
@@ -239,7 +245,7 @@ class TestOAuthAuthorizationCodeFlow:
 
         code_verifier = "scope_verifier_43_chars_xxxxxxxxxxxxxxxxxxxxx"
         auth_code = OAuthAuthorizationCode()
-        auth_code.code = "scope_test_code"
+        auth_code.code = get_token_hash("scope_test_code", key=TOKEN_HASH_KEY)
         auth_code.client_id = "scope_test_client"
         auth_code.subject_id = "user_789"
         auth_code.expires_at = datetime.now(UTC) + timedelta(minutes=10)
@@ -304,7 +310,7 @@ class TestOAuthErrorHandling:
 
         code_verifier = "expired_verifier_43_chars_xxxxxxxxxxxxxxxxx"
         auth_code = OAuthAuthorizationCode()
-        auth_code.code = "expired_code"
+        auth_code.code = get_token_hash("expired_code", key=TOKEN_HASH_KEY)
         auth_code.client_id = "expired_test_client"
         auth_code.subject_id = "user_expired"
         auth_code.expires_at = datetime.now(UTC) - timedelta(minutes=1)  # expired
@@ -381,7 +387,7 @@ class TestOAuthErrorHandling:
 
         correct_verifier = "correct_verifier_43_chars_xxxxxxxxxxxxxxxxx"
         auth_code = OAuthAuthorizationCode()
-        auth_code.code = "pkce_test_code"
+        auth_code.code = get_token_hash("pkce_test_code", key=TOKEN_HASH_KEY)
         auth_code.client_id = "pkce_test_client"
         auth_code.subject_id = "user_pkce"
         auth_code.expires_at = datetime.now(UTC) + timedelta(minutes=10)
@@ -401,3 +407,56 @@ class TestOAuthErrorHandling:
                 redirect_uri=None,
                 code_verifier=wrong_verifier,
             )
+
+
+@pytest.mark.anyio
+async def test_code_from_the_authorization_endpoint_is_redeemable(
+    session: AsyncSession,
+    client_repo: OAuthClientRepository,
+    grant_repo: OAuthGrantRepository,
+    auth_code_repo: OAuthAuthorizationCodeRepository,
+    token_service: OAuthTokenService,
+) -> None:
+    """Authorize then exchange, through both endpoints, with S256 PKCE."""
+    clients = OAuthClientService(client_repo, PasswordHash.recommended())
+    client, _ = await clients.create_client(
+        "App", ["https://example.com/callback"], client_type="public"
+    )
+    authorize = AuthorizationEndpoint(
+        client_service=clients,
+        grant_repository=grant_repo,
+        authorization_code_repository=auth_code_repo,
+        code_hash_key=TOKEN_HASH_KEY,
+    )
+    verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+    request = {
+        "response_type": "code",
+        "client_id": client.client_id,
+        "redirect_uri": "https://example.com/callback",
+        "code_challenge": compute_s256_challenge(verifier),
+        "code_challenge_method": "S256",
+    }
+
+    @dataclass(frozen=True)
+    class User:
+        id: str = "user_123"
+
+    page = await authorize.handle_authorization_request(request, User())
+    assert page.consent_data
+    response = await authorize.handle_consent(
+        {**request, "approved": True, "consent_token": page.consent_data.consent_token},
+        User(),
+    )
+    assert response.code
+
+    tokens = await TokenEndpoint(token_service, clients)(
+        {
+            "grant_type": "authorization_code",
+            "code": response.code,
+            "redirect_uri": "https://example.com/callback",
+            "code_verifier": verifier,
+        },
+        client_id=client.client_id,
+    )
+
+    assert tokens.access_token

@@ -274,7 +274,7 @@ async def _seed_authorization_code(
     await client_storage.create(client_id="client_app")
     verifier = "a" * 43  # min length for code_verifier
     await auth_code_storage.create(
-        code="auth_code_xyz",
+        code=get_token_hash("auth_code_xyz", key=TOKEN_HASH_KEY),
         client_id="client_app",
         subject_id=subject_id,
         expires_at=datetime.now(UTC) + timedelta(minutes=10),

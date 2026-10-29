@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from neozen.core.exceptions import NeoZenException
+from neozen.core.factors.password import PasswordHasherProtocol
+from neozen.core.utils import hex_id
 
 # Error messages
 _PYOTP_REQUIRED = "pyotp is required for TOTP support"
@@ -99,21 +101,6 @@ class SubjectRepositoryProtocol[S: TOTPSubjectModel](typing.Protocol):
     async def update_obj(self, obj: S, **data: typing.Any) -> S: ...
 
 
-class PasswordHasherProtocol(typing.Protocol):
-    """Protocol for password hashers (used for backup codes)."""
-
-    def verify_and_update(
-        self, password: str | bytes, hash: str | bytes
-    ) -> tuple[bool, str | None]: ...
-
-    def hash(
-        self,
-        password: str | bytes,
-        *,
-        salt: bytes | None = None,
-    ) -> str: ...
-
-
 @dataclass(frozen=True)
 class TOTPConfig:
     """Configuration for TOTP factor.
@@ -190,34 +177,23 @@ class TOTPFactor[S: TOTPSubjectModel]:
     subject_repository: SubjectRepositoryProtocol[S]
     backup_code_repository: BackupCodeRepositoryProtocol[typing.Any] | None = None
     hasher: PasswordHasherProtocol | None = None
-    id_generator: typing.Callable[[], str] | None = None
+    id_generator: typing.Callable[[], str] = hex_id
     _pyotp: typing.Any = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
-        """Import pyotp lazily."""
+        """Import pyotp, an optional dependency (the ``totp`` extra)."""
         try:
             import pyotp  # noqa: PLC0415
-
-            self._pyotp = pyotp
-        except ImportError:
-            pass
-
-    def _generate_id(self) -> str:
-        """Generate a unique ID."""
-        if self.id_generator:
-            return self.id_generator()
-        return secrets.token_hex(16)
+        except ImportError as e:
+            raise TOTPError(_PYOTP_REQUIRED) from e
+        self._pyotp = pyotp
 
     def _generate_secret(self) -> str:
         """Generate a new TOTP secret."""
-        if self._pyotp is None:
-            raise TOTPError(_PYOTP_REQUIRED)
         return self._pyotp.random_base32()
 
     def _get_totp(self, secret: str) -> typing.Any:
         """Create a TOTP instance for the given secret."""
-        if self._pyotp is None:
-            raise TOTPError(_PYOTP_REQUIRED)
         return self._pyotp.TOTP(
             secret,
             digits=self.config.digits,
@@ -275,9 +251,6 @@ class TOTPFactor[S: TOTPSubjectModel]:
         """
         if subject.totp_enabled:
             raise TOTPAlreadyEnabledError
-
-        if self._pyotp is None:
-            raise TOTPError(_PYOTP_REQUIRED)
 
         secret = self._generate_secret()
 
@@ -362,7 +335,7 @@ class TOTPFactor[S: TOTPSubjectModel]:
             normalized = self._normalize_backup_code(code)
             code_hash = self.hasher.hash(normalized)
             await self.backup_code_repository.create(
-                id=self._generate_id(),
+                id=self.id_generator(),
                 subject_id=subject_id,
                 code_hash=code_hash,
                 used_at=None,
