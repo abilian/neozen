@@ -12,6 +12,7 @@ upload/download flow.
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import io
 import re
@@ -19,6 +20,11 @@ import typing
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING
+
+from advanced_alchemy.exceptions import RepositoryError
+from sqlalchemy.exc import SQLAlchemyError
+
+from neozen.storage.base import DoesNotExist
 
 if TYPE_CHECKING:
     from neozen.admin.services import AdminService
@@ -38,7 +44,7 @@ class BulkRowStatus(StrEnum):
     FAILED = "failed"
 
 
-@dataclass
+@dataclass(frozen=True)
 class BulkRowResult:
     """Result of processing a single row."""
 
@@ -284,11 +290,6 @@ async def _process_row(
         )
         return
 
-    # Check existence
-    import contextlib  # noqa: PLC0415
-
-    from neozen.storage.base import DoesNotExist  # noqa: PLC0415
-
     existing = None
     with contextlib.suppress(DoesNotExist):
         existing = await service.subject_repo.get_one_by(email=email)
@@ -318,14 +319,16 @@ async def _process_row(
             return
 
         try:
-            updated = await service.update_subject(
-                existing.id,
-                email=email,
-                username=fields["username"],
-                is_active=fields["is_active"],
-                is_verified=fields["is_verified"],
-            )
-        except Exception as e:
+            # A savepoint per row: a failed one leaves the session usable.
+            async with service.session.begin_nested():
+                updated = await service.update_subject(
+                    existing.id,
+                    email=email,
+                    username=fields["username"],
+                    is_active=fields["is_active"],
+                    is_verified=fields["is_verified"],
+                )
+        except (RepositoryError, SQLAlchemyError) as e:
             result.add(
                 BulkRowResult(
                     row_number=row_index,
@@ -357,13 +360,14 @@ async def _process_row(
         return
 
     try:
-        created = await service.create_subject(
-            email=email,
-            username=fields["username"],
-            is_active=fields["is_active"],
-            is_verified=fields["is_verified"],
-        )
-    except Exception as e:
+        async with service.session.begin_nested():
+            created = await service.create_subject(
+                email=email,
+                username=fields["username"],
+                is_active=fields["is_active"],
+                is_verified=fields["is_verified"],
+            )
+    except (RepositoryError, SQLAlchemyError) as e:
         result.add(
             BulkRowResult(
                 row_number=row_index,

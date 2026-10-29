@@ -192,6 +192,25 @@ class TestImport:
         assert result.failed == 0
         assert not result.has_failures
 
+    async def test_failed_row_does_not_poison_later_rows(
+        self, admin_service: AdminService
+    ) -> None:
+        """The second row's username is taken: only that row fails."""
+        csv_text = (
+            "email,username\n"
+            "alice@example.com,alice\n"
+            "other@example.com,alice\n"
+            "bob@example.com,bob\n"
+        )
+        result = await import_subjects_from_csv(admin_service, csv_text)
+
+        assert (result.created, result.failed) == (2, 1)
+        users = await admin_service.list_subjects()
+        assert sorted(u.email for u in users) == [
+            "alice@example.com",
+            "bob@example.com",
+        ]
+
     async def test_import_creates_users(self, admin_service: AdminService) -> None:
         csv_text = "email\nalice@example.com\n"
         await import_subjects_from_csv(admin_service, csv_text)

@@ -9,6 +9,7 @@ include = [
     "src/**/*.py",
     "tests/**/*.py",
     "demos/**/*.py",
+    "bench/**/*.py",
 ]
 
 lint.extend-ignore = [
@@ -64,6 +65,10 @@ lint.extend-ignore = [
     "FBT",
     "DTZ005",
     "S603",
+]
+"bench/**/*.py" = [
+    "INP001",  # a script directory, not a package
+    "RUF029",  # every benchmark shares one async signature
 ]
 "**/__init__.py" = [
     "RUF022", # Sort __all__

@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from neozen.core.audit.types import AuditLogEntry, AuditOutcome
 from neozen.core.authz.services import RoleService
 from neozen.core.utils import generate_id
-from neozen.storage.base import DoesNotExist
 from neozen.storage.sqlalchemy.models import (
     Group,
     GroupMembership,
@@ -57,73 +56,36 @@ def _ensure_aware(dt: datetime | None) -> datetime | None:
     return dt
 
 
-def _apply_subject_filters(
-    subjects: list[Subject],
-    filters: UserListFilters,
-) -> list[Subject]:
-    """Apply filters to a list of subjects."""
-    filtered = subjects
-
-    # Search filter
+def _subject_conditions(filters: UserListFilters) -> list[Any]:
+    """SQL conditions for the user list filters."""
+    conditions: list[Any] = []
     if filters.search:
-        search_lower = filters.search.lower()
-        filtered = [
-            s
-            for s in filtered
-            if search_lower in s.email.lower()
-            or (s.username and search_lower in s.username.lower())
-            or search_lower in s.id.lower()
-        ]
-
-    # Status filter
+        term = filters.search.lower()
+        conditions.append(
+            func.lower(Subject.email).contains(term, autoescape=True)
+            | func.lower(Subject.username).contains(term, autoescape=True)
+            | func.lower(Subject.id).contains(term, autoescape=True)
+        )
     if filters.status:
         if "active" in filters.status and "inactive" not in filters.status:
-            filtered = [s for s in filtered if s.is_active]
+            conditions.append(Subject.is_active.is_(True))
         elif "inactive" in filters.status and "active" not in filters.status:
-            filtered = [s for s in filtered if not s.is_active]
-
-    # MFA filter
+            conditions.append(Subject.is_active.is_(False))
     if filters.mfa_enabled is not None:
-        filtered = [s for s in filtered if s.totp_enabled == filters.mfa_enabled]
-
-    # Verified filter
+        conditions.append(Subject.totp_enabled.is_(filters.mfa_enabled))
     if filters.is_verified is not None:
-        filtered = [s for s in filtered if s.is_verified == filters.is_verified]
-
-    # Date filters
+        conditions.append(Subject.is_verified.is_(filters.is_verified))
     if filters.created_after:
-        after = filters.created_after
-        filtered = [
-            s
-            for s in filtered
-            if s.created_at is not None and _ensure_aware(s.created_at) >= after
-        ]
+        conditions.append(Subject.created_at >= filters.created_after)
     if filters.created_before:
-        before = filters.created_before
-        filtered = [
-            s
-            for s in filtered
-            if s.created_at is not None and _ensure_aware(s.created_at) <= before
-        ]
-
-    return filtered
+        conditions.append(Subject.created_at <= filters.created_before)
+    return conditions
 
 
-def _sort_subjects(
-    subjects: list[Subject],
-    sort_by: str,
-    sort_order: str,
-) -> list[Subject]:
-    """Sort a list of subjects."""
-    reverse = sort_order == "desc"
-    if sort_by == "email":
-        subjects.sort(key=lambda s: s.email.lower(), reverse=reverse)
-    elif sort_by == "created_at":
-        subjects.sort(
-            key=lambda s: s.created_at or datetime.min.replace(tzinfo=UTC),
-            reverse=reverse,
-        )
-    return subjects
+def _subject_order(sort_by: str, sort_order: str) -> Any:
+    """SQL ordering for the user list: by email or by creation date."""
+    column = func.lower(Subject.email) if sort_by == "email" else Subject.created_at
+    return column.desc() if sort_order == "desc" else column.asc()
 
 
 def _role_has_permission(role_permissions: list[str], permission: str) -> bool:
@@ -168,6 +130,16 @@ class UserListFilters:
     sort_order: str = "desc"
     page: int = 1
     per_page: int = 50
+
+
+@dataclass(frozen=True)
+class SecurityCounts:
+    """Counters shown on the security dashboard."""
+
+    total_users: int
+    mfa_enabled_users: int
+    mfa_adoption: float
+    active_session_count: int
 
 
 @dataclass
@@ -218,44 +190,39 @@ class AdminService:
     # -------------------------------------------------------------------------
 
     async def get_dashboard_stats(self) -> DashboardStats:
-        """Get dashboard statistics."""
-        # Count subjects
-        total_subjects = await self.subject_repo.count()
-        active_subjects = await self.subject_repo.count(is_active=True)
-        verified_subjects = await self.subject_repo.count(is_verified=True)
-
-        # Count roles
-        roles = await self.role_repo.get_many_by()
-        total_roles = len(roles)
-        system_roles = sum(1 for r in roles if r.is_system)
-
-        # Count active sessions (not expired, not revoked)
+        """Get dashboard statistics, counted in the database."""
         now = datetime.now(UTC)
-        all_sessions = await self.session_repo.get_many_by()
-        active_sessions = len([
-            s
-            for s in all_sessions
-            if s.revoked_at is None and _ensure_aware(s.expires_at) > now
-        ])
-
-        # Recent registrations (last 7 days)
-        week_ago = now - timedelta(days=7)
-        all_subjects = await self.subject_repo.get_many_by()
-        recent_registrations = len([
-            s
-            for s in all_subjects
-            if s.created_at and _ensure_aware(s.created_at) > week_ago
-        ])
-
+        total_subjects = await self._count(Subject)
         return DashboardStats(
             total_subjects=total_subjects,
-            active_subjects=active_subjects,
-            verified_subjects=verified_subjects,
-            total_roles=total_roles,
-            system_roles=system_roles,
-            active_sessions=active_sessions,
-            recent_registrations=recent_registrations,
+            active_subjects=await self._count(Subject, Subject.is_active.is_(True)),
+            verified_subjects=await self._count(Subject, Subject.is_verified.is_(True)),
+            total_roles=await self._count(Role),
+            system_roles=await self._count(Role, Role.is_system.is_(True)),
+            active_sessions=await self.count_active_sessions(),
+            recent_registrations=await self._count(
+                Subject, Subject.created_at > now - timedelta(days=7)
+            ),
         )
+
+    async def get_security_counts(self) -> SecurityCounts:
+        """Users, users with TOTP, and active sessions, for the security pages."""
+        total = await self._count(Subject)
+        with_mfa = await self._count(Subject, Subject.totp_enabled.is_(True))
+        return SecurityCounts(
+            total_users=total,
+            mfa_enabled_users=with_mfa,
+            mfa_adoption=with_mfa / total * 100 if total else 0,
+            active_session_count=await self.count_active_sessions(),
+        )
+
+    async def count_active_sessions(self) -> int:
+        """Sessions neither revoked nor expired."""
+        return await self._count(Session, *self._active_session(active_only=True))
+
+    async def _count(self, model: type[Any], *conditions: Any) -> int:
+        stmt = select(func.count()).select_from(model).where(*conditions)
+        return (await self.session.execute(stmt)).scalar_one()
 
     # -------------------------------------------------------------------------
     # Subject Management
@@ -340,21 +307,18 @@ class AdminService:
         Returns:
             List of roles
         """
-        assignments = await self.role_assignment_repo.get_many_by(subject_id=subject_id)
-        roles = []
-        for assignment in assignments:
-            try:
-                role = await self.role_repo.get_one_by(id=assignment.role_id)
-                roles.append(role)
-            except DoesNotExist:
-                pass  # dangling assignment: SQLite doesn't enforce the FK
-        return roles
+        stmt = (
+            select(Role)
+            .join(RoleAssignment, RoleAssignment.role_id == Role.id)
+            .where(RoleAssignment.subject_id == subject_id)
+        )
+        return list((await self.session.scalars(stmt)).all())
 
     async def list_subjects_paginated(
         self,
         filters: UserListFilters | None = None,
     ) -> PaginatedResult:
-        """List subjects with filtering and pagination.
+        """List subjects with filtering and pagination, done in the database.
 
         Args:
             filters: Filter and pagination options
@@ -365,22 +329,17 @@ class AdminService:
         if filters is None:
             filters = UserListFilters()
 
-        # Get all subjects (TODO: optimize with SQL filtering)
-        all_subjects = await self.subject_repo.get_many_by()
-
-        # Apply filters and sort
-        filtered = _apply_subject_filters(all_subjects, filters)
-        filtered = _sort_subjects(filtered, filters.sort_by, filters.sort_order)
-
-        # Get total before pagination
-        total = len(filtered)
-
-        # Paginate
-        offset = (filters.page - 1) * filters.per_page
-        paginated = filtered[offset : offset + filters.per_page]
-
+        conditions = _subject_conditions(filters)
+        total = await self._count(Subject, *conditions)
+        stmt = (
+            select(Subject)
+            .where(*conditions)
+            .order_by(_subject_order(filters.sort_by, filters.sort_order))
+            .offset((filters.page - 1) * filters.per_page)
+            .limit(filters.per_page)
+        )
         return PaginatedResult(
-            items=paginated,
+            items=list((await self.session.scalars(stmt)).all()),
             total=total,
             page=filters.page,
             per_page=filters.per_page,
@@ -632,6 +591,18 @@ class AdminService:
         role = await self.get_role(role_name)
         return await self.role_assignment_repo.get_many_by(role_id=role.id)
 
+    async def get_role_assignments_with_subjects(
+        self, role: Role
+    ) -> list[tuple[RoleAssignment, Subject | None]]:
+        """A role's assignments, each with its subject (None if it is gone)."""
+        stmt = (
+            select(RoleAssignment, Subject)
+            .outerjoin(Subject, Subject.id == RoleAssignment.subject_id)
+            .where(RoleAssignment.role_id == role.id)
+            .order_by(RoleAssignment.granted_at)
+        )
+        return [(a, subject) for a, subject in await self.session.execute(stmt)]
+
     async def ensure_builtin_roles(self) -> None:
         """Ensure built-in roles exist."""
         await self.role_service.ensure_builtin_roles()
@@ -738,26 +709,24 @@ class AdminService:
                     })
                     seen_permissions.add(perm)
 
-        # Get group role assignments
-        memberships = await self.group_membership_repo.get_many_by(
-            subject_id=subject_id
+        # Roles held through the subject's groups
+        stmt = (
+            select(Group, Role)
+            .join(GroupMembership, GroupMembership.group_id == Group.id)
+            .join(GroupRoleAssignment, GroupRoleAssignment.group_id == Group.id)
+            .join(Role, Role.id == GroupRoleAssignment.role_id)
+            .where(GroupMembership.subject_id == subject_id)
         )
-        for membership in memberships:
-            try:
-                group = await self.get_group(membership.group_id)
-                group_roles = await self.get_group_roles(membership.group_id)
-                for role in group_roles:
-                    for perm in role.get_permissions_list():
-                        if perm not in seen_permissions:
-                            result.append({
-                                "permission": perm,
-                                "source_type": "group",
-                                "source_id": group.id,
-                                "source_name": f"{group.name} ({role.name})",
-                            })
-                            seen_permissions.add(perm)
-            except DoesNotExist:
-                continue
+        for group, role in await self.session.execute(stmt):
+            for perm in role.get_permissions_list():
+                if perm not in seen_permissions:
+                    result.append({
+                        "permission": perm,
+                        "source_type": "group",
+                        "source_id": group.id,
+                        "source_name": f"{group.name} ({role.name})",
+                    })
+                    seen_permissions.add(perm)
 
         return result
 
@@ -775,83 +744,67 @@ class AdminService:
         result: list[dict[str, Any]] = []
         seen_subjects: set[str] = set()
 
-        # Check all roles that have this permission
-        roles = await self.list_roles()
-        for role in roles:
-            if not _role_has_permission(role.get_permissions_list(), permission):
-                continue
-
-            # Add direct role assignments
-            await self._add_role_subjects(
-                role, result, seen_subjects, "role", role.name
-            )
-
-            # Add group role assignments
-            await self._add_group_role_subjects(role, result, seen_subjects)
-
+        # Wildcards are matched here, so the roles are filtered in Python.
+        names = {
+            role.id: role.name
+            for role in await self.list_roles()
+            if _role_has_permission(role.get_permissions_list(), permission)
+        }
+        if names:
+            role_ids = list(names)
+            await self._add_role_subjects(role_ids, names, result, seen_subjects)
+            await self._add_group_role_subjects(role_ids, names, result, seen_subjects)
         return result
 
     async def _add_role_subjects(
         self,
-        role: Role,
+        role_ids: list[str],
+        names: dict[str, str],
         result: list[dict[str, Any]],
         seen: set[str],
-        source_type: str,
-        source_name: str,
     ) -> None:
-        """Add subjects with a direct role assignment."""
-        assignments = await self.get_role_assignments(role.name)
-        for assignment in assignments:
-            if assignment.subject_id in seen:
+        """Add subjects with a direct assignment of one of the roles."""
+        stmt = (
+            select(Subject, RoleAssignment.role_id)
+            .join(RoleAssignment, RoleAssignment.subject_id == Subject.id)
+            .where(RoleAssignment.role_id.in_(role_ids))
+            .order_by(RoleAssignment.granted_at)
+        )
+        for subject, role_id in (await self.session.execute(stmt)).all():
+            if subject.id in seen:
                 continue
-            try:
-                subject = await self.get_subject(assignment.subject_id)
-                result.append({
-                    "subject": subject,
-                    "source_type": source_type,
-                    "source_name": source_name,
-                })
-                seen.add(assignment.subject_id)
-            except DoesNotExist:
-                continue
+            result.append({
+                "subject": subject,
+                "source_type": "role",
+                "source_name": names[role_id],
+            })
+            seen.add(subject.id)
 
     async def _add_group_role_subjects(
         self,
-        role: Role,
+        role_ids: list[str],
+        names: dict[str, str],
         result: list[dict[str, Any]],
         seen: set[str],
     ) -> None:
-        """Add subjects from groups with a role assignment."""
-        group_assignments = await self.group_role_assignment_repo.get_many_by(
-            role_id=role.id
+        """Add members of groups that hold one of the roles."""
+        stmt = (
+            select(Subject, Group.name, GroupRoleAssignment.role_id)
+            .join(GroupMembership, GroupMembership.subject_id == Subject.id)
+            .join(Group, Group.id == GroupMembership.group_id)
+            .join(GroupRoleAssignment, GroupRoleAssignment.group_id == Group.id)
+            .where(GroupRoleAssignment.role_id.in_(role_ids))
+            .order_by(GroupRoleAssignment.granted_at, GroupMembership.added_at)
         )
-        for gra in group_assignments:
-            try:
-                group, members = await self._load_group_with_members(gra.group_id)
-            except DoesNotExist:
+        for member, group_name, role_id in (await self.session.execute(stmt)).all():
+            if member.id in seen:
                 continue
-            for member, _member_role in members:
-                if member.id in seen:
-                    continue
-                result.append({
-                    "subject": member,
-                    "source_type": "group",
-                    "source_name": f"{group.name} ({role.name})",
-                })
-                seen.add(member.id)
-
-    async def _load_group_with_members(
-        self, group_id: str
-    ) -> tuple[Any, list[tuple[Any, Any]]]:
-        """Fetch a group + its members in one helper.
-
-        Raises whatever ``get_group`` / ``get_group_members`` raise; the
-        caller decides whether a load failure is fatal or "skip this
-        group".
-        """
-        group = await self.get_group(group_id)
-        members = await self.get_group_members(group_id)
-        return group, members
+            result.append({
+                "subject": member,
+                "source_type": "group",
+                "source_name": f"{group_name} ({names[role_id]})",
+            })
+            seen.add(member.id)
 
     # -------------------------------------------------------------------------
     # Session Management
@@ -870,17 +823,26 @@ class AdminService:
         Returns:
             List of sessions
         """
-        sessions = await self.session_repo.get_many_by()
+        stmt = select(Session).where(*self._active_session(active_only=active_only))
+        return list((await self.session.scalars(stmt)).all())
 
-        if active_only:
-            now = datetime.now(UTC)
-            sessions = [
-                s
-                for s in sessions
-                if s.revoked_at is None and _ensure_aware(s.expires_at) > now
-            ]
+    async def list_sessions_with_subjects(
+        self,
+    ) -> list[tuple[Session, Subject | None]]:
+        """Active sessions, each with its subject (None if it is gone)."""
+        stmt = (
+            select(Session, Subject)
+            .outerjoin(Subject, Subject.id == Session.subject_id)
+            .where(*self._active_session(active_only=True))
+            .order_by(Session.last_activity_at.desc())
+        )
+        return [(sess, subject) for sess, subject in await self.session.execute(stmt)]
 
-        return sessions
+    @staticmethod
+    def _active_session(*, active_only: bool) -> list[Any]:
+        if not active_only:
+            return []
+        return [Session.revoked_at.is_(None), Session.expires_at > datetime.now(UTC)]
 
     async def revoke_session(self, token_hash: str) -> None:
         """Revoke a session by token hash.
@@ -1010,23 +972,14 @@ class AdminService:
         await self.group_repo.delete(group)
 
     async def get_group_members(self, group_id: str) -> list[tuple[Subject, str]]:
-        """Get members of a group.
-
-        Args:
-            group_id: The group ID
-
-        Returns:
-            List of (subject, role) tuples
-        """
-        memberships = await self.group_membership_repo.get_many_by(group_id=group_id)
-        members = []
-        for m in memberships:
-            try:
-                subject = await self.subject_repo.get_one_by(id=m.subject_id)
-                members.append((subject, m.role))
-            except DoesNotExist:
-                pass  # dangling membership: SQLite doesn't enforce the FK
-        return members
+        """Get the members of a group, with their membership role."""
+        stmt = (
+            select(Subject, GroupMembership.role)
+            .join(GroupMembership, GroupMembership.subject_id == Subject.id)
+            .where(GroupMembership.group_id == group_id)
+            .order_by(GroupMembership.added_at)
+        )
+        return [(subject, role) for subject, role in await self.session.execute(stmt)]
 
     async def add_group_member(
         self,
@@ -1078,25 +1031,13 @@ class AdminService:
             await self.group_membership_repo.delete(m)
 
     async def get_group_roles(self, group_id: str) -> list[Role]:
-        """Get roles assigned to a group.
-
-        Args:
-            group_id: The group ID
-
-        Returns:
-            List of roles
-        """
-        assignments = await self.group_role_assignment_repo.get_many_by(
-            group_id=group_id
+        """Get the roles assigned to a group."""
+        stmt = (
+            select(Role)
+            .join(GroupRoleAssignment, GroupRoleAssignment.role_id == Role.id)
+            .where(GroupRoleAssignment.group_id == group_id)
         )
-        roles = []
-        for a in assignments:
-            try:
-                role = await self.role_repo.get_one_by(id=a.role_id)
-                roles.append(role)
-            except DoesNotExist:
-                pass  # dangling assignment: SQLite doesn't enforce the FK
-        return roles
+        return list((await self.session.scalars(stmt)).all())
 
     async def assign_role_to_group(
         self,
@@ -1471,35 +1412,35 @@ class AdminService:
         }
 
     async def get_login_activity(self, *, days: int = 7) -> list[dict[str, Any]]:
-        """Get daily login activity for charts.
+        """Get daily login activity for charts, in one query.
 
-        Returns list of {date, success, failed} dicts.
+        Returns list of {date, day, success, failed} dicts, oldest first.
         """
-        now = datetime.now(UTC)
+        today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        start = today - timedelta(days=days - 1)
+        day = func.date(AuditLog.timestamp)
+        succeeded = (AuditLog.action == "login") & (AuditLog.outcome == "success")
+        stmt = (
+            select(day, succeeded, func.count())
+            .where(
+                AuditLog.timestamp >= start,
+                succeeded | (AuditLog.action == "login_failed"),
+            )
+            .group_by(day, succeeded)
+        )
+        counts = {
+            (str(date), bool(ok)): n for date, ok, n in await self.session.execute(stmt)
+        }
         activity = []
-
-        for i in range(days - 1, -1, -1):
-            day = now - timedelta(days=i)
-            day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-            day_end = day_start + timedelta(days=1)
-
-            success = await self.count_audit_logs(
-                action="login",
-                outcome="success",
-                start_date=day_start,
-                end_date=day_end,
-            )
-            failed = await self.count_audit_logs(
-                action="login_failed", start_date=day_start, end_date=day_end
-            )
-
+        for i in range(days):
+            date = start + timedelta(days=i)
+            key = date.strftime("%Y-%m-%d")
             activity.append({
-                "date": day_start.strftime("%Y-%m-%d"),
-                "day": day_start.strftime("%a"),
-                "success": success,
-                "failed": failed,
+                "date": key,
+                "day": date.strftime("%a"),
+                "success": counts.get((key, True), 0),
+                "failed": counts.get((key, False), 0),
             })
-
         return activity
 
     async def record_admin_action(

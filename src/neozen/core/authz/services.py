@@ -340,27 +340,28 @@ class RoleService:
                 if expires_at > now:
                     valid_assignments.append(a)
 
-        # Get the actual roles
+        if not valid_assignments:
+            return []
+
+        # One query for the roles, whatever the number of assignments.
+        # ponytail: loads every role; filter by id when the repository
+        # protocol grows an "in" lookup, if role tables get large.
+        role_models = {r.id: r for r in await self.role_repository.get_many_by()}
         roles: list[Role] = []
         for assignment in valid_assignments:
-            try:
-                role_model = await self.role_repository.get_one_by(
-                    id=assignment.role_id
+            role_model = role_models.get(assignment.role_id)
+            if role_model is None:  # deleted role, dangling assignment
+                continue
+            roles.append(
+                Role(
+                    id=role_model.id,
+                    name=role_model.name,
+                    permissions=frozenset(role_model.get_permissions_list()),
+                    description=role_model.description,
+                    is_system=role_model.is_system,
+                    created_at=role_model.created_at,
                 )
-                # Convert to domain model
-                roles.append(
-                    Role(
-                        id=role_model.id,
-                        name=role_model.name,
-                        permissions=frozenset(role_model.get_permissions_list()),
-                        description=role_model.description,
-                        is_system=role_model.is_system,
-                        created_at=role_model.created_at,
-                    )
-                )
-            except DoesNotExist:
-                # Role was deleted, skip it
-                pass
+            )
 
         return roles
 

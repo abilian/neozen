@@ -73,6 +73,7 @@ nav = [
         { "Architecture" = "developers/overview.md" },
         { "Factor Protocols" = "developers/factors.md" },
         { "Storage Abstraction" = "developers/storage.md" },
+        { "Performance" = "performance.md" },
     ]},
 
     # -------------------------------------------------------------------------
