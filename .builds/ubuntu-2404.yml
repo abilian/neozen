@@ -38,6 +38,11 @@ tasks:
       cd neozen
       uv run ruff check
       # uv run ty check src
+  - audit: |
+      cd neozen
+      # Known vulnerabilities in the locked runtime dependencies.
+      uv export --quiet --no-hashes --all-extras --no-dev --no-emit-project -o /tmp/requirements.txt
+      uvx pip-audit --disable-pip --no-deps -r /tmp/requirements.txt
   - nox: |
       cd neozen
       uvx nox

@@ -152,6 +152,7 @@ dev = [
     "types-peewee>=4.0.0.20260223",
     "pylint>=4.0.5",
     "zensical>=0.0.73",
+    "flask-wtf>=1.2",
 ]
 playwright = [
     "pytest-playwright>=0.7.0",
