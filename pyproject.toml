@@ -151,6 +151,7 @@ dev = [
     "pylint>=4.0.5",
     "zensical>=0.0.73",
     "flask-wtf>=1.2",
+    "httpx2>=2.16.0",
 ]
 playwright = [
     "pytest-playwright>=0.7.0",
