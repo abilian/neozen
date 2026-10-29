@@ -1,7 +1,6 @@
 # Flask Integration
 
-NeoZen provides a Flask extension at `neozen.ext.flask` that handles
-session management, login/logout helpers, and route protection.
+NeoZen provides a Flask extension at `neozen.ext.flask` that handles session management, login/logout helpers, and route protection.
 
 ## Setup
 
@@ -123,8 +122,7 @@ def admin_dashboard():
 
 ## Demo Application
 
-A complete Flask demo is available at `demos/flask/` in the repository,
-including:
+A complete Flask demo is available at `demos/flask/` in the repository, including:
 
 - Registration with first-user-gets-admin logic
 - Login with password, magic link, TOTP 2FA

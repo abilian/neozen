@@ -1,9 +1,6 @@
 # SCIM 2.0
 
-NeoZen implements [SCIM 2.0][scim] (System for Cross-domain Identity
-Management) for enterprise identity provisioning. This lets external
-identity providers (Okta, Azure AD, OneLogin, etc.) automatically
-create, update, and deprovision users in your application.
+NeoZen implements [SCIM 2.0][scim] (System for Cross-domain Identity Management) for enterprise identity provisioning. This lets external identity providers (Okta, Azure AD, OneLogin, etc.) automatically create, update, and deprovision users in your application.
 
 [scim]: https://datatracker.ietf.org/doc/html/rfc7644
 
@@ -126,6 +123,4 @@ except SCIMNotFoundError as e:
 
 ## Authentication
 
-SCIM endpoints should be protected with OAuth 2.0 bearer token
-authentication. Use `OAuthTokenService.introspect_access_token` to
-verify tokens before passing requests to the SCIM endpoints.
+SCIM endpoints should be protected with OAuth 2.0 bearer token authentication. Use `OAuthTokenService.introspect_access_token` to verify tokens before passing requests to the SCIM endpoints.

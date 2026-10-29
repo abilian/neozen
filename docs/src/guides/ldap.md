@@ -1,8 +1,6 @@
 # LDAP Backend
 
-NeoZen can use LDAP/Active Directory as a read-mostly subject store
-with bind-based password authentication. The LDAP backend is built on
-[ldap3][ldap3] (pure Python, no C dependencies).
+NeoZen can use LDAP/Active Directory as a read-mostly subject store with bind-based password authentication. The LDAP backend is built on [ldap3][ldap3] (pure Python, no C dependencies).
 
 [ldap3]: https://ldap3.readthedocs.io/
 
@@ -26,8 +24,7 @@ config = LDAPConfig(
 )
 ```
 
-For non-standard schemas (e.g., Active Directory), override the
-attribute map:
+For non-standard schemas (e.g., Active Directory), override the attribute map:
 
 ```python
 ad_config = LDAPConfig(
@@ -94,18 +91,13 @@ if user is None:
 ## How It Works
 
 1. The bind DN/password are used to search the directory for the user
-2. If found, NeoZen attempts to bind as that user with the supplied
-   password
+2. If found, NeoZen attempts to bind as that user with the supplied password
 3. A successful bind means the password is correct
 4. The bound connection is then closed (no session is kept open)
 
 ## Read-Only by Default
 
-Write operations (`create`, `update_obj`, `delete`) raise
-`NotImplementedError` by default. Many LDAP deployments are read-only
-from the application's perspective. To add write support, subclass
-`LDAPSubjectRepository` and implement the methods using ldap3's
-`add()`, `modify()`, and `delete()` operations.
+Write operations (`create`, `update_obj`, `delete`) raise `NotImplementedError` by default. Many LDAP deployments are read-only from the application's perspective. To add write support, subclass `LDAPSubjectRepository` and implement the methods using ldap3's `add()`, `modify()`, and `delete()` operations.
 
 ## Filter Building
 
@@ -117,13 +109,11 @@ from the application's perspective. To add write support, subclass
 | `username="alice"` | `(uid=alice)` |
 | `id="alice"` | `(uid=alice)` |
 
-Special characters in values (`*`, `(`, `)`, `\`, `\x00`) are escaped
-per RFC 4515 to prevent LDAP injection.
+Special characters in values (`*`, `(`, `)`, `\`, `\x00`) are escaped per RFC 4515 to prevent LDAP injection.
 
 ## Limitations and Future Work
 
 - **Read-only by default** -- override for write support
-- **No connection pooling** -- each operation opens a fresh connection.
-  For high-throughput use, wrap in a pooling layer.
+- **No connection pooling** -- each operation opens a fresh connection. For high-throughput use, wrap in a pooling layer.
 - **No group support yet** -- only Subject lookups
 - **No schema discovery** -- attribute mapping is configured manually

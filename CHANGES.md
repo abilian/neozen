@@ -6,10 +6,13 @@ Versions 0.1.0 to 0.8.0 were never tagged or published. They are reconstructed f
 
 ## [Unreleased]
 
-Maintenance release: fixes and hardening, no new API.
+Maintenance release: fixes, hardening, performance and cleanup.
 
 ### Fixed
 
+- **An authorization code from `AuthorizationEndpoint` could never be redeemed**: the endpoint stores the code's HMAC, but the token service looked up the code itself. `AuthorizationEndpoint`'s `code_hash_key` must be the token service's `token_hash_key` (`NeoZenFactory` already uses one key for both)
+- Magic links, password reset, account recovery, WebAuthn challenges, group invitations, social login state and `SessionService.list_sessions` failed with SQL storage on SQLite, which returns datetimes without a time zone
+- SCIM filters on a multi-valued attribute (`emails.value ew "example.com"`, or `emails` alone) matched nothing; one matching value is now enough (RFC 7644 §3.4.2.2)
 - An existing grant no longer skips consent when a client asks for more scopes than it covers; consenting widens the grant
 - An authorization request may omit `redirect_uri` only when the client has exactly one registered (RFC 6749 §3.1.2.3); the first of several was used before
 - `code` and `state` are appended correctly to a redirect URI that already has a query string
@@ -28,6 +31,21 @@ Maintenance release: fixes and hardening, no new API.
 - Errors no longer pass silently: the HIBP check accepts the password only when the API is unreachable, and logs it; the admin console skips only missing rows; RP-initiated logout ignores only unknown clients and malformed ID tokens
 - Admin console: logout is POST only, and `page` and `per_page` are validated (a bad value is a 400, `per_page` is at most 200)
 - Updated dependencies with known vulnerabilities, among them `pyjwt`, `cryptography` and `starlette`
+- A `[session]` table without `sliding_window` turned the sliding window off; it now keeps the one-hour default
+- One failed row in a bulk import no longer makes the rows after it fail
+- The raw SQL repository refuses column names that aren't fields of its model; they used to go straight into the query
+- An admin console widget that polls after the session expired sends the browser to the login page; it used to show that page inside the widget
+- The admin console and `neozen serve` close their database connections on shutdown
+
+### Changed
+
+- The admin console's lists, counts and dashboards query the database a fixed number of times, whatever the number of rows: filtering, sorting and paging happen in SQL, and related rows come from joins. A permission check loads a subject's roles in two queries
+- The Litestar plugin sends a visitor that `login_required()` refuses to the login page (it answered 401 unless the app handled it); `redirect=False` still gives a 401, and a handler the app registers for `AuthenticationRequiredError` still wins
+- `TOTPFactor` and `WebAuthnFactor` fail as soon as they are created if `pyotp` or `webauthn` is missing
+- Result types are frozen dataclasses: `TokenPair`, `AccessTokenResult`, `TokenResponse`, `IntrospectionResponse`, `RateLimitResult`, `LockoutStatus`, `IDTokenClaims`, `AuthorizationResponse` and the other results NeoZen returns
+- Every 429 response, from any adapter, carries `Retry-After` and the `X-RateLimit-*` headers
+- `id_generator` parameters default to a function returning a random hex ID (the default was `None`)
+- `neozen serve` logs its configuration warnings (they were printed)
 
 ### Added
 
@@ -36,6 +54,8 @@ Maintenance release: fixes and hardening, no new API.
 - A CI check of the locked dependencies against known vulnerabilities (`pip-audit`)
 - Demos: CSRF protection on every form; the `/api/test/*` endpoints that hand out sign-in links and codes exist only when `NEOZEN_DEMO_TEST_API=1`; the Flask demo follows only local `next=` paths
 - Docs: HSTS and security headers, a recommended session limit, and the dynamic registration and CORS rules
+- Benchmarks of the hot paths (`bench/run.py`) and a Performance page with baseline numbers
+- The docs are built in CI, with `--strict`
 
 ## [0.9.0] - 2026-10-29
 

@@ -1,7 +1,6 @@
 # Storage Abstraction
 
-NeoZen uses protocol-based storage so any database backend can be
-used. The primary implementation is SQLAlchemy 2.0 with async support.
+NeoZen uses protocol-based storage so any database backend can be used. The primary implementation is SQLAlchemy 2.0 with async support.
 
 ## Repository Protocols
 
@@ -52,21 +51,15 @@ class RepositoryProtocol[Model](
     model_type: type[Model]
 ```
 
-All three are `@runtime_checkable`, so you can use `isinstance()`
-checks at runtime.
+All three are `@runtime_checkable`, so you can use `isinstance()` checks at runtime.
 
 ## Why Split?
 
-The split addresses a common integration pain point: `PasswordFactor`
-only calls `get_one_by` and `update_obj`, but the old monolithic
-protocol required implementing 7 methods. Now consumers can implement
-just `ReadableRepositoryProtocol` or `WritableRepositoryProtocol`
-depending on what's needed.
+The split addresses a common integration pain point: `PasswordFactor` only calls `get_one_by` and `update_obj`, but the old monolithic protocol required implementing 7 methods. Now consumers can implement just `ReadableRepositoryProtocol` or `WritableRepositoryProtocol` depending on what's needed.
 
 ## SQLAlchemy Implementation
 
-NeoZen ships with a full SQLAlchemy implementation using
-Advanced Alchemy's repository pattern:
+NeoZen ships with a full SQLAlchemy implementation using Advanced Alchemy's repository pattern:
 
 ```python
 from neozen.storage.sqlalchemy.repositories import (
@@ -124,5 +117,4 @@ class UserRepoAdapter:
         return obj
 ```
 
-See [Bring Your Own Model](../guides/bring-your-own-model.md) for
-a complete example.
+See [Bring Your Own Model](../guides/bring-your-own-model.md) for a complete example.

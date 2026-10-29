@@ -43,6 +43,10 @@ tasks:
       # Known vulnerabilities in the locked runtime dependencies.
       uv export --quiet --no-hashes --all-extras --no-dev --no-emit-project -o /tmp/requirements.txt
       uvx pip-audit --disable-pip --no-deps -r /tmp/requirements.txt
+  - docs: |
+      # Zensical only: the committed deck and card need no marp or poppler.
+      cd neozen/docs
+      uv run zensical build --strict
   - nox: |
       cd neozen
       uvx nox

@@ -1,8 +1,6 @@
 # Email OTP
 
-`EmailOTPFactor` signs users in with short numeric codes
-sent by email. It suits users who don't have an authenticator
-app, or as a step-up factor for sensitive actions.
+`EmailOTPFactor` signs users in with short numeric codes sent by email. It suits users who don't have an authenticator app, or as a step-up factor for sensitive actions.
 
 ## Setup
 

@@ -1,7 +1,6 @@
 # Litestar Integration
 
-NeoZen provides a Litestar plugin at `neozen.ext.litestar` with
-middleware-based session management, guards, and async helpers.
+NeoZen provides a Litestar plugin at `neozen.ext.litestar` with middleware-based session management, guards, and async helpers.
 
 ## Setup
 
@@ -72,6 +71,8 @@ async def dashboard(request: Request) -> Response:
     return render_template(request, "dashboard.html", {"current_user": user})
 ```
 
+A visitor who isn't signed in is redirected to `login_path`, with the page they asked for in `next`. With `login_required(redirect=False)`, for an API, they get a 401 instead. To handle it differently, register your own exception handler for `AuthenticationRequiredError`: it takes precedence over the plugin's.
+
 ## Admin Guard
 
 ```python
@@ -122,8 +123,7 @@ NeoZen doesn't set headers on your app's responses. Behind HTTPS, send at least 
 
 ## Direct Factor Wiring
 
-If you own your User model and don't want to use NeoZen's
-middleware, you can wire factors directly:
+If you own your User model and don't want to use NeoZen's middleware, you can wire factors directly:
 
 ```python
 from neozen.core.factors.password import create_password_factor

@@ -2,8 +2,7 @@
 
 **Module**: `neozen.core.oauth_client`
 
-The OAuth client handles social login flows with external providers
-(Google, GitHub, etc.).
+The OAuth client handles social login flows with external providers (Google, GitHub, etc.).
 
 ## OAuthClientService
 

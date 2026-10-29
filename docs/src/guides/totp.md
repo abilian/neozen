@@ -1,8 +1,6 @@
 # TOTP / MFA
 
-NeoZen supports Time-based One-Time Password (TOTP) as a second
-authentication factor. Users enroll via a QR code in an authenticator
-app (Google Authenticator, Authy, etc.) and verify with 6-digit codes.
+NeoZen supports Time-based One-Time Password (TOTP) as a second authentication factor. Users enroll via a QR code in an authenticator app (Google Authenticator, Authy, etc.) and verify with 6-digit codes.
 
 ## Setup
 

@@ -1,8 +1,6 @@
 # Factor Protocols
 
-Authentication factors are the pluggable methods NeoZen uses to verify
-identity. Each factor implements one of three protocols depending on
-its authentication flow.
+Authentication factors are the pluggable methods NeoZen uses to verify identity. Each factor implements one of three protocols depending on its authentication flow.
 
 ## Protocol Hierarchy
 
@@ -54,8 +52,7 @@ class AuthenticatingFactorProtocol(FactorProtocol, Protocol):
 
 ## ChallengingFactorProtocol
 
-For two-step flows where a challenge must be issued before
-authentication can proceed.
+For two-step flows where a challenge must be issued before authentication can proceed.
 
 ```python
 class ChallengingFactorProtocol(FactorProtocol, Protocol):
@@ -95,9 +92,7 @@ class EnrollableFactorProtocol(FactorProtocol, Protocol):
 **Used by**: `TOTPFactor`, `WebAuthnFactor`
 
 !!! note "Multiple protocols"
-    A factor can implement multiple protocols. `WebAuthnFactor`
-    implements both `EnrollableFactorProtocol` (registration) and
-    `ChallengingFactorProtocol` (authentication).
+    A factor can implement multiple protocols. `WebAuthnFactor` implements both `EnrollableFactorProtocol` (registration) and `ChallengingFactorProtocol` (authentication).
 
 ## Built-in Factors
 

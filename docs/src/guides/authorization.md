@@ -1,7 +1,6 @@
 # Authorization (RBAC)
 
-NeoZen provides role-based access control with permissions,
-scoped role assignments, and policy-based authorization.
+NeoZen provides role-based access control with permissions, scoped role assignments, and policy-based authorization.
 
 ## Core Concepts
 

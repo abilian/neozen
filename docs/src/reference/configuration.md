@@ -13,12 +13,9 @@ Passed to `SessionService` (`SessionServiceFactory` uses the defaults):
 
 ## Password Factor
 
-`PasswordFactor` accepts a `PasswordHasherProtocol` implementation.
-The recommended hasher is `pwdlib.PasswordHash.recommended()` which
-uses Argon2id.
+`PasswordFactor` accepts a `PasswordHasherProtocol` implementation. The recommended hasher is `pwdlib.PasswordHash.recommended()` which uses Argon2id.
 
-Password policy is enforced at the application level. NeoZen provides
-`PasswordPolicy` for validation:
+Password policy is enforced at the application level. NeoZen provides `PasswordPolicy` for validation:
 
 | Setting | Default | Description |
 |---------|---------|-------------|

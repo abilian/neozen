@@ -2,20 +2,13 @@
 
 ## Design Principles
 
-1. **Framework-agnostic core** -- All authentication logic lives in
-   `neozen.core`, with no framework imports. Framework-specific code
-   lives in `neozen.ext`.
+1. **Framework-agnostic core** -- All authentication logic lives in `neozen.core`, with no framework imports. Framework-specific code lives in `neozen.ext`.
 
-2. **Protocol-based** -- Components depend on protocols (interfaces),
-   not implementations. Storage, email sending, password hashing are
-   all pluggable.
+2. **Protocol-based** -- Components depend on protocols (interfaces), not implementations. Storage, email sending, password hashing are all pluggable.
 
-3. **Functional core / imperative shell** -- Pure logic in the core,
-   I/O at the edges. Factors, policies, and validators are stateless
-   functions operating on data.
+3. **Functional core / imperative shell** -- Pure logic in the core, I/O at the edges. Factors, policies, and validators are stateless functions operating on data.
 
-4. **Frozen dataclasses** -- Configuration and models use
-   `@dataclass(frozen=True)` for immutability.
+4. **Frozen dataclasses** -- Configuration and models use `@dataclass(frozen=True)` for immutability.
 
 ## Package Structure
 

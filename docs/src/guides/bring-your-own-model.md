@@ -1,9 +1,6 @@
 # Bring Your Own Model
 
-NeoZen's factors and identifiers use generic protocols. If your
-application has its own User model (e.g., an SQLAlchemy model from
-Advanced Alchemy), you don't need to inherit from NeoZen's base
-classes. You just need to satisfy the structural interface.
+NeoZen's factors and identifiers use generic protocols. If your application has its own User model (e.g., an SQLAlchemy model from Advanced Alchemy), you don't need to inherit from NeoZen's base classes. You just need to satisfy the structural interface.
 
 ## The Problem
 
@@ -19,13 +16,11 @@ class PasswordFactor[S: PasswordSubjectModel]:
     ) -> None: ...
 ```
 
-If your `User` class doesn't inherit from `PasswordSubjectModel`,
-type checkers complain even though it has all the right fields.
+If your `User` class doesn't inherit from `PasswordSubjectModel`, type checkers complain even though it has all the right fields.
 
 ## Solution: Factory Functions
 
-NeoZen provides factory functions that accept `Any`-typed storage,
-so you don't need `type: ignore`:
+NeoZen provides factory functions that accept `Any`-typed storage, so you don't need `type: ignore`:
 
 ```python
 from neozen.core.identifiers.email import create_email_identifier
@@ -88,8 +83,7 @@ Your model must structurally match these fields:
 
 ## Repository Protocol
 
-You only need to implement the methods that your factor actually calls.
-NeoZen provides split protocols to make this explicit:
+You only need to implement the methods that your factor actually calls. NeoZen provides split protocols to make this explicit:
 
 ```python
 from neozen.core.repository import ReadableRepositoryProtocol, WritableRepositoryProtocol

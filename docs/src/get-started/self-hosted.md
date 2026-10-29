@@ -1,22 +1,14 @@
 # Self-Hosted Quickstart
 
-**Audience**: a small team that wants to run NeoZen as a standalone
-IAM service that other apps talk to over OIDC, with an admin
-console for day-to-day user management.
+**Audience**: a small team that wants to run NeoZen as a standalone IAM service that other apps talk to over OIDC, with an admin console for day-to-day user management.
 
 **Goal**: a working self-hosted IAM in under 10 minutes.
 
-If instead you want to embed NeoZen as a library inside your own
-Python app, see the [Developer Quickstart](quickstart.md).
+If instead you want to embed NeoZen as a library inside your own Python app, see the [Developer Quickstart](quickstart.md).
 
 !!! note "What ships in 0.9"
 
-    The 0.9 reference deployment exposes the **admin console** plus
-    `/healthz` and `/readyz` health endpoints. The OIDC provider and
-    SCIM endpoints already exist in the codebase but mounting them
-    into the unified `neozen serve` Litestar app is scheduled for a
-    later 0.x point release. The library half (embed via
-    `pip install`) has full OIDC and SCIM support today.
+    The 0.9 reference deployment exposes the **admin console** plus `/healthz` and `/readyz` health endpoints. The OIDC provider and SCIM endpoints already exist in the codebase but mounting them into the unified `neozen serve` Litestar app is scheduled for a later 0.x point release. The library half (embed via `pip install`) has full OIDC and SCIM support today.
 
 ---
 
@@ -25,8 +17,7 @@ Python app, see the [Developer Quickstart](quickstart.md).
 - Docker (Docker Desktop, Colima, Podman, etc.)
 - 5 minutes
 
-You don't need to install Python, set up a database or create the
-schema.
+You don't need to install Python, set up a database or create the schema.
 
 ## 2. Boot the stack
 
@@ -51,8 +42,7 @@ docker compose ps
 
 ## 3. Find the bootstrap admin password
 
-NeoZen prints a one-time admin password on first start. Grep
-for it:
+NeoZen prints a one-time admin password on first start. Grep for it:
 
 ```bash
 docker compose logs neozen | grep NEOZEN-BOOTSTRAP-CREDENTIALS -A 6
@@ -72,13 +62,11 @@ You'll see something like:
 ======================================================================
 ```
 
-**Copy this password now**. It's not stored anywhere else, and the
-banner only fires the first time the database is empty.
+**Copy this password now**. It's not stored anywhere else, and the banner only fires the first time the database is empty.
 
 ## 4. Open the admin console
 
-Browse to <http://localhost:8000/login> and sign in with
-`admin@localhost` and the password you just copied.
+Browse to <http://localhost:8000/login> and sign in with `admin@localhost` and the password you just copied.
 
 You should land on the dashboard. From here you can:
 
@@ -97,21 +85,17 @@ docker compose down      # stops and removes the containers (data persists in th
 docker compose down -v   # ALSO removes the database volume — clean slate
 ```
 
-The PostgreSQL data lives in a Docker named volume, so
-`stop` / `start` is safe. Only `down -v` wipes the data.
+The PostgreSQL data lives in a Docker named volume, so `stop` / `start` is safe. Only `down -v` wipes the data.
 
 ---
 
 ## Production hardening
 
-The reference compose file is designed for "small team self-hosted"
-deployments: a single replica, embedded Postgres, and no TLS termination.
-For production:
+The reference compose file is designed for "small team self-hosted" deployments: a single replica, embedded Postgres, and no TLS termination. For production:
 
 ### TLS
 
-Terminate TLS at an external reverse proxy (nginx, traefik, ingress
-controller). NeoZen does not handle TLS itself.
+Terminate TLS at an external reverse proxy (nginx, traefik, ingress controller). NeoZen does not handle TLS itself.
 
 Set `FORWARDED_ALLOW_IPS` to the proxy's address (uvicorn reads it from the environment). NeoZen keys rate limits and account lockout on the client address, and only trusts `X-Forwarded-For` from those IPs; without it, every client shares the proxy's address.
 
@@ -132,8 +116,7 @@ The compose file reads `.env` automatically.
 
 ### External Postgres
 
-In production, point at a managed Postgres instance and remove the
-`postgres` service from compose:
+In production, point at a managed Postgres instance and remove the `postgres` service from compose:
 
 ```yaml
 services:
@@ -144,8 +127,7 @@ services:
 
 ### Secrets via files
 
-For Docker secrets / Kubernetes secret mounts, use the `_FILE`
-variant of any environment variable:
+For Docker secrets / Kubernetes secret mounts, use the `_FILE` variant of any environment variable:
 
 ```yaml
 environment:
@@ -155,8 +137,7 @@ environment:
 
 ### Backups
 
-Back up the Postgres volume on a schedule. NeoZen has no opinion
-on how: `pg_dump`, Postgres replication and snapshots all work.
+Back up the Postgres volume on a schedule. NeoZen has no opinion on how: `pg_dump`, Postgres replication and snapshots all work.
 
 ### Monitoring
 
@@ -165,8 +146,7 @@ The serve app exposes two health endpoints:
 - `GET /healthz`: liveness. Returns 200 if the process is up.
 - `GET /readyz`: readiness. Returns 200 if the database is reachable.
 
-Wire both into your orchestrator. Restart on `/healthz` failure;
-remove from service rotation on `/readyz` failure.
+Wire both into your orchestrator. Restart on `/healthz` failure; remove from service rotation on `/readyz` failure.
 
 ---
 
@@ -182,13 +162,9 @@ helm install neozen ./deploy/helm \
 kubectl logs deployment/neozen | grep NEOZEN-BOOTSTRAP-CREDENTIALS -A 6
 ```
 
-The chart is minimal: a single replica and an externally managed
-PostgreSQL, without autoscaling or network policies. See
-`deploy/helm/README.md` for the full configuration reference and for
-what the chart leaves out.
+The chart is minimal: a single replica and an externally managed PostgreSQL, without autoscaling or network policies. See `deploy/helm/README.md` for the full configuration reference and for what the chart leaves out.
 
-For production, create a Secret out-of-band and reference it via
-`secrets.existingSecret`:
+For production, create a Secret out-of-band and reference it via `secrets.existingSecret`:
 
 ```bash
 kubectl create secret generic neozen-secrets \
@@ -207,8 +183,7 @@ helm install neozen ./deploy/helm \
 
 ## Migrations
 
-The reference deployment runs the schema baseline automatically on
-first start. For schema upgrades on existing databases:
+The reference deployment runs the schema baseline automatically on first start. For schema upgrades on existing databases:
 
 ```bash
 # Inside the container
@@ -218,10 +193,7 @@ docker compose exec neozen alembic upgrade head
 NEOZEN_DATABASE_URL="postgresql+asyncpg://..." uv run alembic upgrade head
 ```
 
-The Alembic environment automatically translates async-driver URLs
-(`postgresql+asyncpg://`, `sqlite+aiosqlite://`) to their sync
-equivalents, so the same `NEOZEN_DATABASE_URL` works for both the
-running application and the migration tooling.
+The Alembic environment automatically translates async-driver URLs (`postgresql+asyncpg://`, `sqlite+aiosqlite://`) to their sync equivalents, so the same `NEOZEN_DATABASE_URL` works for both the running application and the migration tooling.
 
 ---
 
@@ -249,12 +221,7 @@ neozen serve --host 127.0.0.1 --port 9000 --workers 4 --log-level debug --no-boo
 
 ## Where to go next
 
-- [Configuration reference](../reference/configuration.md): full
-  config schema (TOML + env vars)
-- [Authorization (RBAC)](../guides/authorization.md): roles and
-  permissions
-- [SCIM 2.0](../guides/scim.md): provisioning users and groups
-  from an upstream IdP (currently library-only; mounting under
-  `neozen serve` is a later 0.x follow-up)
-- [LDAP backend](../guides/ldap.md): authenticate against a
-  corporate LDAP/Active Directory directory
+- [Configuration reference](../reference/configuration.md): full config schema (TOML + env vars)
+- [Authorization (RBAC)](../guides/authorization.md): roles and permissions
+- [SCIM 2.0](../guides/scim.md): provisioning users and groups from an upstream IdP (currently library-only; mounting under `neozen serve` is a later 0.x follow-up)
+- [LDAP backend](../guides/ldap.md): authenticate against a corporate LDAP/Active Directory directory

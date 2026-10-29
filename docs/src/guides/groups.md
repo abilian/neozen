@@ -65,8 +65,7 @@ await service.remove_member(group.id, "user_456")
 
 ## Invitations
 
-The invitation system lets admins invite users via email with
-pre-assigned groups and roles:
+The invitation system lets admins invite users via email with pre-assigned groups and roles:
 
 ```python
 from neozen.core.groups import InvitationConfig, InvitationService

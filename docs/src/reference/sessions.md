@@ -70,9 +70,7 @@ await factory.revoke_session_by_token(token)
 
 ## Sliding Window
 
-When `sliding_window_seconds` is set, each successful
-`validate_session()` call extends `expires_at` by that duration
-(if the remaining time is less than the window).
+When `sliding_window_seconds` is set, each successful `validate_session()` call extends `expires_at` by that duration (if the remaining time is less than the window).
 
 ## Token Format
 

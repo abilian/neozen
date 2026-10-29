@@ -1,9 +1,6 @@
 # OpenID Connect Provider
 
-NeoZen includes a full OpenID Connect 1.0 Provider built on top of the
-OAuth 2.1 server. It provides discovery, JWKS, ID token signing,
-UserInfo, consent management, RP-initiated logout, and dynamic client
-registration.
+NeoZen includes a full OpenID Connect 1.0 Provider built on top of the OAuth 2.1 server. It provides discovery, JWKS, ID token signing, UserInfo, consent management, RP-initiated logout, and dynamic client registration.
 
 ## Installation
 
@@ -102,13 +99,11 @@ new_key = await manager.rotate_key()
 jwks = await manager.get_jwks()
 ```
 
-For production, implement `KeyManager` against a persistent store
-(database, file, or KMS).
+For production, implement `KeyManager` against a persistent store (database, file, or KMS).
 
 ## ID Tokens
 
-ID tokens are returned automatically from the OAuth token endpoint
-when the request includes the `openid` scope:
+ID tokens are returned automatically from the OAuth token endpoint when the request includes the `openid` scope:
 
 ```python
 from neozen.web.oauth import TokenEndpoint

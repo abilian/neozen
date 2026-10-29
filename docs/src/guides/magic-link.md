@@ -1,8 +1,6 @@
 # Magic Link Authentication
 
-Magic links enable passwordless sign-in: the user enters their email,
-receives a link, and clicking it authenticates them. NeoZen implements
-this as a `ChallengingFactorProtocol` factor.
+Magic links enable passwordless sign-in: the user enters their email, receives a link, and clicking it authenticates them. NeoZen implements this as a `ChallengingFactorProtocol` factor.
 
 ## How It Works
 
@@ -99,8 +97,7 @@ if valid:
 ```
 
 !!! note "Finding the subject"
-    The token is opaque -- to find which subject it belongs to,
-    hash it and look up the token record:
+    The token is opaque -- to find which subject it belongs to, hash it and look up the token record:
 
     ```python
     from neozen.core.crypto import get_token_hash
@@ -126,5 +123,4 @@ The factor sends an `EmailMessage` via the configured sender:
 - **Plain text**: Link URL with expiry notice
 - **HTML**: Styled "Sign in" button
 
-In development, use `ConsoleEmailSender` which prints to stdout.
-In production, use `SMTPEmailSender` or implement `EmailSenderProtocol`.
+In development, use `ConsoleEmailSender` which prints to stdout. In production, use `SMTPEmailSender` or implement `EmailSenderProtocol`.

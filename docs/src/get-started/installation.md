@@ -39,8 +39,7 @@ uv add "neozen[all]"
 
 ## Database Setup
 
-NeoZen uses SQLAlchemy 2.0 with async support. For development,
-SQLite works out of the box:
+NeoZen uses SQLAlchemy 2.0 with async support. For development, SQLite works out of the box:
 
 ```python
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
